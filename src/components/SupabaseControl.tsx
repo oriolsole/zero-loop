@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
-import { Database, Save, CloudSync, RefreshCw } from 'lucide-react';
+import { Database, Save, CloudSun, RefreshCw } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { isSupabaseConfigured } from '../utils/supabase-client';
 import { useSupabaseLogger } from '../hooks/useSupabaseLogger';
@@ -156,7 +156,7 @@ const SupabaseControl: React.FC<SupabaseControlProps> = ({ onToggleRemote }) => 
                     onClick={handleSync}
                     disabled={!state.isRemoteEnabled || pendingItemsCount === 0}
                   >
-                    <CloudSync className="w-4 h-4 mr-2" /> 
+                    <CloudSun className="w-4 h-4 mr-2" /> 
                     Sync ({pendingItemsCount})
                   </Button>
                   
