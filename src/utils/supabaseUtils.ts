@@ -16,6 +16,13 @@ export async function logLoopToSupabase(loop: LoopHistory): Promise<boolean> {
       return false;
     }
 
+    // Convert the loop metadata to a format compatible with Supabase's Json type
+    const metadataJson = {
+      total_time: loop.totalTime,
+      steps: JSON.parse(JSON.stringify(loop.steps)),
+      insights: loop.insights ? JSON.parse(JSON.stringify(loop.insights)) : []
+    };
+
     const { error } = await supabase
       .from('learning_loops')
       .insert({
@@ -28,11 +35,7 @@ export async function logLoopToSupabase(loop: LoopHistory): Promise<boolean> {
         success: loop.success,
         score: loop.score,
         created_at: new Date(loop.timestamp).toISOString(),
-        metadata: {
-          total_time: loop.totalTime,
-          steps: loop.steps,
-          insights: loop.insights
-        }
+        metadata: metadataJson
       });
 
     if (error) {
@@ -58,6 +61,19 @@ export async function saveKnowledgeNodeToSupabase(node: KnowledgeNode): Promise<
       return false;
     }
 
+    // Convert node metadata to a format compatible with Json type
+    const metadataJson = {
+      position: node.position,
+      size: node.size,
+      connections: node.connections,
+      source_insights: node.sourceInsights || [],
+      quality_metrics: node.qualityMetrics || {
+        impact: Math.random() * 10,
+        novelty: Math.random() * 10,
+        validation_status: 'unverified'
+      }
+    };
+
     const { error } = await supabase
       .from('knowledge_nodes')
       .insert({
@@ -69,17 +85,7 @@ export async function saveKnowledgeNodeToSupabase(node: KnowledgeNode): Promise<
         discovered_in_loop: node.discoveredInLoop,
         confidence: node.confidence || 0.7,
         created_at: new Date(node.timestamp || Date.now()).toISOString(),
-        metadata: {
-          position: node.position,
-          size: node.size,
-          connections: node.connections,
-          source_insights: node.sourceInsights || [],
-          quality_metrics: node.qualityMetrics || {
-            impact: Math.random() * 10, // Default placeholder values
-            novelty: Math.random() * 10,
-            validation_status: 'unverified'
-          }
-        }
+        metadata: metadataJson
       });
 
     if (error) {
@@ -105,6 +111,13 @@ export async function saveKnowledgeEdgeToSupabase(edge: KnowledgeEdge): Promise<
       return false;
     }
 
+    // Convert edge metadata to a format compatible with Json type
+    const metadataJson = {
+      similarity_score: edge.similarityScore || edge.strength,
+      validated: edge.validated || false,
+      creation_method: edge.creationMethod || 'automatic'
+    };
+
     const { error } = await supabase
       .from('knowledge_edges')
       .insert({
@@ -115,11 +128,7 @@ export async function saveKnowledgeEdgeToSupabase(edge: KnowledgeEdge): Promise<
         strength: edge.strength,
         label: edge.label || '',
         created_at: new Date().toISOString(),
-        metadata: {
-          similarity_score: edge.similarityScore || edge.strength,
-          validated: edge.validated || false,
-          creation_method: edge.creationMethod || 'automatic'
-        }
+        metadata: metadataJson
       });
 
     if (error) {
