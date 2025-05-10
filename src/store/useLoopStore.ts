@@ -10,6 +10,7 @@ import {
   calculateGraphLayout 
 } from '../utils/knowledgeGraph';
 import { toast } from '@/components/ui/sonner';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface LoopState {
   domains: Domain[];
@@ -363,13 +364,13 @@ export const useLoopStore = create<LoopState>()(
           domain.knowledgeNodes = calculateGraphLayout(domain.knowledgeNodes, domain.knowledgeEdges || []);
         }
         
-        // Generate a loop history record
+        // Generate a loop history record with proper UUID instead of custom ID format
         const completedLoop: LoopHistory = {
-          id: `loop-${domain.id}-${Date.now()}`,
+          id: uuidv4(), // Using UUID v4 format for consistency with database
           domainId: domain.id,
           steps: [...domain.currentLoop],
           timestamp: Date.now(),
-          totalTime: Math.floor(Math.random() * 5000) + 3000, // Simulate actual execution time
+          totalTime: Math.floor(Math.random() * 5000) + 3000,
           success: domain.currentLoop.some(step => step.type === 'verification' && step.status === 'success'),
           score: domain.metrics.successRate,
           insights: insights.map((text, index) => ({
@@ -390,8 +391,20 @@ export const useLoopStore = create<LoopState>()(
         // If remote logging is enabled, save to Supabase
         if (useRemoteLogging) {
           import('../utils/supabaseUtils').then(({ logLoopToSupabase, saveKnowledgeNodeToSupabase, saveKnowledgeEdgeToSupabase }) => {
+            console.log("Attempting to save loop to Supabase:", completedLoop);
+            
             // Log the completed loop
-            logLoopToSupabase(completedLoop);
+            logLoopToSupabase(completedLoop)
+              .then(success => {
+                if (success) {
+                  console.log("Loop saved successfully to Supabase");
+                } else {
+                  console.error("Failed to save loop to Supabase");
+                }
+              })
+              .catch(error => {
+                console.error("Exception when saving loop:", error);
+              });
             
             // Log each new knowledge node
             newNodes.forEach(node => {

@@ -1,137 +1,171 @@
 
-import React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { FormDescription } from "@/components/ui/form";
-import { Database, CloudSun, RefreshCw } from 'lucide-react';
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Loader, Database, Upload, AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { useLoopStore } from "../store/useLoopStore";
+import { useSupabaseLogger } from "../hooks/useSupabaseLogger";
+import { isSupabaseConfigured } from "../utils/supabase-client";
 import { toast } from '@/components/ui/sonner';
-import { isSupabaseConfigured } from '../utils/supabase-client';
-import { useSupabaseLogger } from '../hooks/useSupabaseLogger';
 
-interface SupabaseControlProps {
-  onToggleRemote: (enabled: boolean) => void;
-}
+const SupabaseControl = () => {
+  const { useRemoteLogging, setUseRemoteLogging } = useLoopStore();
+  const { state, toggleRemoteLogging, syncPendingItems, pendingItemsCount } = useSupabaseLogger();
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isConfigured, setIsConfigured] = useState(false);
 
-const SupabaseControl: React.FC<SupabaseControlProps> = ({ onToggleRemote }) => {
-  const { 
-    state, 
-    syncPendingItems,
-    toggleRemoteLogging,
-    pendingItemsCount
-  } = useSupabaseLogger();
+  useEffect(() => {
+    // Check if Supabase is configured
+    setIsConfigured(isSupabaseConfigured());
+  }, []);
 
-  const isConfigured = isSupabaseConfigured();
-  
-  const handleSync = async () => {
-    if (!state.isRemoteEnabled) {
-      toast.warning("Remote logging is not enabled. Please enable it first.");
+  const handleToggleRemoteLogging = (checked: boolean) => {
+    setUseRemoteLogging(checked);
+    toggleRemoteLogging(checked);
+    
+    toast[checked ? 'success' : 'info'](
+      checked ? 'Remote logging enabled' : 'Remote logging disabled'
+    );
+  };
+
+  const handleSyncNow = async () => {
+    if (!isConfigured) {
+      toast.error('Supabase is not configured');
       return;
     }
-    
-    const result = await syncPendingItems();
-    if (result) {
-      toast.success("Sync completed successfully");
-    } else if (pendingItemsCount === 0) {
-      toast.info("No pending items to sync");
+
+    setIsSyncing(true);
+    try {
+      const success = await syncPendingItems();
+      if (success) {
+        console.log("Sync completed successfully");
+        toast.success('Sync completed successfully');
+      } else {
+        console.log("Sync completed with some failures");
+        toast.warning('Sync completed with some failures');
+      }
+    } catch (error) {
+      console.error('Error during sync:', error);
+      toast.error('Sync failed');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
-  const handleToggleRemote = (enabled: boolean) => {
-    toggleRemoteLogging(enabled);
-    onToggleRemote(enabled);
-    
-    if (enabled) {
-      toast.success("Remote logging enabled");
-      if (pendingItemsCount > 0) {
-        toast.info(`${pendingItemsCount} items pending sync`);
-      }
-    } else {
-      toast.info("Remote logging disabled, using local storage");
-    }
-  };
-  
   return (
-    <Card className="mb-6">
-      <CardHeader className="pb-2">
-        <div className="flex justify-between items-center">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Database className="w-5 h-5" /> 
-              Supabase Integration
-            </CardTitle>
-            <CardDescription>
-              Configure remote logging and data synchronization
-            </CardDescription>
-          </div>
-          <Badge variant={isConfigured ? "default" : "outline"}>
-            {isConfigured ? "Connected to Supabase" : "Not Connected"}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
+    <Card className="border-dashed bg-secondary/10">
+      <CardContent className="pt-4">
         <div className="space-y-4">
-          {/* Connection Status */}
-          {isConfigured && (
-            <div className="bg-secondary/30 p-3 rounded-md text-sm">
-              <p className="text-muted-foreground">Your project is connected to Supabase. Any data you generate can be stored in your Supabase tables when remote logging is enabled.</p>
-            </div>
-          )}
-          
-          {/* Remote logging toggle */}
           <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>Remote Logging</Label>
-              <FormDescription>
-                Save your learning data to Supabase
-              </FormDescription>
+            <div className="flex items-center space-x-2">
+              <Database className="w-5 h-5 text-primary" />
+              <Label htmlFor="remote-logging" className="font-medium">
+                Remote Logging
+              </Label>
+              {!isConfigured && (
+                <Badge variant="outline" className="text-red-500 border-red-300 bg-red-50">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  Not Configured
+                </Badge>
+              )}
             </div>
-            <Switch 
-              checked={state.isRemoteEnabled} 
-              onCheckedChange={handleToggleRemote}
+            <Switch
+              id="remote-logging"
+              checked={useRemoteLogging}
+              onCheckedChange={handleToggleRemoteLogging}
               disabled={!isConfigured}
             />
           </div>
-          
-          {/* Sync controls */}
-          <div className="pt-2 flex justify-end">
-            <div className="space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSync}
-                disabled={!state.isRemoteEnabled || pendingItemsCount === 0}
-              >
-                <CloudSun className="w-4 h-4 mr-2" /> 
-                Sync ({pendingItemsCount})
-              </Button>
-              
-              <Button
-                variant={state.isSyncing ? "secondary" : "default"}
-                size="sm"
-                disabled={state.isSyncing}
-                onClick={handleSync}
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${state.isSyncing ? 'animate-spin' : ''}`} /> 
-                {state.isSyncing ? "Syncing..." : "Sync Now"}
-              </Button>
+
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Status:</span>
+              <Badge variant={state.isRemoteEnabled ? "default" : "outline"}>
+                {state.isRemoteEnabled ? "Enabled" : "Disabled"}
+              </Badge>
+            </div>
+            
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Pending items:</span>
+              <Badge variant={pendingItemsCount > 0 ? "warning" : "outline"}>
+                {pendingItemsCount}
+              </Badge>
+            </div>
+            
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Last sync:</span>
+              <span className="font-mono">
+                {state.lastSyncTime ? new Date(state.lastSyncTime).toLocaleTimeString() : 'Never'}
+              </span>
+            </div>
+            
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Total synced:</span>
+              <span>{state.syncStats.totalSynced}</span>
             </div>
           </div>
-          
-          {/* Sync stats */}
-          {state.lastSyncTime && (
-            <div className="pt-2 text-sm text-muted-foreground">
-              <div className="flex justify-between">
-                <span>Last synced: {new Date(state.lastSyncTime).toLocaleTimeString()}</span>
+
+          {isConfigured && (
+            <Button 
+              onClick={handleSyncNow} 
+              disabled={isSyncing || !state.isRemoteEnabled || pendingItemsCount === 0}
+              variant="outline" 
+              className="w-full"
+            >
+              {isSyncing ? (
+                <>
+                  <Loader className="w-4 h-4 mr-2 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4 mr-2" />
+                  Sync Now
+                </>
+              )}
+            </Button>
+          )}
+
+          <div className="text-xs text-muted-foreground rounded-md p-2 bg-secondary/30">
+            <div className="flex items-start gap-2">
+              <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                {isConfigured ? (
+                  <>
+                    Remote logging sends intelligence loop data to Supabase for persistence and analysis.
+                    {pendingItemsCount > 0 && state.isRemoteEnabled && (
+                      <span className="block mt-1 font-medium">
+                        {pendingItemsCount} item(s) waiting to be synced.
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  "Supabase integration needs to be configured to enable remote logging."
+                )}
+              </span>
+            </div>
+
+            {state.syncStats.failedSyncs > 0 && (
+              <div className="flex items-start gap-2 mt-2 text-warning-foreground">
+                <AlertCircle className="w-4 h-4 mt-0.5" />
                 <span>
-                  Synced items: {state.syncStats.totalSynced} | 
-                  Failed: {state.syncStats.failedSyncs}
+                  {state.syncStats.failedSyncs} sync attempt(s) failed. Check console for details.
                 </span>
               </div>
-            </div>
-          )}
+            )}
+            
+            {state.syncStats.totalSynced > 0 && (
+              <div className="flex items-start gap-2 mt-2 text-success-foreground">
+                <CheckCircle className="w-4 h-4 mt-0.5" />
+                <span>
+                  {state.syncStats.totalSynced} item(s) successfully synced.
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

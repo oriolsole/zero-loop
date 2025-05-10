@@ -15,6 +15,14 @@ export async function logLoopToSupabase(loop: LoopHistory): Promise<boolean> {
       return false;
     }
 
+    // Validate loop data before sending to Supabase
+    if (!loop.id || !loop.domainId || !loop.steps || loop.steps.length === 0) {
+      console.error('Invalid loop data', { loop });
+      return false;
+    }
+
+    console.log('Preparing to save loop to Supabase:', { id: loop.id, domainId: loop.domainId });
+
     // Convert the loop metadata to a format compatible with Supabase's Json type
     const metadataJson = {
       total_time: loop.totalTime,
@@ -22,26 +30,44 @@ export async function logLoopToSupabase(loop: LoopHistory): Promise<boolean> {
       insights: loop.insights ? JSON.parse(JSON.stringify(loop.insights)) : []
     };
 
-    const { error } = await supabase
+    // Ensure we have a valid UUID for the loop ID
+    const loopId = isValidUUID(loop.id) ? loop.id : uuidv4();
+
+    // Extract task, solution, verification, and reflection content from steps
+    const task = loop.steps.find(s => s.type === 'task')?.content || '';
+    const solution = loop.steps.find(s => s.type === 'solution')?.content || '';
+    const verification = loop.steps.find(s => s.type === 'verification')?.content || '';
+    const reflection = loop.steps.find(s => s.type === 'reflection')?.content || '';
+
+    console.log('Task content length:', task.length);
+    console.log('Solution content length:', solution.length);
+    console.log('Verification content length:', verification.length);
+    console.log('Reflection content length:', reflection.length);
+
+    const { data, error } = await supabase
       .from('learning_loops')
       .insert({
-        id: loop.id,
+        id: loopId,
         domain_id: loop.domainId,
-        task: loop.steps.find(s => s.type === 'task')?.content || '',
-        solution: loop.steps.find(s => s.type === 'solution')?.content || '',
-        verification: loop.steps.find(s => s.type === 'verification')?.content || '',
-        reflection: loop.steps.find(s => s.type === 'reflection')?.content || '',
+        task: task,
+        solution: solution,
+        verification: verification,
+        reflection: reflection,
         success: loop.success,
         score: loop.score,
         created_at: new Date(loop.timestamp).toISOString(),
         metadata: metadataJson
-      });
+      })
+      .select();
 
     if (error) {
       console.error('Error logging loop to Supabase:', error);
+      if (error.details) console.error('Error details:', error.details);
+      if (error.hint) console.error('Error hint:', error.hint);
       return false;
     }
     
+    console.log('Successfully saved loop to Supabase:', data);
     return true;
   } catch (error) {
     console.error('Exception logging loop to Supabase:', error);
@@ -156,6 +182,7 @@ export async function saveKnowledgeEdgeToSupabase(edge: KnowledgeEdge): Promise<
  * Check if a string is a valid UUID
  */
 function isValidUUID(id: string): boolean {
+  if (!id) return false;
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(id);
 }
