@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useForm } from "react-hook-form";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Domain } from '../types/intelligence';
 import { Brain, Code, Calculator, Puzzle, FileText, Briefcase, Save, Copy, Trash } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
+import { v4 as uuidv4 } from 'uuid';
 
 interface DomainEditorProps {
   domain?: Domain;
@@ -42,8 +42,9 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState('basic');
   
+  // Generate a proper UUID for new domains instead of the timestamp-based ID
   const defaultValues: DomainFormValues = {
-    id: domain?.id || `domain-${Date.now()}`,
+    id: domain?.id || uuidv4(),
     name: domain?.name || 'New Domain',
     shortDesc: domain?.shortDesc || 'A custom domain for learning',
     description: domain?.description || 'This is a custom domain that you can use to explore learning in a specific area.',
@@ -68,26 +69,33 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
   ];
   
   const handleSubmit = (values: DomainFormValues) => {
-    // Create a new domain object from the form values
-    const newDomain: Domain = {
-      id: values.id,
-      name: values.name,
-      shortDesc: values.shortDesc,
-      description: values.description,
-      totalLoops: domain?.totalLoops || 0,
-      currentLoop: domain?.currentLoop || [],
-      knowledgeNodes: domain?.knowledgeNodes || [],
-      knowledgeEdges: domain?.knowledgeEdges || [],
-      metrics: domain?.metrics || {
-        successRate: 0,
-        knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
-        taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],
-        skills: [{ name: 'Learning', level: 1 }]
-      }
-    };
-    
-    onSave(newDomain);
-    toast.success(isNew ? 'Domain created!' : 'Domain updated!');
+    try {
+      console.log("Saving domain with ID:", values.id);
+      
+      // Create a new domain object from the form values
+      const newDomain: Domain = {
+        id: values.id,
+        name: values.name,
+        shortDesc: values.shortDesc,
+        description: values.description,
+        totalLoops: domain?.totalLoops || 0,
+        currentLoop: domain?.currentLoop || [],
+        knowledgeNodes: domain?.knowledgeNodes || [],
+        knowledgeEdges: domain?.knowledgeEdges || [],
+        metrics: domain?.metrics || {
+          successRate: 0,
+          knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
+          taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],
+          skills: [{ name: 'Learning', level: 1 }]
+        }
+      };
+      
+      onSave(newDomain);
+      toast.success(isNew ? 'Domain created!' : 'Domain updated!');
+    } catch (error) {
+      console.error("Error saving domain:", error);
+      toast.error(`Failed to save domain: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
   
   const handleClone = () => {

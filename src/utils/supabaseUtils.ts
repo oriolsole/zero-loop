@@ -190,19 +190,38 @@ export async function saveDomainToSupabase(domain: Domain): Promise<boolean> {
       return false;
     }
 
+    console.log('Beginning domain save to Supabase:', { id: domain.id, name: domain.name });
+
+    // Validate domain ID
+    if (!domain.id) {
+      console.error('Invalid domain: missing ID');
+      return false;
+    }
+
+    // Check if the ID is a valid UUID
+    if (!isValidUUID(domain.id)) {
+      console.error('Invalid domain ID for Supabase: Not a UUID format', domain.id);
+      return false;
+    }
+
     // Prepare domain metadata (metrics, etc.)
     const metadataJson = JSON.parse(JSON.stringify({
       metrics: domain.metrics,
       current_loop: domain.currentLoop
     }));
 
-    // Ensure domain ID is a valid UUID
-    const domainId = isValidUUID(domain.id) ? domain.id : uuidv4();
+    console.log('Domain prepared for Supabase:', { 
+      id: domain.id,
+      name: domain.name,
+      totalLoops: domain.totalLoops,
+      hasMetrics: !!domain.metrics,
+      metadataSize: JSON.stringify(metadataJson).length
+    });
 
     const { error } = await supabase
       .from('domains')
       .insert({
-        id: domainId,
+        id: domain.id,
         name: domain.name,
         short_desc: domain.shortDesc,
         description: domain.description,
@@ -213,6 +232,9 @@ export async function saveDomainToSupabase(domain: Domain): Promise<boolean> {
 
     if (error) {
       console.error('Error saving domain to Supabase:', error);
+      if (error.details) console.error('Error details:', error.details);
+      if (error.hint) console.error('Error hint:', error.hint);
+      if (error.code) console.error('Error code:', error.code);
       return false;
     }
     

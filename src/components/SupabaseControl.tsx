@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -10,11 +10,12 @@ import { useLoopStore } from "../store/useLoopStore";
 import { useSupabaseLogger } from "../hooks/useSupabaseLogger";
 import { isSupabaseConfigured } from "../utils/supabase-client";
 import { toast } from '@/components/ui/sonner';
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 // The component no longer accepts onToggleRemote prop as it uses the store directly
 const SupabaseControl = () => {
-  const { useRemoteLogging, setUseRemoteLogging, initializeFromSupabase } = useLoopStore();
-  const { state, toggleRemoteLogging, syncPendingItems, pendingItemsCount } = useSupabaseLogger();
+  const { useRemoteLogging, setUseRemoteLogging, initializeFromSupabase, domains } = useLoopStore();
+  const { state, toggleRemoteLogging, syncPendingItems, pendingItemsCount, queueDomain } = useSupabaseLogger();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
 
@@ -34,8 +35,17 @@ const SupabaseControl = () => {
     if (checked) {
       try {
         await initializeFromSupabase();
+        
+        // Queue all existing domains for syncing
+        if (domains && domains.length > 0) {
+          console.log(`Queueing ${domains.length} domains for initial sync`);
+          domains.forEach(domain => {
+            queueDomain(domain);
+          });
+        }
       } catch (err) {
         console.error("Error initializing from Supabase:", err);
+        toast.error("Failed to initialize from Supabase");
       }
     }
     
@@ -69,119 +79,137 @@ const SupabaseControl = () => {
   };
 
   return (
-    <Card className="border-dashed bg-secondary/10">
-      <CardContent className="pt-4">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Database className="w-5 h-5 text-primary" />
-              <Label htmlFor="remote-logging" className="font-medium">
-                Remote Logging
-              </Label>
-              {!isConfigured && (
-                <Badge variant="outline" className="text-red-500 border-red-300 bg-red-50">
-                  <AlertCircle className="w-3 h-3 mr-1" />
-                  Not Configured
+    <div className="space-y-4">
+      {!state.isRemoteEnabled && (
+        <Alert variant="warning">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Remote Logging Disabled</AlertTitle>
+          <AlertDescription>
+            Enable Remote Logging to sync your data with Supabase
+          </AlertDescription>
+        </Alert>
+      )}
+    
+      <Card className="border-dashed bg-secondary/10">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-md flex items-center gap-2">
+            <Database className="w-5 h-5" />
+            Supabase Integration
+          </CardTitle>
+        </CardHeader>
+        
+        <CardContent className="pt-0">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="remote-logging" className="font-medium">
+                  Remote Logging
+                </Label>
+                {!isConfigured && (
+                  <Badge variant="outline" className="text-red-500 border-red-300 bg-red-50">
+                    <AlertCircle className="w-3 h-3 mr-1" />
+                    Not Configured
+                  </Badge>
+                )}
+              </div>
+              <Switch
+                id="remote-logging"
+                checked={useRemoteLogging}
+                onCheckedChange={handleToggleRemoteLogging}
+                disabled={!isConfigured}
+              />
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Status:</span>
+                <Badge variant={state.isRemoteEnabled ? "default" : "outline"}>
+                  {state.isRemoteEnabled ? "Enabled" : "Disabled"}
                 </Badge>
-              )}
+              </div>
+              
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Pending items:</span>
+                <Badge variant={pendingItemsCount > 0 ? "secondary" : "outline"}>
+                  {pendingItemsCount}
+                </Badge>
+              </div>
+              
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Last sync:</span>
+                <span className="font-mono">
+                  {state.lastSyncTime ? new Date(state.lastSyncTime).toLocaleTimeString() : 'Never'}
+                </span>
+              </div>
+              
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total synced:</span>
+                <span>{state.syncStats.totalSynced}</span>
+              </div>
             </div>
-            <Switch
-              id="remote-logging"
-              checked={useRemoteLogging}
-              onCheckedChange={handleToggleRemoteLogging}
-              disabled={!isConfigured}
-            />
-          </div>
 
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Status:</span>
-              <Badge variant={state.isRemoteEnabled ? "default" : "outline"}>
-                {state.isRemoteEnabled ? "Enabled" : "Disabled"}
-              </Badge>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Pending items:</span>
-              <Badge variant={pendingItemsCount > 0 ? "secondary" : "outline"}>
-                {pendingItemsCount}
-              </Badge>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Last sync:</span>
-              <span className="font-mono">
-                {state.lastSyncTime ? new Date(state.lastSyncTime).toLocaleTimeString() : 'Never'}
-              </span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Total synced:</span>
-              <span>{state.syncStats.totalSynced}</span>
-            </div>
-          </div>
-
-          {isConfigured && (
-            <Button 
-              onClick={handleSyncNow} 
-              disabled={isSyncing || !state.isRemoteEnabled || pendingItemsCount === 0}
-              variant="outline" 
-              className="w-full"
-            >
-              {isSyncing ? (
-                <>
-                  <Loader className="w-4 h-4 mr-2 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Sync Now
-                </>
-              )}
-            </Button>
-          )}
-
-          <div className="text-xs text-muted-foreground rounded-md p-2 bg-secondary/30">
-            <div className="flex items-start gap-2">
-              <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-              <span>
-                {isConfigured ? (
+            {isConfigured && (
+              <Button 
+                onClick={handleSyncNow} 
+                disabled={isSyncing || !state.isRemoteEnabled || pendingItemsCount === 0}
+                variant={pendingItemsCount > 0 ? "default" : "outline"}
+                className="w-full"
+              >
+                {isSyncing ? (
                   <>
-                    Remote logging sends intelligence loop data to Supabase for persistence and analysis.
-                    {pendingItemsCount > 0 && state.isRemoteEnabled && (
-                      <span className="block mt-1 font-medium">
-                        {pendingItemsCount} item(s) waiting to be synced.
-                      </span>
-                    )}
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                    Syncing...
                   </>
                 ) : (
-                  "Supabase integration needs to be configured to enable remote logging."
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Sync Now {pendingItemsCount > 0 ? `(${pendingItemsCount})` : ''}
+                  </>
                 )}
-              </span>
-            </div>
+              </Button>
+            )}
 
-            {state.syncStats.failedSyncs > 0 && (
-              <div className="flex items-start gap-2 mt-2 text-warning-foreground">
-                <AlertCircle className="w-4 h-4 mt-0.5" />
+            <div className="text-xs text-muted-foreground rounded-md p-2 bg-secondary/30">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
                 <span>
-                  {state.syncStats.failedSyncs} sync attempt(s) failed. Check console for details.
+                  {isConfigured ? (
+                    <>
+                      Remote logging sends intelligence loop data to Supabase for persistence and analysis.
+                      {pendingItemsCount > 0 && state.isRemoteEnabled && (
+                        <span className="block mt-1 font-medium">
+                          {pendingItemsCount} item(s) waiting to be synced.
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    "Supabase integration needs to be configured to enable remote logging."
+                  )}
                 </span>
               </div>
-            )}
-            
-            {state.syncStats.totalSynced > 0 && (
-              <div className="flex items-start gap-2 mt-2 text-success-foreground">
-                <CheckCircle className="w-4 h-4 mt-0.5" />
-                <span>
-                  {state.syncStats.totalSynced} item(s) successfully synced.
-                </span>
-              </div>
-            )}
+
+              {state.syncStats.failedSyncs > 0 && (
+                <div className="flex items-start gap-2 mt-2 text-warning-foreground">
+                  <AlertCircle className="w-4 h-4 mt-0.5" />
+                  <span>
+                    {state.syncStats.failedSyncs} sync attempt(s) failed. Check console for details.
+                  </span>
+                </div>
+              )}
+              
+              {state.syncStats.totalSynced > 0 && (
+                <div className="flex items-start gap-2 mt-2 text-success-foreground">
+                  <CheckCircle className="w-4 h-4 mt-0.5" />
+                  <span>
+                    {state.syncStats.totalSynced} item(s) successfully synced.
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
