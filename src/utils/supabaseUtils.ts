@@ -300,7 +300,27 @@ export async function loadDomainsFromSupabase(): Promise<Domain[]> {
     
     // Convert Supabase domain format to app domain format
     const domains: Domain[] = data.map(item => {
-      const metadata = item.metadata || {};
+      // Initialize with default values
+      const defaultMetrics = {
+        successRate: 0,
+        knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
+        taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],
+        skills: [{ name: 'Learning', level: 1 }]
+      };
+      
+      // Safely extract metadata - ensure it's an object and not a string or other type
+      const metadata = typeof item.metadata === 'object' && item.metadata !== null 
+        ? item.metadata 
+        : {};
+      
+      // Safely access current_loop and metrics with proper type checking
+      const currentLoop = metadata && 'current_loop' in metadata && Array.isArray(metadata.current_loop)
+        ? metadata.current_loop
+        : [];
+        
+      const metrics = metadata && 'metrics' in metadata && typeof metadata.metrics === 'object'
+        ? metadata.metrics
+        : defaultMetrics;
       
       return {
         id: item.id,
@@ -308,15 +328,10 @@ export async function loadDomainsFromSupabase(): Promise<Domain[]> {
         shortDesc: item.short_desc || '',
         description: item.description || '',
         totalLoops: item.total_loops || 0,
-        currentLoop: metadata.current_loop || [],
+        currentLoop: currentLoop,
         knowledgeNodes: [], // These will be loaded separately
         knowledgeEdges: [], // These will be loaded separately
-        metrics: metadata.metrics || {
-          successRate: 0,
-          knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
-          taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],
-          skills: [{ name: 'Learning', level: 1 }]
-        }
+        metrics: metrics
       };
     });
     
