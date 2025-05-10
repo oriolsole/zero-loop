@@ -1,6 +1,7 @@
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Domain, LearningStep, LoopHistory } from '../types/intelligence';
+import { Domain, LearningStep, LoopHistory, KnowledgeNode } from '../types/intelligence';
 import { domainsData } from '../data/mockData';
 import { domainEngines } from '../engines/domainEngines';
 
