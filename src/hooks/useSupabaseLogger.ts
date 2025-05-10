@@ -1,382 +1,282 @@
-import { useState, useCallback, useEffect } from 'react';
-import { supabase, isSupabaseConfigured, handleSupabaseError } from '../utils/supabase-client';
-import { LoopHistory, KnowledgeNode, KnowledgeEdge } from '../types/intelligence';
-import { logLoopToSupabase, saveKnowledgeNodeToSupabase, saveKnowledgeEdgeToSupabase } from '../utils/supabaseUtils';
-import { toast } from '@/components/ui/sonner';
 
-interface SupabaseLoggerOptions {
-  autoSync?: boolean;
-  useLocalStorageFallback?: boolean;
-  debug?: boolean;
+import { useState, useEffect } from 'react';
+import { useLoopStore } from '../store/useLoopStore';
+import { logLoopToSupabase, saveKnowledgeNodeToSupabase, saveKnowledgeEdgeToSupabase, saveDomainToSupabase, updateDomainInSupabase, syncWithSupabase } from '../utils/supabaseUtils';
+import { isSupabaseConfigured } from '../utils/supabase-client';
+import { LoopHistory, KnowledgeNode, KnowledgeEdge, Domain } from '../types/intelligence';
+
+const LOCAL_STORAGE_KEY = 'intelligence-loop-sync-queue';
+const LOCAL_STORAGE_STATE_KEY = 'intelligence-loop-sync-state';
+
+interface SyncQueue {
+  loops: LoopHistory[];
+  nodes: KnowledgeNode[];
+  edges: KnowledgeEdge[];
+  domains: Domain[];
 }
 
-interface SupabaseLoggerState {
+interface SyncState {
   isRemoteEnabled: boolean;
-  isSyncing: boolean;
   lastSyncTime: number | null;
   syncStats: {
     totalSynced: number;
     failedSyncs: number;
-    pendingItems: number;
   };
 }
 
-export const useSupabaseLogger = (options: SupabaseLoggerOptions = {}) => {
-  const { 
-    autoSync = true, 
-    useLocalStorageFallback = true,
-    debug = true // Enable debug by default for now to help troubleshoot
-  } = options;
-
-  const [state, setState] = useState<SupabaseLoggerState>({
-    isRemoteEnabled: isSupabaseConfigured(),
-    isSyncing: false,
+const getInitialState = (): SyncState => {
+  const storedState = localStorage.getItem(LOCAL_STORAGE_STATE_KEY);
+  if (storedState) {
+    try {
+      return JSON.parse(storedState);
+    } catch (e) {
+      console.error('Failed to parse stored sync state:', e);
+    }
+  }
+  
+  return {
+    isRemoteEnabled: false,
     lastSyncTime: null,
     syncStats: {
       totalSynced: 0,
-      failedSyncs: 0,
-      pendingItems: 0
+      failedSyncs: 0
     }
-  });
+  };
+};
 
-  // Local storage key prefixes
-  const PENDING_LOOPS_KEY = 'zeroloop_pending_loops';
-  const PENDING_NODES_KEY = 'zeroloop_pending_nodes';
-  const PENDING_EDGES_KEY = 'zeroloop_pending_edges';
+const getInitialQueue = (): SyncQueue => {
+  const storedQueue = localStorage.getItem(LOCAL_STORAGE_KEY);
+  if (storedQueue) {
+    try {
+      return JSON.parse(storedQueue);
+    } catch (e) {
+      console.error('Failed to parse stored sync queue:', e);
+    }
+  }
+  
+  return {
+    loops: [],
+    nodes: [],
+    edges: [],
+    domains: []
+  };
+};
 
-  // Log connection status on start
+export function useSupabaseLogger() {
+  const [state, setState] = useState<SyncState>(getInitialState);
+  const [queue, setQueue] = useState<SyncQueue>(getInitialQueue);
+  const { loopHistory, domains, activeDomainId } = useLoopStore();
+  
+  // Save state and queue to localStorage whenever they change
   useEffect(() => {
-    if (debug) {
-      console.log(`[SupabaseLogger] Initialized with remote enabled: ${state.isRemoteEnabled}`);
-      console.log(`[SupabaseLogger] Supabase configured: ${isSupabaseConfigured()}`);
-      
-      // Check pending items count
-      const pendingLoops = getPendingItems(PENDING_LOOPS_KEY);
-      const pendingNodes = getPendingItems(PENDING_NODES_KEY);
-      const pendingEdges = getPendingItems(PENDING_EDGES_KEY);
-      
-      console.log(`[SupabaseLogger] Pending items: loops=${pendingLoops.length}, nodes=${pendingNodes.length}, edges=${pendingEdges.length}`);
+    localStorage.setItem(LOCAL_STORAGE_STATE_KEY, JSON.stringify(state));
+  }, [state]);
+  
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(queue));
+  }, [queue]);
+  
+  // Check if Supabase is properly configured
+  useEffect(() => {
+    const supabaseConfig = isSupabaseConfigured();
+    if (!supabaseConfig && state.isRemoteEnabled) {
+      setState(prev => ({ ...prev, isRemoteEnabled: false }));
     }
-  }, []);
+  }, [state.isRemoteEnabled]);
+  
+  // Function to toggle remote logging
+  const toggleRemoteLogging = (enabled: boolean) => {
+    setState(prev => ({ ...prev, isRemoteEnabled: enabled }));
+  };
+  
+  // Queue a completed loop for sync
+  const queueLoop = (loop: LoopHistory) => {
+    if (!state.isRemoteEnabled) return;
+    
+    setQueue(prev => ({
+      ...prev,
+      loops: [...prev.loops, loop]
+    }));
+    
+    console.log('Loop queued for sync:', loop.id);
+  };
+  
+  // Queue a knowledge node for sync
+  const queueNode = (node: KnowledgeNode) => {
+    if (!state.isRemoteEnabled) return;
+    
+    setQueue(prev => ({
+      ...prev,
+      nodes: [...prev.nodes, node]
+    }));
+    
+    console.log('Knowledge node queued for sync:', node.id);
+  };
+  
+  // Queue a knowledge edge for sync
+  const queueEdge = (edge: KnowledgeEdge) => {
+    if (!state.isRemoteEnabled) return;
+    
+    setQueue(prev => ({
+      ...prev,
+      edges: [...prev.edges, edge]
+    }));
+    
+    console.log('Knowledge edge queued for sync:', edge.id);
+  };
 
-  // Helper to get pending items from local storage
-  const getPendingItems = useCallback(<T>(key: string): T[] => {
-    if (!useLocalStorageFallback) return [];
-    try {
-      const items = localStorage.getItem(key);
-      return items ? JSON.parse(items) : [];
-    } catch (error) {
-      console.error(`Error getting pending ${key}:`, error);
-      return [];
-    }
-  }, [useLocalStorageFallback]);
-
-  // Helper to add pending item to local storage
-  const addPendingItem = useCallback(<T>(key: string, item: T): void => {
-    if (!useLocalStorageFallback) return;
-    try {
-      const items = getPendingItems<T>(key);
-      items.push(item);
-      localStorage.setItem(key, JSON.stringify(items));
-      
-      if (debug) {
-        console.log(`[SupabaseLogger] Added item to ${key}:`, item);
+  // Queue a domain for sync
+  const queueDomain = (domain: Domain) => {
+    if (!state.isRemoteEnabled) return;
+    
+    setQueue(prev => {
+      // Check if the domain is already in the queue
+      const existingIndex = prev.domains.findIndex(d => d.id === domain.id);
+      if (existingIndex >= 0) {
+        // Replace the existing domain with the updated one
+        const updatedDomains = [...prev.domains];
+        updatedDomains[existingIndex] = domain;
+        return {
+          ...prev,
+          domains: updatedDomains
+        };
       }
       
+      // Add the new domain to the queue
+      return {
+        ...prev,
+        domains: [...prev.domains, domain]
+      };
+    });
+    
+    console.log('Domain queued for sync:', domain.id);
+  };
+  
+  // Sync all pending items in the queue
+  const syncPendingItems = async (): Promise<boolean> => {
+    if (queue.loops.length === 0 && 
+        queue.nodes.length === 0 && 
+        queue.edges.length === 0 &&
+        queue.domains.length === 0) {
+      console.log('No items to sync');
+      return true;
+    }
+    
+    try {
+      console.log('Starting sync of pending items:', {
+        loops: queue.loops.length,
+        nodes: queue.nodes.length,
+        edges: queue.edges.length,
+        domains: queue.domains.length
+      });
+      
+      const result = await syncWithSupabase(
+        queue.loops,
+        queue.nodes,
+        queue.edges,
+        queue.domains
+      );
+      
+      const totalSynced = 
+        result.stats.loops + 
+        result.stats.nodes + 
+        result.stats.edges +
+        result.stats.domains;
+      
+      console.log('Sync result:', result);
+      
+      // Update stats
       setState(prev => ({
         ...prev,
-        syncStats: {
-          ...prev.syncStats,
-          pendingItems: prev.syncStats.pendingItems + 1
-        }
-      }));
-    } catch (error) {
-      console.error(`Error adding pending ${key}:`, error);
-    }
-  }, [useLocalStorageFallback, getPendingItems, debug]);
-
-  // Helper to clear processed items from local storage
-  const clearProcessedItems = useCallback(<T>(key: string, processedIds: string[]): void => {
-    if (!useLocalStorageFallback) return;
-    try {
-      const items = getPendingItems<any>(key);
-      const filtered = items.filter(item => !processedIds.includes(item.id));
-      localStorage.setItem(key, JSON.stringify(filtered));
-      
-      if (debug && processedIds.length > 0) {
-        console.log(`[SupabaseLogger] Cleared ${processedIds.length} processed items from ${key}`);
-      }
-    } catch (error) {
-      console.error(`Error clearing processed ${key}:`, error);
-    }
-  }, [useLocalStorageFallback, getPendingItems, debug]);
-
-  // Log a learning loop
-  const logLoop = useCallback(async (loop: LoopHistory): Promise<boolean> => {
-    if (debug) {
-      console.log('[SupabaseLogger] Attempting to log loop:', loop);
-    }
-    
-    // If remote logging is enabled, try to log directly
-    if (state.isRemoteEnabled) {
-      try {
-        const success = await logLoopToSupabase(loop);
-        if (success) {
-          if (debug) console.log('[SupabaseLogger] Loop saved successfully to Supabase');
-          setState(prev => ({
-            ...prev,
-            syncStats: {
-              ...prev.syncStats,
-              totalSynced: prev.syncStats.totalSynced + 1
-            }
-          }));
-          return true;
-        }
-        
-        if (debug) console.log('[SupabaseLogger] Failed to save loop to Supabase, falling back to local storage');
-        
-        // If direct logging fails, fall back to local storage
-        if (useLocalStorageFallback) {
-          addPendingItem(PENDING_LOOPS_KEY, loop);
-          return false;
-        }
-      } catch (error) {
-        console.error('[SupabaseLogger] Error saving loop:', error);
-        handleSupabaseError(error, 'Failed to log learning loop');
-        if (useLocalStorageFallback) {
-          addPendingItem(PENDING_LOOPS_KEY, loop);
-        }
-        return false;
-      }
-    } else if (useLocalStorageFallback) {
-      // If remote is disabled, store in local storage if fallback is enabled
-      if (debug) console.log('[SupabaseLogger] Remote disabled, saving loop to local storage');
-      addPendingItem(PENDING_LOOPS_KEY, loop);
-      return true;
-    }
-    
-    return false;
-  }, [state.isRemoteEnabled, useLocalStorageFallback, addPendingItem, debug]);
-
-  // Log a knowledge node
-  const logKnowledgeNode = useCallback(async (node: KnowledgeNode): Promise<boolean> => {
-    if (state.isRemoteEnabled) {
-      try {
-        const success = await saveKnowledgeNodeToSupabase(node);
-        if (success) {
-          setState(prev => ({
-            ...prev,
-            syncStats: {
-              ...prev.syncStats,
-              totalSynced: prev.syncStats.totalSynced + 1
-            }
-          }));
-          return true;
-        }
-        if (useLocalStorageFallback) {
-          addPendingItem(PENDING_NODES_KEY, node);
-          return false;
-        }
-      } catch (error) {
-        handleSupabaseError(error, 'Failed to log knowledge node');
-        if (useLocalStorageFallback) {
-          addPendingItem(PENDING_NODES_KEY, node);
-        }
-        return false;
-      }
-    } else if (useLocalStorageFallback) {
-      addPendingItem(PENDING_NODES_KEY, node);
-      return true;
-    }
-    
-    return false;
-  }, [state.isRemoteEnabled, useLocalStorageFallback, addPendingItem]);
-
-  // Log a knowledge edge
-  const logKnowledgeEdge = useCallback(async (edge: KnowledgeEdge): Promise<boolean> => {
-    if (state.isRemoteEnabled) {
-      try {
-        const success = await saveKnowledgeEdgeToSupabase(edge);
-        if (success) {
-          setState(prev => ({
-            ...prev,
-            syncStats: {
-              ...prev.syncStats,
-              totalSynced: prev.syncStats.totalSynced + 1
-            }
-          }));
-          return true;
-        }
-        if (useLocalStorageFallback) {
-          addPendingItem(PENDING_EDGES_KEY, edge);
-          return false;
-        }
-      } catch (error) {
-        handleSupabaseError(error, 'Failed to log knowledge edge');
-        if (useLocalStorageFallback) {
-          addPendingItem(PENDING_EDGES_KEY, edge);
-        }
-        return false;
-      }
-    } else if (useLocalStorageFallback) {
-      addPendingItem(PENDING_EDGES_KEY, edge);
-      return true;
-    }
-    
-    return false;
-  }, [state.isRemoteEnabled, useLocalStorageFallback, addPendingItem]);
-
-  // Sync pending items to Supabase
-  const syncPendingItems = useCallback(async (): Promise<boolean> => {
-    if (!state.isRemoteEnabled || state.isSyncing) {
-      if (debug) console.log(`[SupabaseLogger] Sync skipped: remoteEnabled=${state.isRemoteEnabled}, isSyncing=${state.isSyncing}`);
-      return false;
-    }
-
-    if (debug) console.log('[SupabaseLogger] Starting sync of pending items');
-    
-    setState(prev => ({ ...prev, isSyncing: true }));
-    let successCount = 0;
-    let failCount = 0;
-
-    try {
-      // Sync pending loops
-      const pendingLoops = getPendingItems<LoopHistory>(PENDING_LOOPS_KEY);
-      const processedLoopIds: string[] = [];
-      
-      if (debug) console.log(`[SupabaseLogger] Found ${pendingLoops.length} pending loops to sync`);
-      
-      for (const loop of pendingLoops) {
-        try {
-          if (debug) console.log(`[SupabaseLogger] Syncing loop ${loop.id}`);
-          const success = await logLoopToSupabase(loop);
-          if (success) {
-            processedLoopIds.push(loop.id);
-            successCount++;
-            if (debug) console.log(`[SupabaseLogger] Successfully synced loop ${loop.id}`);
-          } else {
-            failCount++;
-            if (debug) console.log(`[SupabaseLogger] Failed to sync loop ${loop.id}`);
-          }
-        } catch (error) {
-          console.error(`[SupabaseLogger] Error syncing loop ${loop.id}:`, error);
-          failCount++;
-        }
-      }
-      
-      clearProcessedItems(PENDING_LOOPS_KEY, processedLoopIds);
-
-      // Sync pending nodes
-      const pendingNodes = getPendingItems<KnowledgeNode>(PENDING_NODES_KEY);
-      const processedNodeIds: string[] = [];
-      
-      if (debug) console.log(`[SupabaseLogger] Found ${pendingNodes.length} pending nodes to sync`);
-      
-      for (const node of pendingNodes) {
-        try {
-          const success = await saveKnowledgeNodeToSupabase(node);
-          if (success) {
-            processedNodeIds.push(node.id);
-            successCount++;
-          } else {
-            failCount++;
-          }
-        } catch (error) {
-          console.error('Error syncing node:', error);
-          failCount++;
-        }
-      }
-      
-      clearProcessedItems(PENDING_NODES_KEY, processedNodeIds);
-
-      // Sync pending edges
-      const pendingEdges = getPendingItems<KnowledgeEdge>(PENDING_EDGES_KEY);
-      const processedEdgeIds: string[] = [];
-      
-      if (debug) console.log(`[SupabaseLogger] Found ${pendingEdges.length} pending edges to sync`);
-      
-      for (const edge of pendingEdges) {
-        try {
-          const success = await saveKnowledgeEdgeToSupabase(edge);
-          if (success) {
-            processedEdgeIds.push(edge.id);
-            successCount++;
-          } else {
-            failCount++;
-          }
-        } catch (error) {
-          console.error('Error syncing edge:', error);
-          failCount++;
-        }
-      }
-      
-      clearProcessedItems(PENDING_EDGES_KEY, processedEdgeIds);
-
-      // Update sync stats
-      setState(prev => ({
-        ...prev,
-        isSyncing: false,
         lastSyncTime: Date.now(),
         syncStats: {
-          ...prev.syncStats,
-          totalSynced: prev.syncStats.totalSynced + successCount,
-          failedSyncs: prev.syncStats.failedSyncs + failCount,
-          pendingItems: 
-            getPendingItems(PENDING_LOOPS_KEY).length +
-            getPendingItems(PENDING_NODES_KEY).length +
-            getPendingItems(PENDING_EDGES_KEY).length
+          totalSynced: prev.syncStats.totalSynced + totalSynced,
+          failedSyncs: prev.syncStats.failedSyncs + (result.success ? 0 : 1)
         }
       }));
-
-      if (successCount > 0) {
-        toast.success(`Synced ${successCount} items to Supabase`);
-        if (debug) console.log(`[SupabaseLogger] Sync completed: ${successCount} succeeded, ${failCount} failed`);
+      
+      // Clear synced items from queue
+      if (result.success) {
+        setQueue({
+          loops: [],
+          nodes: [],
+          edges: [],
+          domains: []
+        });
       }
       
-      return successCount > 0 && failCount === 0;
+      return result.success;
     } catch (error) {
       console.error('Error during sync:', error);
       setState(prev => ({
         ...prev,
-        isSyncing: false,
         syncStats: {
           ...prev.syncStats,
           failedSyncs: prev.syncStats.failedSyncs + 1
         }
       }));
-      toast.error('Sync failed');
-      if (debug) console.log('[SupabaseLogger] Sync failed with exception:', error);
       return false;
     }
-  }, [
-    state.isRemoteEnabled, 
-    state.isSyncing, 
-    getPendingItems, 
-    clearProcessedItems,
-    debug
-  ]);
-
-  // Toggle remote logging on/off
-  const toggleRemoteLogging = useCallback((enabled: boolean): void => {
-    if (debug) console.log(`[SupabaseLogger] Toggling remote logging to ${enabled}`);
-    setState(prev => ({ ...prev, isRemoteEnabled: enabled }));
+  };
+  
+  // Auto-sync every 5 minutes if enabled
+  useEffect(() => {
+    if (!state.isRemoteEnabled) return;
     
-    if (enabled && autoSync) {
-      if (debug) console.log('[SupabaseLogger] Remote enabled, auto-syncing pending items');
-      syncPendingItems();
+    const intervalId = setInterval(() => {
+      const pendingCount = queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length;
+      if (pendingCount > 0) {
+        console.log('Auto-syncing pending items:', pendingCount);
+        syncPendingItems();
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return () => clearInterval(intervalId);
+  }, [state.isRemoteEnabled, queue]);
+  
+  // Queue new loops for syncing if remote logging is enabled
+  useEffect(() => {
+    if (!state.isRemoteEnabled) return;
+    
+    // Check if there are any loops not in the queue
+    const queuedLoopIds = new Set(queue.loops.map(l => l.id));
+    const unqueuedLoops = loopHistory.filter(l => !queuedLoopIds.has(l.id));
+    
+    if (unqueuedLoops.length > 0) {
+      console.log(`Found ${unqueuedLoops.length} unqueued loops, adding to queue`);
+      setQueue(prev => ({
+        ...prev,
+        loops: [...prev.loops, ...unqueuedLoops]
+      }));
     }
-  }, [autoSync, syncPendingItems, debug]);
+  }, [state.isRemoteEnabled, loopHistory, queue.loops]);
 
+  // Queue domains for syncing if remote logging is enabled
+  useEffect(() => {
+    if (!state.isRemoteEnabled) return;
+    
+    // Check if any domains need to be added to the queue
+    const queuedDomainIds = new Set(queue.domains.map(d => d.id));
+    const unqueuedDomains = domains.filter(d => !queuedDomainIds.has(d.id));
+    
+    if (unqueuedDomains.length > 0) {
+      console.log(`Found ${unqueuedDomains.length} unqueued domains, adding to queue`);
+      setQueue(prev => ({
+        ...prev,
+        domains: [...prev.domains, ...unqueuedDomains]
+      }));
+    }
+  }, [state.isRemoteEnabled, domains, queue.domains]);
+  
   return {
     state,
-    logLoop,
-    logKnowledgeNode,
-    logKnowledgeEdge,
-    syncPendingItems,
+    queue,
     toggleRemoteLogging,
-    pendingItemsCount: 
-      getPendingItems(PENDING_LOOPS_KEY).length +
-      getPendingItems(PENDING_NODES_KEY).length +
-      getPendingItems(PENDING_EDGES_KEY).length
+    queueLoop,
+    queueNode,
+    queueEdge,
+    queueDomain,
+    syncPendingItems,
+    pendingItemsCount: queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length
   };
-};
+}

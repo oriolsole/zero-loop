@@ -9,6 +9,13 @@ import {
   createEdgesBetweenNodes,
   calculateGraphLayout 
 } from '../utils/knowledgeGraph';
+import { 
+  saveDomainToSupabase, 
+  updateDomainInSupabase, 
+  deleteDomainFromSupabase,
+  loadDomainsFromSupabase
+} from '../utils/supabaseUtils';
+import { isSupabaseConfigured } from '../utils/supabase-client';
 import { toast } from '@/components/ui/sonner';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -22,8 +29,10 @@ export interface LoopState {
   loopHistory: LoopHistory[];
   selectedInsightId: string | null;
   useRemoteLogging: boolean;
+  isInitialized: boolean;
   
   // Actions
+  initializeFromSupabase: () => Promise<void>;
   setActiveDomain: (domainId: string) => void;
   startNewLoop: () => Promise<void>;
   advanceToNextStep: () => Promise<void>;
@@ -42,17 +51,28 @@ export interface LoopState {
   deleteDomain: (domainId: string) => void;
 }
 
-// Initialize domains with empty edges array if not already present
-const initializedDomains = domainsData.map(domain => ({
-  ...domain,
-  knowledgeEdges: domain.knowledgeEdges || [] as KnowledgeEdge[]
-}));
+// Convert existing domain IDs to UUIDs if they're not already
+const convertedDomains = domainsData.map(domain => {
+  // Check if the domain ID is already a UUID
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(domain.id)) {
+    return {
+      ...domain,
+      id: uuidv4(),
+      knowledgeEdges: domain.knowledgeEdges || [] as KnowledgeEdge[]
+    };
+  }
+  return {
+    ...domain,
+    knowledgeEdges: domain.knowledgeEdges || [] as KnowledgeEdge[]
+  };
+});
 
 export const useLoopStore = create<LoopState>()(
   persist(
     (set, get) => ({
-      domains: initializedDomains,
-      activeDomainId: 'logic',
+      domains: convertedDomains,
+      activeDomainId: convertedDomains[0]?.id || '',
       isRunningLoop: false,
       currentStepIndex: null,
       isContinuousMode: false,
@@ -60,6 +80,70 @@ export const useLoopStore = create<LoopState>()(
       loopHistory: [],
       selectedInsightId: null,
       useRemoteLogging: false,
+      isInitialized: false,
+      
+      initializeFromSupabase: async () => {
+        // Skip if already initialized or Supabase not configured
+        if (get().isInitialized || !isSupabaseConfigured() || !get().useRemoteLogging) {
+          set({ isInitialized: true }); // Mark as initialized even if not using remote
+          return;
+        }
+        
+        try {
+          console.log('Initializing domains from Supabase...');
+          const remoteDomains = await loadDomainsFromSupabase();
+          
+          if (remoteDomains.length > 0) {
+            console.log(`Loaded ${remoteDomains.length} domains from Supabase`);
+            
+            // Keep local knowledge nodes and edges for each domain
+            const mergedDomains = remoteDomains.map(remoteDomain => {
+              // Find matching local domain (if any)
+              const localDomain = get().domains.find(d => d.id === remoteDomain.id);
+              
+              if (localDomain) {
+                return {
+                  ...remoteDomain,
+                  knowledgeNodes: localDomain.knowledgeNodes,
+                  knowledgeEdges: localDomain.knowledgeEdges || []
+                };
+              }
+              
+              return {
+                ...remoteDomain,
+                knowledgeNodes: [],
+                knowledgeEdges: []
+              };
+            });
+            
+            // If there are any domains locally that don't exist in remote, add them
+            const remoteDomainIds = new Set(remoteDomains.map(d => d.id));
+            const localOnlyDomains = get().domains.filter(d => !remoteDomainIds.has(d.id));
+            
+            const allDomains = [...mergedDomains, ...localOnlyDomains];
+            
+            // Set the active domain to the first one if the current one doesn't exist
+            const activeDomainExists = allDomains.some(d => d.id === get().activeDomainId);
+            const newActiveDomainId = activeDomainExists 
+              ? get().activeDomainId 
+              : (allDomains[0]?.id || '');
+            
+            set({ 
+              domains: allDomains,
+              activeDomainId: newActiveDomainId,
+              isInitialized: true
+            });
+            
+            console.log('Domains initialized from Supabase');
+          } else {
+            console.log('No domains found in Supabase, keeping local domains');
+            set({ isInitialized: true });
+          }
+        } catch (error) {
+          console.error('Error initializing domains from Supabase:', error);
+          set({ isInitialized: true }); // Mark as initialized even on error
+        }
+      },
       
       setActiveDomain: (domainId) => {
         // Only allow domain change when not in a running loop
@@ -95,7 +179,7 @@ export const useLoopStore = create<LoopState>()(
         
         // Generate the task using domain engine
         try {
-          const engine = domainEngines[activeDomainId];
+          const engine = domainEngines[activeDomainId] || domainEngines[Object.keys(domainEngines)[0]];
           const taskContent = await engine.generateTask();
           
           const updatedStep: LearningStep = {
@@ -390,7 +474,12 @@ export const useLoopStore = create<LoopState>()(
         
         // If remote logging is enabled, save to Supabase
         if (useRemoteLogging) {
-          import('../utils/supabaseUtils').then(({ logLoopToSupabase, saveKnowledgeNodeToSupabase, saveKnowledgeEdgeToSupabase }) => {
+          import('../utils/supabaseUtils').then(({ 
+            logLoopToSupabase, 
+            saveKnowledgeNodeToSupabase, 
+            saveKnowledgeEdgeToSupabase, 
+            updateDomainInSupabase 
+          }) => {
             console.log("Attempting to save loop to Supabase:", completedLoop);
             
             // Log the completed loop
@@ -415,6 +504,9 @@ export const useLoopStore = create<LoopState>()(
             newEdges.forEach(edge => {
               saveKnowledgeEdgeToSupabase(edge);
             });
+            
+            // Update the domain with the new total loops count
+            updateDomainInSupabase(domain);
           });
         }
         
@@ -571,13 +663,23 @@ export const useLoopStore = create<LoopState>()(
       },
       
       setUseRemoteLogging: (useRemote) => {
+        const { isInitialized } = get();
+        
         set({ useRemoteLogging: useRemote });
+        
+        // If enabling remote logging and not initialized, initialize from Supabase
+        if (useRemote && !isInitialized) {
+          get().initializeFromSupabase();
+        }
       },
       
       addNewDomain: (domain) => {
-        // Make sure the domain has all required fields
+        // Make sure the domain has all required fields and a UUID
+        const domainId = domain.id && domain.id.includes('-') ? domain.id : uuidv4();
+        
         const completeDomain: Domain = {
           ...domain,
+          id: domainId,
           totalLoops: domain.totalLoops || 0,
           currentLoop: domain.currentLoop || [],
           knowledgeNodes: domain.knowledgeNodes || [],
@@ -593,8 +695,21 @@ export const useLoopStore = create<LoopState>()(
         // Add the new domain
         set(state => ({
           domains: [...state.domains, completeDomain],
-          activeDomainId: domain.id // Switch to the new domain
+          activeDomainId: domainId // Switch to the new domain
         }));
+        
+        // If remote logging is enabled, save to Supabase
+        if (get().useRemoteLogging && isSupabaseConfigured()) {
+          saveDomainToSupabase(completeDomain)
+            .then(success => {
+              if (success) {
+                console.log('Domain saved to Supabase:', domainId);
+              }
+            })
+            .catch(error => {
+              console.error('Error saving domain to Supabase:', error);
+            });
+        }
         
         toast.success('New domain created!');
       },
@@ -607,13 +722,26 @@ export const useLoopStore = create<LoopState>()(
           const newDomains = [...state.domains];
           
           // Keep the existing complex data while updating the basic info
+          const existingDomain = state.domains[domainIndex];
           newDomains[domainIndex] = {
-            ...state.domains[domainIndex],
+            ...existingDomain,
             name: updatedDomain.name,
             shortDesc: updatedDomain.shortDesc,
             description: updatedDomain.description,
-            // Other fields from the updated domain
           };
+
+          // If remote logging is enabled, update in Supabase
+          if (state.useRemoteLogging && isSupabaseConfigured()) {
+            updateDomainInSupabase(newDomains[domainIndex])
+              .then(success => {
+                if (success) {
+                  console.log('Domain updated in Supabase:', updatedDomain.id);
+                }
+              })
+              .catch(error => {
+                console.error('Error updating domain in Supabase:', error);
+              });
+          }
           
           return { domains: newDomains };
         });
@@ -643,11 +771,48 @@ export const useLoopStore = create<LoopState>()(
           activeDomainId: newActiveDomain
         });
         
+        // If remote logging is enabled, delete from Supabase
+        if (get().useRemoteLogging && isSupabaseConfigured()) {
+          deleteDomainFromSupabase(domainId)
+            .then(success => {
+              if (success) {
+                console.log('Domain deleted from Supabase:', domainId);
+              }
+            })
+            .catch(error => {
+              console.error('Error deleting domain from Supabase:', error);
+            });
+        }
+        
         toast.success('Domain deleted!');
       }
     }),
     {
-      name: 'intelligence-loop-storage'
+      name: 'intelligence-loop-storage',
+      onRehydrateStorage: () => {
+        return (state) => {
+          if (state) {
+            // Initialize from Supabase if remote logging is enabled
+            if (state.useRemoteLogging) {
+              setTimeout(() => {
+                state.initializeFromSupabase();
+              }, 0);
+            } else {
+              state.isInitialized = true;
+            }
+          }
+        };
+      }
     }
   )
 );
+
+// Initialize from Supabase if remote logging is enabled when the app starts
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    const state = useLoopStore.getState();
+    if (state.useRemoteLogging && !state.isInitialized) {
+      state.initializeFromSupabase();
+    }
+  }, 100);
+}

@@ -1,6 +1,7 @@
+
 // This file contains the Supabase integration functions for the intelligence loop
 
-import { LoopHistory, KnowledgeNode, KnowledgeEdge, SupabaseSchema } from '../types/intelligence';
+import { LoopHistory, KnowledgeNode, KnowledgeEdge, SupabaseSchema, Domain } from '../types/intelligence';
 import { supabase, isSupabaseConfigured } from './supabase-client';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -179,6 +180,190 @@ export async function saveKnowledgeEdgeToSupabase(edge: KnowledgeEdge): Promise<
 }
 
 /**
+ * Save a domain to Supabase
+ */
+export async function saveDomainToSupabase(domain: Domain): Promise<boolean> {
+  try {
+    // Skip if not configured
+    if (!isSupabaseConfigured()) {
+      console.log('Supabase not configured. Would save domain to Supabase:', domain);
+      return false;
+    }
+
+    // Prepare domain metadata (metrics, etc.)
+    const metadataJson = JSON.parse(JSON.stringify({
+      metrics: domain.metrics,
+      current_loop: domain.currentLoop
+    }));
+
+    // Ensure domain ID is a valid UUID
+    const domainId = isValidUUID(domain.id) ? domain.id : uuidv4();
+
+    const { error } = await supabase
+      .from('domains')
+      .insert({
+        id: domainId,
+        name: domain.name,
+        short_desc: domain.shortDesc,
+        description: domain.description,
+        total_loops: domain.totalLoops,
+        metadata: metadataJson,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error('Error saving domain to Supabase:', error);
+      return false;
+    }
+    
+    console.log('Successfully saved domain to Supabase:', domain.name);
+    return true;
+  } catch (error) {
+    console.error('Exception saving domain to Supabase:', error);
+    return false;
+  }
+}
+
+/**
+ * Update an existing domain in Supabase
+ */
+export async function updateDomainInSupabase(domain: Domain): Promise<boolean> {
+  try {
+    // Skip if not configured
+    if (!isSupabaseConfigured()) {
+      console.log('Supabase not configured. Would update domain in Supabase:', domain);
+      return false;
+    }
+
+    // Skip if no valid ID
+    if (!domain.id || !isValidUUID(domain.id)) {
+      console.error('Invalid domain ID for update:', domain.id);
+      return false;
+    }
+
+    // Prepare domain metadata (metrics, etc.)
+    const metadataJson = JSON.parse(JSON.stringify({
+      metrics: domain.metrics,
+      current_loop: domain.currentLoop
+    }));
+
+    const { error } = await supabase
+      .from('domains')
+      .update({
+        name: domain.name,
+        short_desc: domain.shortDesc,
+        description: domain.description,
+        total_loops: domain.totalLoops,
+        metadata: metadataJson,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', domain.id);
+
+    if (error) {
+      console.error('Error updating domain in Supabase:', error);
+      return false;
+    }
+    
+    console.log('Successfully updated domain in Supabase:', domain.name);
+    return true;
+  } catch (error) {
+    console.error('Exception updating domain in Supabase:', error);
+    return false;
+  }
+}
+
+/**
+ * Load domains from Supabase
+ */
+export async function loadDomainsFromSupabase(): Promise<Domain[]> {
+  try {
+    // Skip if not configured
+    if (!isSupabaseConfigured()) {
+      console.log('Supabase not configured. Would load domains from Supabase');
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('domains')
+      .select('*')
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('Error loading domains from Supabase:', error);
+      return [];
+    }
+    
+    if (!data || data.length === 0) {
+      console.log('No domains found in Supabase');
+      return [];
+    }
+    
+    // Convert Supabase domain format to app domain format
+    const domains: Domain[] = data.map(item => {
+      const metadata = item.metadata || {};
+      
+      return {
+        id: item.id,
+        name: item.name,
+        shortDesc: item.short_desc || '',
+        description: item.description || '',
+        totalLoops: item.total_loops || 0,
+        currentLoop: metadata.current_loop || [],
+        knowledgeNodes: [], // These will be loaded separately
+        knowledgeEdges: [], // These will be loaded separately
+        metrics: metadata.metrics || {
+          successRate: 0,
+          knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
+          taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],
+          skills: [{ name: 'Learning', level: 1 }]
+        }
+      };
+    });
+    
+    console.log(`Loaded ${domains.length} domains from Supabase`);
+    return domains;
+  } catch (error) {
+    console.error('Exception loading domains from Supabase:', error);
+    return [];
+  }
+}
+
+/**
+ * Delete a domain from Supabase
+ */
+export async function deleteDomainFromSupabase(domainId: string): Promise<boolean> {
+  try {
+    // Skip if not configured
+    if (!isSupabaseConfigured()) {
+      console.log('Supabase not configured. Would delete domain from Supabase:', domainId);
+      return false;
+    }
+
+    // Skip if no valid ID
+    if (!domainId || !isValidUUID(domainId)) {
+      console.error('Invalid domain ID for deletion:', domainId);
+      return false;
+    }
+
+    const { error } = await supabase
+      .from('domains')
+      .delete()
+      .eq('id', domainId);
+
+    if (error) {
+      console.error('Error deleting domain from Supabase:', error);
+      return false;
+    }
+    
+    console.log('Successfully deleted domain from Supabase:', domainId);
+    return true;
+  } catch (error) {
+    console.error('Exception deleting domain from Supabase:', error);
+    return false;
+  }
+}
+
+/**
  * Check if a string is a valid UUID
  */
 function isValidUUID(id: string): boolean {
@@ -193,10 +378,11 @@ function isValidUUID(id: string): boolean {
 export async function syncWithSupabase(
   loops: LoopHistory[], 
   nodes: KnowledgeNode[], 
-  edges: KnowledgeEdge[]
+  edges: KnowledgeEdge[],
+  domains: Domain[]
 ): Promise<{
   success: boolean;
-  stats: { loops: number; nodes: number; edges: number; failures: number }
+  stats: { loops: number; nodes: number; edges: number; domains: number; failures: number }
 }> {
   try {
     // Skip if not configured
@@ -204,7 +390,7 @@ export async function syncWithSupabase(
       console.log('Supabase not configured. Would sync data with Supabase');
       return { 
         success: false, 
-        stats: { loops: 0, nodes: 0, edges: 0, failures: 0 } 
+        stats: { loops: 0, nodes: 0, edges: 0, domains: 0, failures: 0 } 
       };
     }
 
@@ -212,6 +398,7 @@ export async function syncWithSupabase(
       loops: 0,
       nodes: 0,
       edges: 0,
+      domains: 0,
       failures: 0
     };
 
@@ -245,6 +432,23 @@ export async function syncWithSupabase(
       }
     }
 
+    // Sync domains
+    for (const domain of domains) {
+      // For existing domains, update; for new ones, save
+      let success: boolean;
+      if (isValidUUID(domain.id) && await domainExistsInSupabase(domain.id)) {
+        success = await updateDomainInSupabase(domain);
+      } else {
+        success = await saveDomainToSupabase(domain);
+      }
+      
+      if (success) {
+        stats.domains++;
+      } else {
+        stats.failures++;
+      }
+    }
+
     return {
       success: stats.failures === 0,
       stats
@@ -253,8 +457,33 @@ export async function syncWithSupabase(
     console.error('Error syncing with Supabase:', error);
     return {
       success: false,
-      stats: { loops: 0, nodes: 0, edges: 0, failures: 1 }
+      stats: { loops: 0, nodes: 0, edges: 0, domains: 0, failures: 1 }
     };
+  }
+}
+
+/**
+ * Check if a domain exists in Supabase
+ */
+async function domainExistsInSupabase(domainId: string): Promise<boolean> {
+  try {
+    if (!isSupabaseConfigured() || !isValidUUID(domainId)) {
+      return false;
+    }
+    
+    const { data, error } = await supabase
+      .from('domains')
+      .select('id')
+      .eq('id', domainId)
+      .single();
+      
+    if (error || !data) {
+      return false;
+    }
+    
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -295,6 +524,17 @@ export const supabaseSchema = {
       label text,
       created_at timestamp with time zone default now(),
       user_id uuid references auth.users
+    `,
+    domains: `
+      id uuid primary key,
+      name text not null,
+      short_desc text,
+      description text,
+      total_loops integer default 0,
+      created_at timestamp with time zone default now(),
+      updated_at timestamp with time zone default now(),
+      user_id uuid references auth.users,
+      metadata jsonb
     `
   }
 };

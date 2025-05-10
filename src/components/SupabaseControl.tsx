@@ -13,7 +13,7 @@ import { toast } from '@/components/ui/sonner';
 
 // The component no longer accepts onToggleRemote prop as it uses the store directly
 const SupabaseControl = () => {
-  const { useRemoteLogging, setUseRemoteLogging } = useLoopStore();
+  const { useRemoteLogging, setUseRemoteLogging, initializeFromSupabase } = useLoopStore();
   const { state, toggleRemoteLogging, syncPendingItems, pendingItemsCount } = useSupabaseLogger();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
@@ -23,9 +23,21 @@ const SupabaseControl = () => {
     setIsConfigured(isSupabaseConfigured());
   }, []);
 
-  const handleToggleRemoteLogging = (checked: boolean) => {
+  const handleToggleRemoteLogging = async (checked: boolean) => {
+    // First update the store setting
     setUseRemoteLogging(checked);
+    
+    // Then toggle the logger
     toggleRemoteLogging(checked);
+    
+    // If turning on, initialize from Supabase
+    if (checked) {
+      try {
+        await initializeFromSupabase();
+      } catch (err) {
+        console.error("Error initializing from Supabase:", err);
+      }
+    }
     
     toast[checked ? 'success' : 'info'](
       checked ? 'Remote logging enabled' : 'Remote logging disabled'
