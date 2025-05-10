@@ -3,12 +3,23 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Brain, Code, Calculator, Puzzle, FileText, Briefcase } from 'lucide-react';
+import { toast } from '@/components/ui/sonner';
+import { useLoopStore } from '../store/useLoopStore';
 
 const DomainSelector: React.FC<{ 
   domains: any[],
   activeDomain: string,
   onSelectDomain: (domain: string) => void
 }> = ({ domains, activeDomain, onSelectDomain }) => {
+  const { isRunningLoop } = useLoopStore();
+  
+  const handleDomainSelect = (domainId: string) => {
+    if (isRunningLoop) {
+      toast.warning("Please complete the current learning loop before switching domains");
+      return;
+    }
+    onSelectDomain(domainId);
+  };
   
   const getDomainIcon = (type: string) => {
     switch (type) {
@@ -26,10 +37,10 @@ const DomainSelector: React.FC<{
       {domains.map((domain) => (
         <Card 
           key={domain.id}
-          className={`domain-card cursor-pointer hover:border-primary ${domain.id === activeDomain ? 'border-primary' : ''}`}
-          onClick={() => onSelectDomain(domain.id)}
+          className={`domain-card cursor-pointer hover:border-primary transition-colors duration-200 ${domain.id === activeDomain ? 'border-primary' : ''}`}
+          onClick={() => handleDomainSelect(domain.id)}
         >
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3 p-3">
             <div className={`p-2 rounded-md ${domain.id === activeDomain ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'}`}>
               {getDomainIcon(domain.id)}
             </div>
@@ -52,8 +63,11 @@ const DomainSelector: React.FC<{
         </Card>
       ))}
       
-      <Card className="domain-card cursor-pointer border-dashed">
-        <div className="flex items-center justify-center text-muted-foreground py-2">
+      <Card 
+        className="domain-card cursor-pointer border-dashed hover:border-primary/50 transition-colors duration-200"
+        onClick={() => toast.info("Custom domain creation coming soon")}
+      >
+        <div className="flex items-center justify-center text-muted-foreground py-3">
           <span className="text-sm">+ Add new domain</span>
         </div>
       </Card>

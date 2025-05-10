@@ -1,21 +1,36 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import Header from './Header';
 import LearningLoop from './LearningLoop';
 import KnowledgeMap from './KnowledgeMap';
 import DomainSelector from './DomainSelector';
 import PerformanceMetrics from './PerformanceMetrics';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { domainsData } from '../data/mockData';
+import { useLoopStore } from '../store/useLoopStore';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Code, Eye } from 'lucide-react';
 
 const Dashboard = () => {
-  const [activeDomain, setActiveDomain] = useState('logic');
+  const { 
+    domains, 
+    activeDomainId, 
+    setActiveDomain 
+  } = useLoopStore();
   
   const handleDomainChange = (domain: string) => {
     setActiveDomain(domain);
   };
   
-  const activeData = domainsData.find(domain => domain.id === activeDomain) || domainsData[0];
+  const activeData = domains.find(domain => domain.id === activeDomainId) || domains[0];
+  
+  // For the debug view
+  const debugData = {
+    activeDomain: activeDomainId,
+    domainData: activeData,
+    currentLoop: activeData.currentLoop,
+    metrics: activeData.metrics
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -31,6 +46,7 @@ const Dashboard = () => {
               <TabsList className="mb-6">
                 <TabsTrigger value="loop">Learning Loop</TabsTrigger>
                 <TabsTrigger value="knowledge">Knowledge Map</TabsTrigger>
+                <TabsTrigger value="debug">Debug View</TabsTrigger>
               </TabsList>
               
               <TabsContent value="loop" className="space-y-4">
@@ -40,14 +56,40 @@ const Dashboard = () => {
               <TabsContent value="knowledge">
                 <KnowledgeMap domain={activeData} />
               </TabsContent>
+              
+              <TabsContent value="debug">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Code className="w-5 h-5" /> Debug Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="bg-secondary/30 p-4 rounded-md overflow-auto max-h-[600px]">
+                      <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap">
+                        {JSON.stringify(debugData, null, 2)}
+                      </pre>
+                    </div>
+                    <div className="flex justify-end mt-4">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => navigator.clipboard.writeText(JSON.stringify(debugData, null, 2))}
+                      >
+                        Copy JSON
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
             </Tabs>
           </div>
           
           <div>
             <h2 className="text-xl font-bold mb-4 fade-in">Learning Domains</h2>
             <DomainSelector 
-              domains={domainsData} 
-              activeDomain={activeDomain}
+              domains={domains} 
+              activeDomain={activeDomainId}
               onSelectDomain={handleDomainChange}
             />
             

@@ -39,3 +39,21 @@ export interface KnowledgeNode {
   };
   size?: number;
 }
+
+export interface DomainEngine {
+  generateTask: () => Promise<string>;
+  solveTask: (task: string) => Promise<string>;
+  verifySolution: (task: string, solution: string) => Promise<string>;
+  reflect: (task: string, solution: string, verification: string) => Promise<string>;
+  mutateTask: (task: string, previousSteps: string[]) => Promise<string>;
+}
+
+export interface LoopHistory {
+  id: string;
+  domainId: string;
+  steps: LearningStep[];
+  timestamp: number;
+  totalTime: number;
+  success: boolean;
+  score: number;
+}

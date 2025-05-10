@@ -6,17 +6,27 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { LearningStep } from '../types/intelligence';
+import { useLoopStore } from '../store/useLoopStore';
+import { toast } from '@/components/ui/sonner';
 
 const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
-  const [activeStep, setActiveStep] = useState<number | null>(1);
   const [expanded, setExpanded] = useState<number | null>(null);
+  
+  const { 
+    isRunningLoop, 
+    currentStepIndex, 
+    startNewLoop, 
+    advanceToNextStep,
+    completeLoop,
+    loadPreviousLoop 
+  } = useLoopStore();
   
   const steps: LearningStep[] = domain.currentLoop;
   
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'success': return 'bg-success text-success-foreground';
-      case 'failure': return 'bg-failure text-failure-foreground';
+      case 'failure': return 'bg-destructive text-destructive-foreground';
       case 'pending': return 'bg-muted text-muted-foreground';
       case 'warning': return 'bg-warning text-warning-foreground';
       default: return 'bg-muted text-muted-foreground';
@@ -42,25 +52,87 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
     }
   };
   
+  const handleStartLoop = async () => {
+    try {
+      await startNewLoop();
+      toast.success("New learning loop started");
+    } catch (error) {
+      toast.error("Error starting loop");
+    }
+  };
+  
+  const handleNextStep = async () => {
+    try {
+      await advanceToNextStep();
+      toast.success("Advanced to next step");
+    } catch (error) {
+      toast.error("Error advancing step");
+    }
+  };
+  
+  const handlePreviousLoop = () => {
+    loadPreviousLoop();
+    toast.info("Loading previous loop");
+  };
+  
+  // Determine if we can advance to the next step within the current loop
+  const canAdvanceStep = isRunningLoop && 
+    currentStepIndex !== null && 
+    steps[currentStepIndex]?.status !== 'pending' && 
+    steps.length < 5;
+  
+  // Determine if we should show the "Next Loop" button
+  const showNextLoop = !isRunningLoop || 
+    (steps.length === 5 && steps[4]?.status !== 'pending');
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Current Learning Loop</h3>
-        <Button variant="outline" size="sm">View History</Button>
+        <div className="space-x-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handlePreviousLoop}
+          >
+            View History
+          </Button>
+          
+          {canAdvanceStep && (
+            <Button 
+              variant="secondary" 
+              size="sm"
+              onClick={handleNextStep}
+            >
+              Next Step
+            </Button>
+          )}
+          
+          {showNextLoop && (
+            <Button 
+              variant="default" 
+              size="sm"
+              onClick={handleStartLoop}
+              disabled={isRunningLoop && !steps.some(step => step.type === 'mutation' && step.status !== 'pending')}
+            >
+              {isRunningLoop ? "Complete & New Loop" : "Next Loop"}
+            </Button>
+          )}
+        </div>
       </div>
       
       <div className="relative">
         {steps.map((step, index) => (
           <div key={index} className="mb-6 relative">
             {index < steps.length - 1 && (
-              <div className={`connector left-6 top-12 w-0.5 h-12 ${activeStep && activeStep > index ? 'active' : ''}`} />
+              <div className={`connector absolute left-6 top-12 w-0.5 h-12 bg-border ${currentStepIndex && currentStepIndex > index ? 'bg-primary' : ''}`} />
             )}
             
             <Card className={`border-l-4 ${getStatusColor(step.status)}`}>
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${step.status === 'pending' ? 'bg-muted' : `bg-${step.status}`}`}>
+                    <div className={`p-2 rounded-full ${step.status === 'pending' ? 'bg-muted' : step.status === 'success' ? 'bg-success/20' : step.status === 'failure' ? 'bg-destructive/20' : 'bg-warning/20'}`}>
                       {getStepIcon(step.type)}
                     </div>
                     <div>
@@ -82,12 +154,12 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
                     </pre>
                   </div>
                   
-                  {step.metrics && (
+                  {step.metrics && Object.keys(step.metrics).length > 0 && (
                     <div className="mt-4 grid grid-cols-2 gap-4">
                       {Object.entries(step.metrics).map(([key, value]) => (
                         <div key={key} className="bg-secondary/30 p-2 rounded">
                           <div className="text-xs text-muted-foreground">{key}</div>
-                          <div className="font-medium">{value}</div>
+                          <div className="font-medium">{value.toString()}</div>
                         </div>
                       ))}
                     </div>
@@ -107,12 +179,36 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
             </Card>
           </div>
         ))}
+        
+        {steps.length === 0 && (
+          <Card className="border-dashed border-2 p-8 flex flex-col items-center justify-center">
+            <div className="text-muted-foreground text-center">
+              <Brain className="w-10 h-10 mx-auto mb-4 opacity-50" />
+              <h3 className="text-lg font-medium mb-2">No Learning Loop Active</h3>
+              <p className="mb-4">Start a new learning loop to begin the intelligence cycle</p>
+              <Button onClick={handleStartLoop}>Start New Loop</Button>
+            </div>
+          </Card>
+        )}
       </div>
       
       <div className="flex gap-2 pt-4">
-        <Button variant="outline" size="sm">Previous Loop</Button>
-        <Button variant="default" size="sm">Next Loop</Button>
-        <span className="ml-auto text-sm text-muted-foreground">Loop #247 of {domain.totalLoops}</span>
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={handlePreviousLoop}
+        >
+          Previous Loop
+        </Button>
+        <Button 
+          variant="default" 
+          size="sm"
+          onClick={handleStartLoop}
+          disabled={isRunningLoop && !steps.some(step => step.type === 'mutation' && step.status !== 'pending')}
+        >
+          Next Loop
+        </Button>
+        <span className="ml-auto text-sm text-muted-foreground">Loop #{domain.totalLoops} of {domain.totalLoops}</span>
       </div>
     </div>
   );
