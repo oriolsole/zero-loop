@@ -62,7 +62,8 @@ export async function saveKnowledgeNodeToSupabase(node: KnowledgeNode): Promise<
     }
 
     // Convert node metadata to a format compatible with Json type
-    const metadataJson = {
+    // Making sure to deep clone and stringify any complex objects to avoid type issues
+    const metadataJson = JSON.parse(JSON.stringify({
       position: node.position,
       size: node.size,
       connections: node.connections,
@@ -72,7 +73,7 @@ export async function saveKnowledgeNodeToSupabase(node: KnowledgeNode): Promise<
         novelty: Math.random() * 10,
         validation_status: 'unverified'
       }
-    };
+    }));
 
     const { error } = await supabase
       .from('knowledge_nodes')
@@ -112,11 +113,12 @@ export async function saveKnowledgeEdgeToSupabase(edge: KnowledgeEdge): Promise<
     }
 
     // Convert edge metadata to a format compatible with Json type
-    const metadataJson = {
+    // Using JSON.parse(JSON.stringify()) to ensure deep cloning and proper JSON conversion
+    const metadataJson = JSON.parse(JSON.stringify({
       similarity_score: edge.similarityScore || edge.strength,
       validated: edge.validated || false,
       creation_method: edge.creationMethod || 'automatic'
-    };
+    }));
 
     const { error } = await supabase
       .from('knowledge_edges')
