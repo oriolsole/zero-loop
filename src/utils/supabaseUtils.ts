@@ -1,7 +1,7 @@
 
 // This file contains the Supabase integration functions for the intelligence loop
 
-import { LoopHistory, KnowledgeNode, KnowledgeEdge, SupabaseSchema, Domain } from '../types/intelligence';
+import { LoopHistory, KnowledgeNode, KnowledgeEdge, SupabaseSchema, Domain, LearningStep } from '../types/intelligence';
 import { supabase, isSupabaseConfigured } from './supabase-client';
 import { v4 as uuidv4 } from 'uuid';
 
