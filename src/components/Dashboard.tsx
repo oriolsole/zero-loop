@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import Header from './Header';
 import LearningLoop from './LearningLoop';
 import KnowledgeMap from './KnowledgeMap';
@@ -7,21 +7,30 @@ import InsightTimeline from './InsightTimeline';
 import DomainSelector from './DomainSelector';
 import PerformanceMetrics from './PerformanceMetrics';
 import LoopHistory from './LoopHistory';
+import SupabaseControl from './SupabaseControl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLoopStore } from '../store/useLoopStore';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Code, Brain, History, LineChart } from 'lucide-react';
+import { Code, Brain, History, LineChart, Database } from 'lucide-react';
 
 const Dashboard = () => {
   const { 
     domains, 
     activeDomainId, 
-    setActiveDomain 
+    setActiveDomain,
+    useRemoteLogging,
+    setUseRemoteLogging
   } = useLoopStore();
+
+  const [activeTab, setActiveTab] = useState('loop');
   
   const handleDomainChange = (domain: string) => {
     setActiveDomain(domain);
+  };
+  
+  const handleToggleRemote = (enabled: boolean) => {
+    setUseRemoteLogging(enabled);
   };
   
   const activeData = domains.find(domain => domain.id === activeDomainId) || domains[0];
@@ -33,7 +42,8 @@ const Dashboard = () => {
     currentLoop: activeData.currentLoop,
     metrics: activeData.metrics,
     knowledgeNodeCount: activeData.knowledgeNodes.length,
-    knowledgeEdgeCount: activeData.knowledgeEdges?.length || 0
+    knowledgeEdgeCount: activeData.knowledgeEdges?.length || 0,
+    useRemoteLogging
   };
 
   return (
@@ -46,7 +56,7 @@ const Dashboard = () => {
             <h2 className="text-2xl font-bold mb-4 fade-in">Active Domain: {activeData.name}</h2>
             <p className="text-muted-foreground mb-6 fade-in-delay-1">{activeData.description}</p>
             
-            <Tabs defaultValue="loop" className="fade-in-delay-2">
+            <Tabs defaultValue="loop" value={activeTab} onValueChange={setActiveTab} className="fade-in-delay-2">
               <TabsList className="mb-6">
                 <TabsTrigger value="loop">Learning Loop</TabsTrigger>
                 <TabsTrigger value="knowledge">Knowledge Map</TabsTrigger>
@@ -60,6 +70,12 @@ const Dashboard = () => {
                   <span className="flex items-center gap-1">
                     <History className="w-4 h-4" />
                     Loop History
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger value="sync">
+                  <span className="flex items-center gap-1">
+                    <Database className="w-4 h-4" />
+                    Sync Control
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="debug">Debug View</TabsTrigger>
@@ -79,6 +95,10 @@ const Dashboard = () => {
               
               <TabsContent value="history">
                 <LoopHistory />
+              </TabsContent>
+              
+              <TabsContent value="sync">
+                <SupabaseControl onToggleRemote={handleToggleRemote} />
               </TabsContent>
               
               <TabsContent value="debug">

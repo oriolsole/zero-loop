@@ -331,7 +331,7 @@ export const useLoopStore = create<LoopState>()(
       },
       
       completeLoop: () => {
-        const { domains, activeDomainId } = get();
+        const { domains, activeDomainId, useRemoteLogging } = get();
         const activeDomainIndex = domains.findIndex(d => d.id === activeDomainId);
         
         if (activeDomainIndex === -1) return;
@@ -385,6 +385,24 @@ export const useLoopStore = create<LoopState>()(
         // Trim history if too large (keep most recent 100 loops)
         if (updatedHistory.length > 100) {
           updatedHistory.splice(0, updatedHistory.length - 100);
+        }
+        
+        // If remote logging is enabled, save to Supabase
+        if (useRemoteLogging) {
+          import('../utils/supabaseUtils').then(({ logLoopToSupabase, saveKnowledgeNodeToSupabase, saveKnowledgeEdgeToSupabase }) => {
+            // Log the completed loop
+            logLoopToSupabase(completedLoop);
+            
+            // Log each new knowledge node
+            newNodes.forEach(node => {
+              saveKnowledgeNodeToSupabase(node);
+            });
+            
+            // Log each new knowledge edge
+            newEdges.forEach(edge => {
+              saveKnowledgeEdgeToSupabase(edge);
+            });
+          });
         }
         
         // Increment total loops

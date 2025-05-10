@@ -3,6 +3,7 @@
 
 import { LoopHistory, KnowledgeNode, KnowledgeEdge, SupabaseSchema } from '../types/intelligence';
 import { supabase, isSupabaseConfigured } from './supabase-client';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Log a completed learning loop to Supabase
@@ -204,6 +205,7 @@ export async function syncWithSupabase(
   }
 }
 
+// Schema definition for reference (matches the tables created in Supabase)
 export const supabaseSchema = {
   tables: {
     learning_loops: `

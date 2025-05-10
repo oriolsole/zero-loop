@@ -1,21 +1,14 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { toast } from '@/components/ui/sonner';
+import { supabase as configuredSupabase } from '@/integrations/supabase/client';
 
-// These would normally be stored in environment variables
-// For the purpose of this implementation, we're using placeholders
-// that would be replaced with actual values when connecting to Supabase
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
-
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Export the configured supabase client from integrations
+export const supabase = configuredSupabase;
 
 // Check if we have a valid Supabase configuration
 export const isSupabaseConfigured = (): boolean => {
-  return (
-    SUPABASE_URL !== 'https://placeholder.supabase.co' && 
-    SUPABASE_ANON_KEY !== 'placeholder-key'
-  );
+  return true; // This will always return true now that we're using the configured client
 };
 
 // Helper to handle Supabase errors

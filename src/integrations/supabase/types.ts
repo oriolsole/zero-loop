@@ -9,7 +9,138 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      knowledge_edges: {
+        Row: {
+          created_at: string | null
+          id: string
+          label: string | null
+          metadata: Json | null
+          source_id: string
+          strength: number
+          target_id: string
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id: string
+          label?: string | null
+          metadata?: Json | null
+          source_id: string
+          strength: number
+          target_id: string
+          type: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          label?: string | null
+          metadata?: Json | null
+          source_id?: string
+          strength?: number
+          target_id?: string
+          type?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_edges_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_edges_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      knowledge_nodes: {
+        Row: {
+          confidence: number
+          created_at: string | null
+          description: string
+          discovered_in_loop: number
+          domain_id: string
+          id: string
+          metadata: Json | null
+          title: string
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          confidence: number
+          created_at?: string | null
+          description: string
+          discovered_in_loop: number
+          domain_id: string
+          id: string
+          metadata?: Json | null
+          title: string
+          type: string
+          user_id?: string | null
+        }
+        Update: {
+          confidence?: number
+          created_at?: string | null
+          description?: string
+          discovered_in_loop?: number
+          domain_id?: string
+          id?: string
+          metadata?: Json | null
+          title?: string
+          type?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      learning_loops: {
+        Row: {
+          created_at: string | null
+          domain_id: string
+          id: string
+          metadata: Json | null
+          reflection: string
+          score: number
+          solution: string
+          success: boolean
+          task: string
+          user_id: string | null
+          verification: string
+        }
+        Insert: {
+          created_at?: string | null
+          domain_id: string
+          id: string
+          metadata?: Json | null
+          reflection: string
+          score: number
+          solution: string
+          success: boolean
+          task: string
+          user_id?: string | null
+          verification: string
+        }
+        Update: {
+          created_at?: string | null
+          domain_id?: string
+          id?: string
+          metadata?: Json | null
+          reflection?: string
+          score?: number
+          solution?: string
+          success?: boolean
+          task?: string
+          user_id?: string | null
+          verification?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

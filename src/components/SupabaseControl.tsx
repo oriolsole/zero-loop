@@ -35,8 +35,8 @@ const SupabaseControl: React.FC<SupabaseControlProps> = ({ onToggleRemote }) => 
   const isConfigured = isSupabaseConfigured();
   
   const handleSaveConfig = () => {
-    toast.info("To save Supabase configuration, please add these values to your environment variables");
-    toast.info("Please connect your project to Supabase using the Lovable Supabase integration");
+    toast.info("Your project is already connected to Supabase!");
+    toast.info("Any data you generate will be stored in your Supabase tables.");
   };
   
   const handleSync = async () => {
@@ -115,6 +115,7 @@ const SupabaseControl: React.FC<SupabaseControlProps> = ({ onToggleRemote }) => 
                       <Input 
                         placeholder="https://your-project.supabase.co" 
                         {...field} 
+                        disabled
                       />
                     </FormControl>
                   </FormItem>
@@ -132,6 +133,7 @@ const SupabaseControl: React.FC<SupabaseControlProps> = ({ onToggleRemote }) => 
                         placeholder="your-anon-key" 
                         type="password" 
                         {...field} 
+                        disabled
                       />
                     </FormControl>
                   </FormItem>
@@ -146,7 +148,7 @@ const SupabaseControl: React.FC<SupabaseControlProps> = ({ onToggleRemote }) => 
                   onClick={handleSaveConfig}
                 >
                   <Save className="w-4 h-4 mr-2" /> 
-                  Save Config
+                  Config Info
                 </Button>
                 
                 <div className="space-x-2">
