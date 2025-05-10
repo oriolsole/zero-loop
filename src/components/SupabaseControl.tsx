@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
-import { database, save, cloudSync, refresh } from 'lucide-react';
+import { Database, Save, CloudSync, RefreshCw } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { isSupabaseConfigured } from '../utils/supabase-client';
 import { useSupabaseLogger } from '../hooks/useSupabaseLogger';
@@ -73,7 +73,7 @@ const SupabaseControl: React.FC<SupabaseControlProps> = ({ onToggleRemote }) => 
         <div className="flex justify-between items-center">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <database className="w-5 h-5" /> 
+              <Database className="w-5 h-5" /> 
               Supabase Integration
             </CardTitle>
             <CardDescription>
@@ -145,7 +145,7 @@ const SupabaseControl: React.FC<SupabaseControlProps> = ({ onToggleRemote }) => 
                   type="button"
                   onClick={handleSaveConfig}
                 >
-                  <save className="w-4 h-4 mr-2" /> 
+                  <Save className="w-4 h-4 mr-2" /> 
                   Save Config
                 </Button>
                 
@@ -156,7 +156,7 @@ const SupabaseControl: React.FC<SupabaseControlProps> = ({ onToggleRemote }) => 
                     onClick={handleSync}
                     disabled={!state.isRemoteEnabled || pendingItemsCount === 0}
                   >
-                    <cloudSync className="w-4 h-4 mr-2" /> 
+                    <CloudSync className="w-4 h-4 mr-2" /> 
                     Sync ({pendingItemsCount})
                   </Button>
                   
@@ -166,7 +166,7 @@ const SupabaseControl: React.FC<SupabaseControlProps> = ({ onToggleRemote }) => 
                     disabled={state.isSyncing}
                     onClick={handleSync}
                   >
-                    <refresh className={`w-4 h-4 mr-2 ${state.isSyncing ? 'animate-spin' : ''}`} /> 
+                    <RefreshCw className={`w-4 h-4 mr-2 ${state.isSyncing ? 'animate-spin' : ''}`} /> 
                     {state.isSyncing ? "Syncing..." : "Sync Now"}
                   </Button>
                 </div>
