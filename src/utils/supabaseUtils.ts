@@ -313,13 +313,22 @@ export async function loadDomainsFromSupabase(): Promise<Domain[]> {
         ? item.metadata 
         : {};
       
-      // Safely access current_loop and metrics with proper type checking
-      const currentLoop = metadata && 'current_loop' in metadata && Array.isArray(metadata.current_loop)
-        ? metadata.current_loop
-        : [];
-        
+      // Extract currentLoop and convert each item to LearningStep type
+      let currentLoop: LearningStep[] = [];
+      if (metadata && 'current_loop' in metadata && Array.isArray(metadata.current_loop)) {
+        currentLoop = metadata.current_loop.map((step: any) => ({
+          type: step.type || 'task',
+          title: step.title || '',
+          description: step.description || '',
+          status: step.status || 'pending',
+          content: step.content || '',
+          metrics: step.metrics || undefined
+        }));
+      }
+      
+      // Safely extract metrics
       const metrics = metadata && 'metrics' in metadata && typeof metadata.metrics === 'object'
-        ? metadata.metrics
+        ? metadata.metrics as Domain['metrics'] 
         : defaultMetrics;
       
       return {
