@@ -1,84 +1,206 @@
 
-// This file will be expanded when Supabase is connected to the project
-// For now, it contains the types and placeholder functions for future integration
+// This file contains the Supabase integration functions for the intelligence loop
 
 import { LoopHistory, KnowledgeNode, KnowledgeEdge, SupabaseSchema } from '../types/intelligence';
+import { supabase, isSupabaseConfigured } from './supabase-client';
 
 /**
  * Log a completed learning loop to Supabase
- * This is a placeholder function that will be implemented when Supabase is connected
  */
 export async function logLoopToSupabase(loop: LoopHistory): Promise<boolean> {
   try {
-    console.log('Would log loop to Supabase:', loop);
+    // Skip if not configured
+    if (!isSupabaseConfigured()) {
+      console.log('Supabase not configured. Would log loop to Supabase:', loop);
+      return false;
+    }
+
+    const { error } = await supabase
+      .from('learning_loops')
+      .insert({
+        id: loop.id,
+        domain_id: loop.domainId,
+        task: loop.steps.find(s => s.type === 'task')?.content || '',
+        solution: loop.steps.find(s => s.type === 'solution')?.content || '',
+        verification: loop.steps.find(s => s.type === 'verification')?.content || '',
+        reflection: loop.steps.find(s => s.type === 'reflection')?.content || '',
+        success: loop.success,
+        score: loop.score,
+        created_at: new Date(loop.timestamp).toISOString(),
+        metadata: {
+          total_time: loop.totalTime,
+          steps: loop.steps,
+          insights: loop.insights
+        }
+      });
+
+    if (error) {
+      console.error('Error logging loop to Supabase:', error);
+      return false;
+    }
     
-    // This is where the actual Supabase code would go
-    // For example:
-    // const { error } = await supabase
-    //   .from('learning_loops')
-    //   .insert({
-    //     id: loop.id,
-    //     domain_id: loop.domainId,
-    //     task: loop.steps.find(s => s.type === 'task')?.content || '',
-    //     solution: loop.steps.find(s => s.type === 'solution')?.content || '',
-    //     verification: loop.steps.find(s => s.type === 'verification')?.content || '',
-    //     reflection: loop.steps.find(s => s.type === 'reflection')?.content || '',
-    //     success: loop.success,
-    //     score: loop.score,
-    //     created_at: new Date(loop.timestamp).toISOString(),
-    //     metadata: {
-    //       total_time: loop.totalTime,
-    //       steps: loop.steps
-    //     }
-    //   });
-    
-    // For now, just return true to simulate success
     return true;
   } catch (error) {
-    console.error('Error logging loop to Supabase:', error);
+    console.error('Exception logging loop to Supabase:', error);
     return false;
   }
 }
 
 /**
  * Save a knowledge node to Supabase
- * Placeholder function for future implementation
  */
 export async function saveKnowledgeNodeToSupabase(node: KnowledgeNode): Promise<boolean> {
   try {
-    console.log('Would save knowledge node to Supabase:', node);
+    // Skip if not configured
+    if (!isSupabaseConfigured()) {
+      console.log('Supabase not configured. Would save knowledge node to Supabase:', node);
+      return false;
+    }
+
+    const { error } = await supabase
+      .from('knowledge_nodes')
+      .insert({
+        id: node.id,
+        title: node.title,
+        description: node.description,
+        type: node.type,
+        domain_id: node.domain || '',
+        discovered_in_loop: node.discoveredInLoop,
+        confidence: node.confidence || 0.7,
+        created_at: new Date(node.timestamp || Date.now()).toISOString(),
+        metadata: {
+          position: node.position,
+          size: node.size,
+          connections: node.connections,
+          source_insights: node.sourceInsights || [],
+          quality_metrics: node.qualityMetrics || {
+            impact: Math.random() * 10, // Default placeholder values
+            novelty: Math.random() * 10,
+            validation_status: 'unverified'
+          }
+        }
+      });
+
+    if (error) {
+      console.error('Error saving knowledge node to Supabase:', error);
+      return false;
+    }
+    
     return true;
   } catch (error) {
-    console.error('Error saving knowledge node to Supabase:', error);
+    console.error('Exception saving knowledge node to Supabase:', error);
     return false;
   }
 }
 
 /**
  * Save a knowledge edge to Supabase
- * Placeholder function for future implementation
  */
 export async function saveKnowledgeEdgeToSupabase(edge: KnowledgeEdge): Promise<boolean> {
   try {
-    console.log('Would save knowledge edge to Supabase:', edge);
+    // Skip if not configured
+    if (!isSupabaseConfigured()) {
+      console.log('Supabase not configured. Would save knowledge edge to Supabase:', edge);
+      return false;
+    }
+
+    const { error } = await supabase
+      .from('knowledge_edges')
+      .insert({
+        id: edge.id,
+        source_id: edge.source,
+        target_id: edge.target,
+        type: edge.type,
+        strength: edge.strength,
+        label: edge.label || '',
+        created_at: new Date().toISOString(),
+        metadata: {
+          similarity_score: edge.similarityScore || edge.strength,
+          validated: edge.validated || false,
+          creation_method: edge.creationMethod || 'automatic'
+        }
+      });
+
+    if (error) {
+      console.error('Error saving knowledge edge to Supabase:', error);
+      return false;
+    }
+    
     return true;
   } catch (error) {
-    console.error('Error saving knowledge edge to Supabase:', error);
+    console.error('Exception saving knowledge edge to Supabase:', error);
     return false;
   }
 }
 
 /**
  * Sync local data with Supabase
- * Placeholder function for future implementation
  */
-export async function syncWithSupabase(): Promise<boolean> {
+export async function syncWithSupabase(
+  loops: LoopHistory[], 
+  nodes: KnowledgeNode[], 
+  edges: KnowledgeEdge[]
+): Promise<{
+  success: boolean;
+  stats: { loops: number; nodes: number; edges: number; failures: number }
+}> {
   try {
-    console.log('Would sync local data with Supabase');
-    return true;
+    // Skip if not configured
+    if (!isSupabaseConfigured()) {
+      console.log('Supabase not configured. Would sync data with Supabase');
+      return { 
+        success: false, 
+        stats: { loops: 0, nodes: 0, edges: 0, failures: 0 } 
+      };
+    }
+
+    const stats = {
+      loops: 0,
+      nodes: 0,
+      edges: 0,
+      failures: 0
+    };
+
+    // Sync loops
+    for (const loop of loops) {
+      const success = await logLoopToSupabase(loop);
+      if (success) {
+        stats.loops++;
+      } else {
+        stats.failures++;
+      }
+    }
+
+    // Sync nodes
+    for (const node of nodes) {
+      const success = await saveKnowledgeNodeToSupabase(node);
+      if (success) {
+        stats.nodes++;
+      } else {
+        stats.failures++;
+      }
+    }
+
+    // Sync edges
+    for (const edge of edges) {
+      const success = await saveKnowledgeEdgeToSupabase(edge);
+      if (success) {
+        stats.edges++;
+      } else {
+        stats.failures++;
+      }
+    }
+
+    return {
+      success: stats.failures === 0,
+      stats
+    };
   } catch (error) {
     console.error('Error syncing with Supabase:', error);
-    return false;
+    return {
+      success: false,
+      stats: { loops: 0, nodes: 0, edges: 0, failures: 1 }
+    };
   }
 }
 

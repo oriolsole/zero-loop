@@ -9,6 +9,7 @@ import {
   createEdgesBetweenNodes,
   calculateGraphLayout 
 } from '../utils/knowledgeGraph';
+import { toast } from '@/components/ui/sonner';
 
 export interface LoopState {
   domains: Domain[];
@@ -19,6 +20,7 @@ export interface LoopState {
   loopDelay: number;
   loopHistory: LoopHistory[];
   selectedInsightId: string | null;
+  useRemoteLogging: boolean;
   
   // Actions
   setActiveDomain: (domainId: string) => void;
@@ -31,6 +33,12 @@ export interface LoopState {
   pauseLoops: () => void;
   setSelectedInsight: (nodeId: string | null) => void;
   recalculateGraphLayout: () => void;
+  setUseRemoteLogging: (useRemote: boolean) => void;
+  
+  // Domain management actions
+  addNewDomain: (domain: Domain) => void;
+  updateDomain: (domain: Domain) => void;
+  deleteDomain: (domainId: string) => void;
 }
 
 // Initialize domains with empty edges array if not already present
@@ -50,6 +58,7 @@ export const useLoopStore = create<LoopState>()(
       loopDelay: 2000,
       loopHistory: [],
       selectedInsightId: null,
+      useRemoteLogging: false,
       
       setActiveDomain: (domainId) => {
         // Only allow domain change when not in a running loop
@@ -528,6 +537,82 @@ export const useLoopStore = create<LoopState>()(
         
         updatedDomains[activeDomainIndex] = domain;
         set({ domains: updatedDomains });
+      },
+      
+      setUseRemoteLogging: (useRemote) => {
+        set({ useRemoteLogging: useRemote });
+      },
+      
+      addNewDomain: (domain) => {
+        // Make sure the domain has all required fields
+        const completeDomain: Domain = {
+          ...domain,
+          totalLoops: domain.totalLoops || 0,
+          currentLoop: domain.currentLoop || [],
+          knowledgeNodes: domain.knowledgeNodes || [],
+          knowledgeEdges: domain.knowledgeEdges || [],
+          metrics: domain.metrics || {
+            successRate: 0,
+            knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
+            taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],
+            skills: [{ name: 'Learning', level: 1 }]
+          }
+        };
+        
+        // Add the new domain
+        set(state => ({
+          domains: [...state.domains, completeDomain],
+          activeDomainId: domain.id // Switch to the new domain
+        }));
+        
+        toast.success('New domain created!');
+      },
+      
+      updateDomain: (updatedDomain) => {
+        set(state => {
+          const domainIndex = state.domains.findIndex(d => d.id === updatedDomain.id);
+          if (domainIndex === -1) return state;
+          
+          const newDomains = [...state.domains];
+          
+          // Keep the existing complex data while updating the basic info
+          newDomains[domainIndex] = {
+            ...state.domains[domainIndex],
+            name: updatedDomain.name,
+            shortDesc: updatedDomain.shortDesc,
+            description: updatedDomain.description,
+            // Other fields from the updated domain
+          };
+          
+          return { domains: newDomains };
+        });
+        
+        toast.success('Domain updated!');
+      },
+      
+      deleteDomain: (domainId) => {
+        const { domains, activeDomainId } = get();
+        
+        // Don't delete if it's the only domain
+        if (domains.length <= 1) {
+          toast.error('Cannot delete the only domain');
+          return;
+        }
+        
+        // Create a new domains array without the deleted domain
+        const newDomains = domains.filter(d => d.id !== domainId);
+        
+        // If deleting the active domain, switch to the first remaining one
+        const newActiveDomain = activeDomainId === domainId
+          ? newDomains[0].id
+          : activeDomainId;
+          
+        set({ 
+          domains: newDomains,
+          activeDomainId: newActiveDomain
+        });
+        
+        toast.success('Domain deleted!');
       }
     }),
     {

@@ -1,8 +1,10 @@
 
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Brain, Code, Calculator, Puzzle, FileText, Briefcase } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Brain, Code, Calculator, Puzzle, FileText, Briefcase, Plus, Settings } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { useLoopStore } from '../store/useLoopStore';
 
@@ -57,20 +59,28 @@ const DomainSelector: React.FC<{
                     Success: {domain.metrics.successRate}%
                   </Badge>
                 </div>
+                
+                <Link to={`/domain/edit/${domain.id}`} onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="sm" className="p-1 h-auto">
+                    <Settings className="w-4 h-4" />
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
         </Card>
       ))}
       
-      <Card 
-        className="domain-card cursor-pointer border-dashed hover:border-primary/50 transition-colors duration-200"
-        onClick={() => toast.info("Custom domain creation coming soon")}
-      >
-        <div className="flex items-center justify-center text-muted-foreground py-3">
-          <span className="text-sm">+ Add new domain</span>
-        </div>
-      </Card>
+      <Link to="/domain/new">
+        <Card 
+          className="domain-card cursor-pointer border-dashed hover:border-primary/50 transition-colors duration-200"
+        >
+          <div className="flex items-center justify-center gap-2 text-muted-foreground py-3">
+            <Plus className="w-4 h-4" />
+            <span className="text-sm">Create new domain</span>
+          </div>
+        </Card>
+      </Link>
     </div>
   );
 };

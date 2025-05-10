@@ -1,5 +1,5 @@
 
-import { KnowledgeNode, KnowledgeEdge } from '../types/intelligence';
+import { KnowledgeNode, KnowledgeEdge, QualityMetrics } from '../types/intelligence';
 
 /**
  * Extracts insights from reflection text
@@ -36,7 +36,9 @@ export function extractInsightsFromReflection(reflectionText: string): string[] 
 export function createKnowledgeNode(
   insight: string, 
   loopNumber: number, 
-  domainId: string
+  domainId: string,
+  loopId?: string,
+  sourceInsights?: string[]
 ): KnowledgeNode {
   // Determine the type of node based on content
   let nodeType: 'rule' | 'concept' | 'pattern' | 'insight' = 'insight';
@@ -75,7 +77,14 @@ export function createKnowledgeNode(
   } else if (confidenceMarkers.low.some(marker => lowerInsight.includes(marker))) {
     confidence = Math.max(confidence - 0.2, 0.3);
   }
-  
+
+  // Calculate quality metrics
+  const qualityMetrics: QualityMetrics = {
+    impact: calculateImpactScore(insight),
+    novelty: 5 + (Math.random() * 5), // Default starting score between 5-10
+    validation_status: 'unverified'
+  };
+
   return {
     id: `node-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     title,
@@ -89,8 +98,48 @@ export function createKnowledgeNode(
     size: Math.floor(Math.random() * 10) + 10, // Random size between 10-20
     confidence,
     domain: domainId,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    // New fields for Phase 4.2
+    sourceInsights: sourceInsights || [],
+    loopReference: loopId,
+    qualityMetrics
   };
+}
+
+/**
+ * Calculate an impact score based on the insight content
+ */
+function calculateImpactScore(insight: string): number {
+  const lowerInsight = insight.toLowerCase();
+  let score = 5; // Default midpoint
+
+  // Keywords indicating high impact
+  const highImpactTerms = [
+    'critical', 'crucial', 'essential', 'fundamental', 'breakthrough', 'revolutionary', 
+    'key', 'important', 'significant', 'major', 'vital', 'central'
+  ];
+  
+  // Keywords indicating moderate impact
+  const moderateImpactTerms = [
+    'useful', 'helpful', 'beneficial', 'relevant', 'applicable', 'practical',
+    'valuable', 'worthwhile', 'meaningful'
+  ];
+  
+  // Check for high impact terms
+  if (highImpactTerms.some(term => lowerInsight.includes(term))) {
+    score += 2 + Math.random() * 3; // Add 2-5 points
+  }
+  
+  // Check for moderate impact terms
+  else if (moderateImpactTerms.some(term => lowerInsight.includes(term))) {
+    score += Math.random() * 3; // Add 0-3 points
+  }
+  
+  // Adjust based on insight length (assuming longer insights might be more detailed)
+  score += (insight.length / 500) * 2; // Add up to 2 points for longer insights
+  
+  // Cap at 10
+  return Math.min(Math.round(score * 10) / 10, 10);
 }
 
 /**
@@ -125,7 +174,30 @@ export function createEdgesBetweenNodes(
         target: newNode.id,
         type: edgeType,
         strength: textSimilarity,
+        // New fields for Phase 4.2
+        similarityScore: textSimilarity,
+        validated: false,
+        creationMethod: 'automatic'
       });
+    }
+  }
+
+  // If the node has sourceInsights, create edges to those nodes
+  if (newNode.sourceInsights && newNode.sourceInsights.length > 0) {
+    for (const sourceId of newNode.sourceInsights) {
+      const sourceNode = existingNodes.find(node => node.id === sourceId);
+      if (sourceNode) {
+        edges.push({
+          id: `edge-source-${sourceId}-${newNode.id}`,
+          source: sourceId,
+          target: newNode.id,
+          type: 'builds-on',
+          strength: 0.9, // High strength for explicit source connections
+          similarityScore: 1.0, // Perfect similarity for explicit connections
+          validated: true, // Explicitly validated
+          creationMethod: 'manual'
+        });
+      }
     }
   }
   

@@ -27,6 +27,12 @@ export interface LearningStep {
   };
 }
 
+export interface QualityMetrics {
+  impact: number;          // 0-10 rating of how impactful this insight is
+  novelty: number;         // 0-10 rating of how novel the insight is
+  validation_status: 'unverified' | 'verified' | 'disputed';
+}
+
 export interface KnowledgeNode {
   id: string;
   title: string;
@@ -42,6 +48,10 @@ export interface KnowledgeNode {
   confidence?: number;
   domain?: string;
   timestamp?: number;
+  // New fields for Phase 4.2
+  sourceInsights?: string[];  // IDs of insights this node builds upon
+  loopReference?: string;     // ID of the loop that produced this insight
+  qualityMetrics?: QualityMetrics;
 }
 
 export interface KnowledgeEdge {
@@ -51,6 +61,10 @@ export interface KnowledgeEdge {
   type: 'builds-on' | 'contradicts' | 'related-to' | 'generalizes';
   strength: number; // 0-1 value representing connection strength
   label?: string;
+  // New fields for Phase 4.2
+  similarityScore?: number;
+  validated?: boolean;
+  creationMethod?: 'automatic' | 'manual' | 'suggested';
 }
 
 export interface DomainEngine {
