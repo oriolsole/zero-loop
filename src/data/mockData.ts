@@ -1,5 +1,4 @@
-
-import { Domain, LearningStep, KnowledgeNode } from '../types/intelligence';
+import { Domain, LearningStep, KnowledgeNode, KnowledgeEdge } from '../types/intelligence';
 
 const logicSteps: LearningStep[] = [
   {
@@ -314,6 +313,96 @@ const mathNodes: KnowledgeNode[] = [
   }
 ];
 
+// New knowledge edges for the logic domain
+const logicEdges: KnowledgeEdge[] = [
+  {
+    id: 'logic-edge-1',
+    source: 'logic-1',
+    target: 'logic-3',
+    type: 'builds-on',
+    strength: 0.8,
+    label: 'Fundamental'
+  },
+  {
+    id: 'logic-edge-2',
+    source: 'logic-1',
+    target: 'logic-5',
+    type: 'builds-on',
+    strength: 0.7
+  },
+  {
+    id: 'logic-edge-3',
+    source: 'logic-2',
+    target: 'logic-5',
+    type: 'related-to',
+    strength: 0.6
+  },
+  {
+    id: 'logic-edge-4',
+    source: 'logic-3',
+    target: 'logic-4',
+    type: 'generalizes',
+    strength: 0.5
+  }
+];
+
+// New knowledge edges for the programming domain
+const programmingEdges: KnowledgeEdge[] = [
+  {
+    id: 'prog-edge-1',
+    source: 'prog-1',
+    target: 'prog-3',
+    type: 'builds-on',
+    strength: 0.75
+  },
+  {
+    id: 'prog-edge-2',
+    source: 'prog-1',
+    target: 'prog-2',
+    type: 'related-to',
+    strength: 0.8
+  },
+  {
+    id: 'prog-edge-3',
+    source: 'prog-2',
+    target: 'prog-4',
+    type: 'builds-on',
+    strength: 0.7
+  },
+  {
+    id: 'prog-edge-4',
+    source: 'prog-3',
+    target: 'prog-4',
+    type: 'related-to',
+    strength: 0.6
+  }
+];
+
+// New knowledge edges for the math domain
+const mathEdges: KnowledgeEdge[] = [
+  {
+    id: 'math-edge-1',
+    source: 'math-1',
+    target: 'math-3',
+    type: 'builds-on',
+    strength: 0.7
+  },
+  {
+    id: 'math-edge-2',
+    source: 'math-1',
+    target: 'math-2',
+    type: 'generalizes',
+    strength: 0.6
+  },
+  {
+    id: 'math-edge-3',
+    source: 'math-2',
+    target: 'math-4',
+    type: 'builds-on',
+    strength: 0.65
+  }
+];
+
 export const domainsData: Domain[] = [
   {
     id: 'logic',
@@ -323,6 +412,7 @@ export const domainsData: Domain[] = [
     totalLoops: 247,
     currentLoop: logicSteps,
     knowledgeNodes: logicNodes,
+    knowledgeEdges: logicEdges,
     metrics: {
       successRate: 86,
       knowledgeGrowth: [
@@ -355,6 +445,7 @@ export const domainsData: Domain[] = [
     totalLoops: 183,
     currentLoop: programmingSteps,
     knowledgeNodes: programmingNodes,
+    knowledgeEdges: programmingEdges,
     metrics: {
       successRate: 74,
       knowledgeGrowth: [
@@ -387,6 +478,7 @@ export const domainsData: Domain[] = [
     totalLoops: 159,
     currentLoop: mathSteps,
     knowledgeNodes: mathNodes,
+    knowledgeEdges: mathEdges,
     metrics: {
       successRate: 68,
       knowledgeGrowth: [
