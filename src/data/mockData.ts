@@ -1,4 +1,32 @@
+
 import { Domain, LearningStep, KnowledgeNode, KnowledgeEdge } from '../types/intelligence';
+import { v4 as uuidv4 } from 'uuid';
+
+// Generate consistent UUIDs for nodes and edges
+// Logic domain UUIDs
+const logicNodeIds = {
+  'logic-1': uuidv4(),
+  'logic-2': uuidv4(),
+  'logic-3': uuidv4(),
+  'logic-4': uuidv4(),
+  'logic-5': uuidv4(),
+};
+
+// Programming domain UUIDs
+const programmingNodeIds = {
+  'prog-1': uuidv4(),
+  'prog-2': uuidv4(),
+  'prog-3': uuidv4(),
+  'prog-4': uuidv4(),
+};
+
+// Math domain UUIDs
+const mathNodeIds = {
+  'math-1': uuidv4(),
+  'math-2': uuidv4(),
+  'math-3': uuidv4(),
+  'math-4': uuidv4(),
+};
 
 const logicSteps: LearningStep[] = [
   {
@@ -176,52 +204,52 @@ const mathSteps: LearningStep[] = [
 
 const logicNodes: KnowledgeNode[] = [
   {
-    id: 'logic-1',
+    id: logicNodeIds['logic-1'],
     title: 'Modus Ponens Rule',
     description: 'If P → Q and P is true, then Q must be true',
     type: 'rule',
     discoveredInLoop: 12,
-    connections: ['logic-3', 'logic-5'],
+    connections: [logicNodeIds['logic-3'], logicNodeIds['logic-5']],
     position: { x: 25, y: 15 },
     size: 18
   },
   {
-    id: 'logic-2',
+    id: logicNodeIds['logic-2'],
     title: 'Transitive Property',
     description: 'If P → Q and Q → R, then P → R',
     type: 'rule',
     discoveredInLoop: 27,
-    connections: ['logic-1', 'logic-5'],
+    connections: [logicNodeIds['logic-1'], logicNodeIds['logic-5']],
     position: { x: 60, y: 20 },
     size: 17
   },
   {
-    id: 'logic-3',
+    id: logicNodeIds['logic-3'],
     title: 'Contrapositive Equivalence',
     description: 'P → Q is logically equivalent to ¬Q → ¬P',
     type: 'concept',
     discoveredInLoop: 43,
-    connections: ['logic-1', 'logic-4'],
+    connections: [logicNodeIds['logic-1'], logicNodeIds['logic-4']],
     position: { x: 40, y: 55 },
     size: 20
   },
   {
-    id: 'logic-4',
+    id: logicNodeIds['logic-4'],
     title: 'Double Negation Pattern',
     description: 'Sentences with double negations are easy to misinterpret',
     type: 'pattern',
     discoveredInLoop: 78,
-    connections: ['logic-3'],
+    connections: [logicNodeIds['logic-3']],
     position: { x: 15, y: 65 },
     size: 16
   },
   {
-    id: 'logic-5',
+    id: logicNodeIds['logic-5'],
     title: 'Forward Chaining Efficiency',
     description: 'Working forward from premises often more efficient than backward from conclusion',
     type: 'insight',
     discoveredInLoop: 156,
-    connections: ['logic-1', 'logic-2'],
+    connections: [logicNodeIds['logic-1'], logicNodeIds['logic-2']],
     position: { x: 70, y: 70 },
     size: 22
   },
@@ -229,42 +257,42 @@ const logicNodes: KnowledgeNode[] = [
 
 const programmingNodes: KnowledgeNode[] = [
   {
-    id: 'prog-1',
+    id: programmingNodeIds['prog-1'],
     title: 'Time-Space Tradeoff',
     description: 'Using memory to store results can reduce computation time',
     type: 'concept',
     discoveredInLoop: 34,
-    connections: ['prog-3'],
+    connections: [programmingNodeIds['prog-3']],
     position: { x: 20, y: 30 },
     size: 20
   },
   {
-    id: 'prog-2',
+    id: programmingNodeIds['prog-2'],
     title: 'Memoization Pattern',
     description: 'Cache results of expensive function calls to avoid redundant computation',
     type: 'pattern',
     discoveredInLoop: 56,
-    connections: ['prog-1', 'prog-4'],
+    connections: [programmingNodeIds['prog-1'], programmingNodeIds['prog-4']],
     position: { x: 50, y: 25 },
     size: 19
   },
   {
-    id: 'prog-3',
+    id: programmingNodeIds['prog-3'],
     title: 'Stack Overflow Prevention',
     description: 'Deep recursion can be prevented by using iteration or tail recursion',
     type: 'rule',
     discoveredInLoop: 72,
-    connections: ['prog-1'],
+    connections: [programmingNodeIds['prog-1']],
     position: { x: 35, y: 65 },
     size: 18
   },
   {
-    id: 'prog-4',
+    id: programmingNodeIds['prog-4'],
     title: 'Top-Down vs Bottom-Up',
     description: 'Dynamic programming can be implemented recursively (top-down) or iteratively (bottom-up)',
     type: 'insight',
     discoveredInLoop: 103,
-    connections: ['prog-2', 'prog-3'],
+    connections: [programmingNodeIds['prog-2'], programmingNodeIds['prog-3']],
     position: { x: 75, y: 55 },
     size: 22
   }
@@ -272,42 +300,42 @@ const programmingNodes: KnowledgeNode[] = [
 
 const mathNodes: KnowledgeNode[] = [
   {
-    id: 'math-1',
+    id: mathNodeIds['math-1'],
     title: 'Characteristic Polynomial',
     description: 'det(A-λI) = 0 gives eigenvalues of matrix A',
     type: 'rule',
     discoveredInLoop: 18,
-    connections: ['math-3'],
+    connections: [mathNodeIds['math-3']],
     position: { x: 30, y: 20 },
     size: 19
   },
   {
-    id: 'math-2',
+    id: mathNodeIds['math-2'],
     title: 'Diagonalization Condition',
     description: 'A matrix is diagonalizable if it has n linearly independent eigenvectors',
     type: 'concept',
     discoveredInLoop: 41,
-    connections: ['math-1', 'math-4'],
+    connections: [mathNodeIds['math-1'], mathNodeIds['math-4']],
     position: { x: 65, y: 30 },
     size: 20
   },
   {
-    id: 'math-3',
+    id: mathNodeIds['math-3'],
     title: 'Matrix Multiplication Error',
     description: 'Verify matrix operations explicitly rather than assuming correctness',
     type: 'insight',
     discoveredInLoop: 89,
-    connections: ['math-1'],
+    connections: [mathNodeIds['math-1']],
     position: { x: 25, y: 60 },
     size: 18
   },
   {
-    id: 'math-4',
+    id: mathNodeIds['math-4'],
     title: 'Eigenspace Dimension Pattern',
     description: 'The geometric multiplicity of an eigenvalue ≤ its algebraic multiplicity',
     type: 'pattern',
     discoveredInLoop: 132,
-    connections: ['math-2'],
+    connections: [mathNodeIds['math-2']],
     position: { x: 70, y: 65 },
     size: 21
   }
@@ -316,31 +344,31 @@ const mathNodes: KnowledgeNode[] = [
 // New knowledge edges for the logic domain
 const logicEdges: KnowledgeEdge[] = [
   {
-    id: 'logic-edge-1',
-    source: 'logic-1',
-    target: 'logic-3',
+    id: uuidv4(),
+    source: logicNodeIds['logic-1'],
+    target: logicNodeIds['logic-3'],
     type: 'builds-on',
     strength: 0.8,
     label: 'Fundamental'
   },
   {
-    id: 'logic-edge-2',
-    source: 'logic-1',
-    target: 'logic-5',
+    id: uuidv4(),
+    source: logicNodeIds['logic-1'],
+    target: logicNodeIds['logic-5'],
     type: 'builds-on',
     strength: 0.7
   },
   {
-    id: 'logic-edge-3',
-    source: 'logic-2',
-    target: 'logic-5',
+    id: uuidv4(),
+    source: logicNodeIds['logic-2'],
+    target: logicNodeIds['logic-5'],
     type: 'related-to',
     strength: 0.6
   },
   {
-    id: 'logic-edge-4',
-    source: 'logic-3',
-    target: 'logic-4',
+    id: uuidv4(),
+    source: logicNodeIds['logic-3'],
+    target: logicNodeIds['logic-4'],
     type: 'generalizes',
     strength: 0.5
   }
@@ -349,30 +377,30 @@ const logicEdges: KnowledgeEdge[] = [
 // New knowledge edges for the programming domain
 const programmingEdges: KnowledgeEdge[] = [
   {
-    id: 'prog-edge-1',
-    source: 'prog-1',
-    target: 'prog-3',
+    id: uuidv4(),
+    source: programmingNodeIds['prog-1'],
+    target: programmingNodeIds['prog-3'],
     type: 'builds-on',
     strength: 0.75
   },
   {
-    id: 'prog-edge-2',
-    source: 'prog-1',
-    target: 'prog-2',
+    id: uuidv4(),
+    source: programmingNodeIds['prog-1'],
+    target: programmingNodeIds['prog-2'],
     type: 'related-to',
     strength: 0.8
   },
   {
-    id: 'prog-edge-3',
-    source: 'prog-2',
-    target: 'prog-4',
+    id: uuidv4(),
+    source: programmingNodeIds['prog-2'],
+    target: programmingNodeIds['prog-4'],
     type: 'builds-on',
     strength: 0.7
   },
   {
-    id: 'prog-edge-4',
-    source: 'prog-3',
-    target: 'prog-4',
+    id: uuidv4(),
+    source: programmingNodeIds['prog-3'],
+    target: programmingNodeIds['prog-4'],
     type: 'related-to',
     strength: 0.6
   }
@@ -381,23 +409,23 @@ const programmingEdges: KnowledgeEdge[] = [
 // New knowledge edges for the math domain
 const mathEdges: KnowledgeEdge[] = [
   {
-    id: 'math-edge-1',
-    source: 'math-1',
-    target: 'math-3',
+    id: uuidv4(),
+    source: mathNodeIds['math-1'],
+    target: mathNodeIds['math-3'],
     type: 'builds-on',
     strength: 0.7
   },
   {
-    id: 'math-edge-2',
-    source: 'math-1',
-    target: 'math-2',
+    id: uuidv4(),
+    source: mathNodeIds['math-1'],
+    target: mathNodeIds['math-2'],
     type: 'generalizes',
     strength: 0.6
   },
   {
-    id: 'math-edge-3',
-    source: 'math-2',
-    target: 'math-4',
+    id: uuidv4(),
+    source: mathNodeIds['math-2'],
+    target: mathNodeIds['math-4'],
     type: 'builds-on',
     strength: 0.65
   }

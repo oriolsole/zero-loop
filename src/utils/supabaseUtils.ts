@@ -1,4 +1,3 @@
-
 // This file contains the Supabase integration functions for the intelligence loop
 
 import { LoopHistory, KnowledgeNode, KnowledgeEdge, SupabaseSchema } from '../types/intelligence';
@@ -75,10 +74,13 @@ export async function saveKnowledgeNodeToSupabase(node: KnowledgeNode): Promise<
       }
     }));
 
+    // Ensure ID is a valid UUID (not string ID)
+    const nodeId = isValidUUID(node.id) ? node.id : uuidv4();
+
     const { error } = await supabase
       .from('knowledge_nodes')
       .insert({
-        id: node.id,
+        id: nodeId,
         title: node.title,
         description: node.description,
         type: node.type,
@@ -120,12 +122,17 @@ export async function saveKnowledgeEdgeToSupabase(edge: KnowledgeEdge): Promise<
       creation_method: edge.creationMethod || 'automatic'
     }));
 
+    // Ensure all IDs are valid UUIDs
+    const edgeId = isValidUUID(edge.id) ? edge.id : uuidv4();
+    const sourceId = isValidUUID(edge.source) ? edge.source : uuidv4();
+    const targetId = isValidUUID(edge.target) ? edge.target : uuidv4();
+
     const { error } = await supabase
       .from('knowledge_edges')
       .insert({
-        id: edge.id,
-        source_id: edge.source,
-        target_id: edge.target,
+        id: edgeId,
+        source_id: sourceId,
+        target_id: targetId,
         type: edge.type,
         strength: edge.strength,
         label: edge.label || '',
@@ -143,6 +150,14 @@ export async function saveKnowledgeEdgeToSupabase(edge: KnowledgeEdge): Promise<
     console.error('Exception saving knowledge edge to Supabase:', error);
     return false;
   }
+}
+
+/**
+ * Check if a string is a valid UUID
+ */
+function isValidUUID(id: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(id);
 }
 
 /**
