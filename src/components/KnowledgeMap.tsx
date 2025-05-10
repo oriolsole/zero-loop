@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -122,21 +121,21 @@ const KnowledgeMap: React.FC<KnowledgeMapProps> = ({ domain }) => {
                 
                 if (!source || !target) return null;
                 
-                // Calculate edge path positions
-                const sourceX = `${source.position.x}%`;
-                const sourceY = `${source.position.y}%`;
-                const targetX = `${target.position.x}%`;
-                const targetY = `${target.position.y}%`;
+                // Calculate edge path positions - Convert percentages to numeric values
+                const sourceX = source.position.x;
+                const sourceY = source.position.y;
+                const targetX = target.position.x;
+                const targetY = target.position.y;
                 
-                // Create a curved path
+                // Create a curved path - Convert percentages to numeric values
                 const midX = (source.position.x + target.position.x) / 2;
                 const midY = (source.position.y + target.position.y) / 2 - 10;
                 
                 return (
                   <g key={edge.id} className="graph-edge">
-                    {/* Edge line */}
+                    {/* Edge line - No % symbols in path definition */}
                     <path
-                      d={`M ${sourceX} ${sourceY} Q ${midX}% ${midY}%, ${targetX} ${targetY}`}
+                      d={`M ${sourceX} ${sourceY} Q ${midX} ${midY}, ${targetX} ${targetY}`}
                       fill="none"
                       className={`${getEdgeTypeStyle(edge.type)} transition-all duration-300`}
                       markerEnd="url(#arrowhead)"
@@ -147,11 +146,11 @@ const KnowledgeMap: React.FC<KnowledgeMapProps> = ({ domain }) => {
                       }
                     />
                     
-                    {/* Optional: edge label */}
+                    {/* Optional: edge label - Convert percentages to numeric values */}
                     {edge.label && (
                       <text
-                        x={`${midX}%`}
-                        y={`${midY}%`}
+                        x={midX}
+                        y={midY}
                         className="text-xs fill-muted-foreground text-center"
                         textAnchor="middle"
                       >
