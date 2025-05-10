@@ -11,6 +11,7 @@ import { useSupabaseLogger } from "../hooks/useSupabaseLogger";
 import { isSupabaseConfigured } from "../utils/supabase-client";
 import { toast } from '@/components/ui/sonner';
 
+// The component no longer accepts onToggleRemote prop as it uses the store directly
 const SupabaseControl = () => {
   const { useRemoteLogging, setUseRemoteLogging } = useLoopStore();
   const { state, toggleRemoteLogging, syncPendingItems, pendingItemsCount } = useSupabaseLogger();
@@ -90,7 +91,7 @@ const SupabaseControl = () => {
             
             <div className="flex justify-between">
               <span className="text-muted-foreground">Pending items:</span>
-              <Badge variant={pendingItemsCount > 0 ? "warning" : "outline"}>
+              <Badge variant={pendingItemsCount > 0 ? "secondary" : "outline"}>
                 {pendingItemsCount}
               </Badge>
             </div>

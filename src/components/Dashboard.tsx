@@ -29,10 +29,6 @@ const Dashboard = () => {
     setActiveDomain(domain);
   };
   
-  const handleToggleRemote = (enabled: boolean) => {
-    setUseRemoteLogging(enabled);
-  };
-  
   const activeData = domains.find(domain => domain.id === activeDomainId) || domains[0];
   
   // For the debug view
@@ -98,7 +94,7 @@ const Dashboard = () => {
               </TabsContent>
               
               <TabsContent value="sync">
-                <SupabaseControl onToggleRemote={handleToggleRemote} />
+                <SupabaseControl />
               </TabsContent>
               
               <TabsContent value="debug">
