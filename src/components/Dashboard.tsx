@@ -3,6 +3,7 @@ import React from 'react';
 import Header from './Header';
 import LearningLoop from './LearningLoop';
 import KnowledgeMap from './KnowledgeMap';
+import InsightTimeline from './InsightTimeline';
 import DomainSelector from './DomainSelector';
 import PerformanceMetrics from './PerformanceMetrics';
 import LoopHistory from './LoopHistory';
@@ -10,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLoopStore } from '../store/useLoopStore';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Code, Eye, History } from 'lucide-react';
+import { Code, Brain, History, LineChart } from 'lucide-react';
 
 const Dashboard = () => {
   const { 
@@ -30,7 +31,9 @@ const Dashboard = () => {
     activeDomain: activeDomainId,
     domainData: activeData,
     currentLoop: activeData.currentLoop,
-    metrics: activeData.metrics
+    metrics: activeData.metrics,
+    knowledgeNodeCount: activeData.knowledgeNodes.length,
+    knowledgeEdgeCount: activeData.knowledgeEdges?.length || 0
   };
 
   return (
@@ -47,10 +50,16 @@ const Dashboard = () => {
               <TabsList className="mb-6">
                 <TabsTrigger value="loop">Learning Loop</TabsTrigger>
                 <TabsTrigger value="knowledge">Knowledge Map</TabsTrigger>
+                <TabsTrigger value="insights">
+                  <span className="flex items-center gap-1">
+                    <Brain className="w-4 h-4" />
+                    Insights Timeline
+                  </span>
+                </TabsTrigger>
                 <TabsTrigger value="history">
                   <span className="flex items-center gap-1">
                     <History className="w-4 h-4" />
-                    History
+                    Loop History
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="debug">Debug View</TabsTrigger>
@@ -62,6 +71,10 @@ const Dashboard = () => {
               
               <TabsContent value="knowledge">
                 <KnowledgeMap domain={activeData} />
+              </TabsContent>
+              
+              <TabsContent value="insights">
+                <InsightTimeline />
               </TabsContent>
               
               <TabsContent value="history">
@@ -106,6 +119,35 @@ const Dashboard = () => {
             
             <h2 className="text-xl font-bold mt-8 mb-4 fade-in-delay-2">Performance</h2>
             <PerformanceMetrics data={activeData.metrics} />
+            
+            <Card className="mt-6 bg-secondary/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <LineChart className="w-4 h-4" />
+                  Knowledge Stats
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Nodes</span>
+                    <span className="font-medium">{activeData.knowledgeNodes.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Connections</span>
+                    <span className="font-medium">{activeData.knowledgeEdges?.length || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Density</span>
+                    <span className="font-medium">
+                      {activeData.knowledgeNodes.length > 0 
+                        ? ((activeData.knowledgeEdges?.length || 0) / activeData.knowledgeNodes.length).toFixed(1)
+                        : '0'}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </main>

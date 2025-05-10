@@ -7,6 +7,7 @@ export interface Domain {
   totalLoops: number;
   currentLoop: LearningStep[];
   knowledgeNodes: KnowledgeNode[];
+  knowledgeEdges: KnowledgeEdge[];
   metrics: {
     successRate: number;
     knowledgeGrowth: Array<{name: string; nodes: number}>;
@@ -38,6 +39,18 @@ export interface KnowledgeNode {
     y: number;
   };
   size?: number;
+  confidence?: number;
+  domain?: string;
+  timestamp?: number;
+}
+
+export interface KnowledgeEdge {
+  id: string;
+  source: string; // Source node id
+  target: string; // Target node id
+  type: 'builds-on' | 'contradicts' | 'related-to' | 'generalizes';
+  strength: number; // 0-1 value representing connection strength
+  label?: string;
 }
 
 export interface DomainEngine {
@@ -56,4 +69,47 @@ export interface LoopHistory {
   totalTime: number;
   success: boolean;
   score: number;
+  insights?: Array<{
+    text: string;
+    confidence: number;
+    nodeIds?: string[];
+  }>;
+}
+
+export interface SupabaseSchema {
+  learning_loops: {
+    id: string;
+    domain_id: string;
+    task: string;
+    solution: string;
+    verification: string;
+    reflection: string;
+    success: boolean;
+    score: number;
+    created_at: string;
+    metadata: any;
+    user_id?: string;
+  };
+  knowledge_nodes: {
+    id: string;
+    title: string;
+    description: string;
+    type: string;
+    domain_id: string;
+    discovered_in_loop: number;
+    confidence: number;
+    created_at: string;
+    metadata: any;
+    user_id?: string;
+  };
+  knowledge_edges: {
+    id: string;
+    source_id: string;
+    target_id: string;
+    type: string;
+    strength: number;
+    label?: string;
+    created_at: string;
+    user_id?: string;
+  };
 }

@@ -1,9 +1,14 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Domain, LearningStep, LoopHistory, KnowledgeNode } from '../types/intelligence';
+import { Domain, LearningStep, LoopHistory, KnowledgeNode, KnowledgeEdge } from '../types/intelligence';
 import { domainsData } from '../data/mockData';
 import { domainEngines } from '../engines/domainEngines';
+import { 
+  extractInsightsFromReflection, 
+  createKnowledgeNode, 
+  createEdgesBetweenNodes,
+  calculateGraphLayout 
+} from '../utils/knowledgeGraph';
 
 export interface LoopState {
   domains: Domain[];
@@ -13,6 +18,7 @@ export interface LoopState {
   isContinuousMode: boolean;
   loopDelay: number;
   loopHistory: LoopHistory[];
+  selectedInsightId: string | null;
   
   // Actions
   setActiveDomain: (domainId: string) => void;
@@ -23,18 +29,27 @@ export interface LoopState {
   toggleContinuousMode: () => void;
   setLoopDelay: (delay: number) => void;
   pauseLoops: () => void;
+  setSelectedInsight: (nodeId: string | null) => void;
+  recalculateGraphLayout: () => void;
 }
+
+// Initialize domains with empty edges array if not already present
+const initializedDomains = domainsData.map(domain => ({
+  ...domain,
+  knowledgeEdges: domain.knowledgeEdges || [] as KnowledgeEdge[]
+}));
 
 export const useLoopStore = create<LoopState>()(
   persist(
     (set, get) => ({
-      domains: domainsData,
+      domains: initializedDomains,
       activeDomainId: 'logic',
       isRunningLoop: false,
       currentStepIndex: null,
       isContinuousMode: false,
       loopDelay: 2000,
       loopHistory: [],
+      selectedInsightId: null,
       
       setActiveDomain: (domainId) => {
         // Only allow domain change when not in a running loop
@@ -216,14 +231,14 @@ export const useLoopStore = create<LoopState>()(
               
               // Check for knowledge insights in reflection
               if (nextStep.type === 'reflection' && !result.toLowerCase().includes('error')) {
-                const insights = extractInsights(result);
+                const insights = extractInsightsFromReflection(result);
                 if (insights.length > 0) {
                   const newDomains = [...get().domains];
                   const domain = { ...newDomains[activeDomainIndex] };
                   
                   // Add knowledge nodes from insights
                   insights.forEach(insight => {
-                    const newNode = createKnowledgeNode(insight, domain.totalLoops + 1);
+                    const newNode = createKnowledgeNode(insight, domain.totalLoops + 1, domain.id);
                     domain.knowledgeNodes = [...domain.knowledgeNodes, newNode];
                   });
                   
@@ -314,6 +329,30 @@ export const useLoopStore = create<LoopState>()(
         
         const updatedDomains = [...domains];
         const domain = { ...updatedDomains[activeDomainIndex] };
+        const reflectionStep = domain.currentLoop.find(step => step.type === 'reflection');
+        const reflectionText = reflectionStep?.content || '';
+        
+        // Extract insights from reflection
+        const insights = extractInsightsFromReflection(reflectionText);
+        let newNodes: KnowledgeNode[] = [];
+        let newEdges: KnowledgeEdge[] = [];
+        
+        // Create knowledge nodes from insights
+        if (insights.length > 0) {
+          insights.forEach(insight => {
+            const newNode = createKnowledgeNode(insight, domain.totalLoops + 1, domain.id);
+            domain.knowledgeNodes = [...domain.knowledgeNodes, newNode];
+            newNodes.push(newNode);
+            
+            // Create edges between the new node and existing nodes
+            const nodeEdges = createEdgesBetweenNodes(newNode, domain.knowledgeNodes);
+            domain.knowledgeEdges = [...(domain.knowledgeEdges || []), ...nodeEdges];
+            newEdges = [...newEdges, ...nodeEdges];
+          });
+          
+          // Recalculate node positions for better layout
+          domain.knowledgeNodes = calculateGraphLayout(domain.knowledgeNodes, domain.knowledgeEdges || []);
+        }
         
         // Generate a loop history record
         const completedLoop: LoopHistory = {
@@ -323,7 +362,12 @@ export const useLoopStore = create<LoopState>()(
           timestamp: Date.now(),
           totalTime: Math.floor(Math.random() * 5000) + 3000, // Simulate actual execution time
           success: domain.currentLoop.some(step => step.type === 'verification' && step.status === 'success'),
-          score: domain.metrics.successRate
+          score: domain.metrics.successRate,
+          insights: insights.map((text, index) => ({
+            text,
+            confidence: newNodes[index]?.confidence || 0.7,
+            nodeIds: newNodes[index] ? [newNodes[index].id] : undefined
+          }))
         };
         
         // Add to history
@@ -343,25 +387,8 @@ export const useLoopStore = create<LoopState>()(
         const lastEntry = latestKnowledge[latestKnowledge.length - 1];
         latestKnowledge.push({
           name: `Loop ${domain.totalLoops}`,
-          nodes: lastEntry.nodes + Math.floor(Math.random() * 3)
+          nodes: lastEntry.nodes + insights.length
         });
-        
-        // Maybe add a new knowledge node occasionally
-        if (Math.random() > 0.7) {
-          const nodeTypes = ['rule', 'concept', 'pattern', 'insight'];
-          const newNode = {
-            id: `node-${domain.knowledgeNodes.length + 1}`,
-            title: `Learned Pattern ${domain.knowledgeNodes.length + 1}`,
-            description: `A pattern discovered in loop ${domain.totalLoops}`,
-            type: nodeTypes[Math.floor(Math.random() * nodeTypes.length)] as any,
-            discoveredInLoop: domain.totalLoops,
-            position: {
-              x: Math.random() * 800,
-              y: Math.random() * 600
-            }
-          };
-          domain.knowledgeNodes = [...domain.knowledgeNodes, newNode];
-        }
         
         // Update task difficulty
         const taskDifficulty = [...domain.metrics.taskDifficulty];
@@ -478,6 +505,29 @@ export const useLoopStore = create<LoopState>()(
       
       pauseLoops: () => {
         set({ isContinuousMode: false });
+      },
+      
+      setSelectedInsight: (nodeId) => {
+        set({ selectedInsightId: nodeId });
+      },
+      
+      recalculateGraphLayout: () => {
+        const { domains, activeDomainId } = get();
+        const activeDomainIndex = domains.findIndex(d => d.id === activeDomainId);
+        
+        if (activeDomainIndex === -1) return;
+        
+        const updatedDomains = [...domains];
+        const domain = { ...updatedDomains[activeDomainIndex] };
+        
+        // Recalculate node positions
+        domain.knowledgeNodes = calculateGraphLayout(
+          domain.knowledgeNodes, 
+          domain.knowledgeEdges || []
+        );
+        
+        updatedDomains[activeDomainIndex] = domain;
+        set({ domains: updatedDomains });
       }
     }),
     {
@@ -485,57 +535,3 @@ export const useLoopStore = create<LoopState>()(
     }
   )
 );
-
-// Helper function to extract insights from reflection text
-function extractInsights(reflectionText: string): string[] {
-  const insights: string[] = [];
-  
-  // Simple rule-based extraction (can be made more sophisticated)
-  const sentences = reflectionText.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  
-  sentences.forEach(sentence => {
-    // Look for sentences that seem to contain insights
-    if (
-      sentence.toLowerCase().includes('learned') ||
-      sentence.toLowerCase().includes('insight') ||
-      sentence.toLowerCase().includes('pattern') ||
-      sentence.toLowerCase().includes('discovered') ||
-      sentence.toLowerCase().includes('understanding') ||
-      sentence.toLowerCase().includes('key concept')
-    ) {
-      insights.push(sentence.trim());
-    }
-  });
-  
-  return insights;
-}
-
-// Helper function to create a knowledge node from an insight
-function createKnowledgeNode(insight: string, loopNumber: number): KnowledgeNode {
-  // Determine the type of node based on content
-  let nodeType: 'rule' | 'concept' | 'pattern' | 'insight' = 'insight';
-  
-  if (insight.toLowerCase().includes('rule') || insight.toLowerCase().includes('should')) {
-    nodeType = 'rule';
-  } else if (insight.toLowerCase().includes('pattern') || insight.toLowerCase().includes('common')) {
-    nodeType = 'pattern';
-  } else if (insight.toLowerCase().includes('concept') || insight.toLowerCase().includes('understand')) {
-    nodeType = 'concept';
-  }
-  
-  // Generate a title from the insight
-  const title = insight.length > 30 ? `${insight.substring(0, 30)}...` : insight;
-  
-  return {
-    id: `node-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    title,
-    description: insight,
-    type: nodeType,
-    discoveredInLoop: loopNumber,
-    position: {
-      x: Math.random() * 80, // Position as percentage of container
-      y: Math.random() * 80
-    },
-    size: Math.floor(Math.random() * 10) + 10 // Random size between 10-20%
-  };
-}
