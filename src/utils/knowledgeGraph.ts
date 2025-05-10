@@ -1,5 +1,6 @@
 
 import { KnowledgeNode, KnowledgeEdge, QualityMetrics } from '../types/intelligence';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Extracts insights from reflection text
@@ -86,7 +87,7 @@ export function createKnowledgeNode(
   };
 
   return {
-    id: `node-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    id: uuidv4(), // Use proper UUID instead of string ID
     title,
     description: insight,
     type: nodeType,
@@ -169,7 +170,7 @@ export function createEdgesBetweenNodes(
       const edgeType = determineEdgeType(newNode, existingNode);
       
       edges.push({
-        id: `edge-${newNode.id}-${existingNode.id}`,
+        id: uuidv4(), // Use proper UUID instead of string ID
         source: existingNode.id,
         target: newNode.id,
         type: edgeType,
@@ -188,7 +189,7 @@ export function createEdgesBetweenNodes(
       const sourceNode = existingNodes.find(node => node.id === sourceId);
       if (sourceNode) {
         edges.push({
-          id: `edge-source-${sourceId}-${newNode.id}`,
+          id: uuidv4(), // Use proper UUID instead of string ID
           source: sourceId,
           target: newNode.id,
           type: 'builds-on',
@@ -259,7 +260,6 @@ function determineEdgeType(
 
 /**
  * Calculate an improved layout for the knowledge graph
- * This uses a simplified force-directed layout algorithm
  */
 export function calculateGraphLayout(
   nodes: KnowledgeNode[], 

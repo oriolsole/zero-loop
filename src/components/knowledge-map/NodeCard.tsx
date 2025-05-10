@@ -28,6 +28,9 @@ export const NodeCard: React.FC<NodeCardProps> = ({
     }
   };
 
+  // Truncate node ID for display purposes (UUID can be very long)
+  const truncatedId = node.id.substring(0, 8);
+
   return (
     <div 
       key={node.id}
