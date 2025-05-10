@@ -1,7 +1,6 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Domain, LearningStep } from '../types/intelligence';
+import { Domain, LearningStep, LoopHistory } from '../types/intelligence';
 import { domainsData } from '../data/mockData';
 import { domainEngines } from '../engines/domainEngines';
 
@@ -10,13 +9,19 @@ export interface LoopState {
   activeDomainId: string;
   isRunningLoop: boolean;
   currentStepIndex: number | null;
+  isContinuousMode: boolean;
+  loopDelay: number;
+  loopHistory: LoopHistory[];
   
   // Actions
   setActiveDomain: (domainId: string) => void;
   startNewLoop: () => Promise<void>;
   advanceToNextStep: () => Promise<void>;
   completeLoop: () => void;
-  loadPreviousLoop: () => void;
+  loadPreviousLoop: (loopId?: string) => void;
+  toggleContinuousMode: () => void;
+  setLoopDelay: (delay: number) => void;
+  pauseLoops: () => void;
 }
 
 export const useLoopStore = create<LoopState>()(
@@ -26,9 +31,15 @@ export const useLoopStore = create<LoopState>()(
       activeDomainId: 'logic',
       isRunningLoop: false,
       currentStepIndex: null,
+      isContinuousMode: false,
+      loopDelay: 2000,
+      loopHistory: [],
       
       setActiveDomain: (domainId) => {
-        set({ activeDomainId: domainId });
+        // Only allow domain change when not in a running loop
+        if (!get().isRunningLoop) {
+          set({ activeDomainId: domainId });
+        }
       },
       
       startNewLoop: async () => {
@@ -76,6 +87,16 @@ export const useLoopStore = create<LoopState>()(
           newDomains[activeDomainIndex] = domain;
           
           set({ domains: newDomains });
+          
+          // If in continuous mode, automatically go to the next step after delay
+          if (get().isContinuousMode) {
+            setTimeout(() => {
+              const currentState = get();
+              if (currentState.isContinuousMode && currentState.isRunningLoop) {
+                get().advanceToNextStep();
+              }
+            }, get().loopDelay);
+          }
         } catch (error) {
           // Handle error in task generation
           const updatedStep: LearningStep = {
@@ -191,6 +212,24 @@ export const useLoopStore = create<LoopState>()(
                 currentLoop[2].content
               );
               metrics = { insightCount: result.split('.').length - 1 };
+              
+              // Check for knowledge insights in reflection
+              if (nextStep.type === 'reflection' && !result.toLowerCase().includes('error')) {
+                const insights = extractInsights(result);
+                if (insights.length > 0) {
+                  const newDomains = [...get().domains];
+                  const domain = { ...newDomains[activeDomainIndex] };
+                  
+                  // Add knowledge nodes from insights
+                  insights.forEach(insight => {
+                    const newNode = createKnowledgeNode(insight, domain.totalLoops + 1);
+                    domain.knowledgeNodes = [...domain.knowledgeNodes, newNode];
+                  });
+                  
+                  newDomains[activeDomainIndex] = domain;
+                  set({ domains: newDomains });
+                }
+              }
               break;
             case 'mutation':
               result = await engine.mutateTask(
@@ -240,6 +279,14 @@ export const useLoopStore = create<LoopState>()(
           // If this was the mutation step, mark the loop as complete
           if (nextStep.type === 'mutation') {
             get().completeLoop();
+          } else if (get().isContinuousMode) {
+            // Continue to next step after delay if in continuous mode
+            setTimeout(() => {
+              const currentState = get();
+              if (currentState.isContinuousMode && currentState.isRunningLoop) {
+                get().advanceToNextStep();
+              }
+            }, get().loopDelay);
           }
         } catch (error) {
           // Handle error in step execution
@@ -266,6 +313,25 @@ export const useLoopStore = create<LoopState>()(
         
         const updatedDomains = [...domains];
         const domain = { ...updatedDomains[activeDomainIndex] };
+        
+        // Generate a loop history record
+        const completedLoop: LoopHistory = {
+          id: `loop-${domain.id}-${Date.now()}`,
+          domainId: domain.id,
+          steps: [...domain.currentLoop],
+          timestamp: Date.now(),
+          totalTime: Math.floor(Math.random() * 5000) + 3000, // Simulate actual execution time
+          success: domain.currentLoop.some(step => step.type === 'verification' && step.status === 'success'),
+          score: domain.metrics.successRate
+        };
+        
+        // Add to history
+        const updatedHistory = [...get().loopHistory, completedLoop];
+        
+        // Trim history if too large (keep most recent 100 loops)
+        if (updatedHistory.length > 100) {
+          updatedHistory.splice(0, updatedHistory.length - 100);
+        }
         
         // Increment total loops
         domain.totalLoops += 1;
@@ -328,25 +394,89 @@ export const useLoopStore = create<LoopState>()(
           skills
         };
         
-        // Save the completed loop to history (in a real app, we'd persist this)
-        // For now we're just updating the domain
-        
         updatedDomains[activeDomainIndex] = domain;
         
         // Reset for next loop
         set({ 
           domains: updatedDomains,
+          loopHistory: updatedHistory,
           isRunningLoop: false,
           currentStepIndex: null
         });
         
-        // Save to localStorage via Zustand persist
+        // If continuous mode is on, start a new loop after delay
+        if (get().isContinuousMode) {
+          setTimeout(() => {
+            const currentState = get();
+            if (currentState.isContinuousMode) {
+              get().startNewLoop();
+            }
+          }, get().loopDelay);
+        }
       },
       
-      loadPreviousLoop: () => {
-        // In a real app, we would fetch from history storage
-        // For now, this is just a placeholder
-        console.log('Loading previous loop - not implemented');
+      loadPreviousLoop: (loopId) => {
+        const { loopHistory } = get();
+        
+        if (loopHistory.length === 0) {
+          console.log('No loop history available');
+          return;
+        }
+        
+        // Find the loop by ID or get the most recent one
+        const loop = loopId 
+          ? loopHistory.find(l => l.id === loopId) 
+          : loopHistory[loopHistory.length - 1];
+          
+        if (!loop) {
+          console.log(`Loop with ID ${loopId} not found`);
+          return;
+        }
+        
+        // Update the current domain with the selected loop data
+        const { domains } = get();
+        const domainIndex = domains.findIndex(d => d.id === loop.domainId);
+        
+        if (domainIndex === -1) {
+          console.log(`Domain ${loop.domainId} not found`);
+          return;
+        }
+        
+        const updatedDomains = [...domains];
+        const domain = { ...updatedDomains[domainIndex] };
+        
+        // Set the current loop to the historical loop
+        domain.currentLoop = [...loop.steps];
+        
+        updatedDomains[domainIndex] = domain;
+        
+        // Update state
+        set({
+          domains: updatedDomains,
+          activeDomainId: loop.domainId,
+          isRunningLoop: false, // We're viewing history, not running
+          currentStepIndex: null
+        });
+      },
+      
+      toggleContinuousMode: () => {
+        const currentMode = get().isContinuousMode;
+        const newMode = !currentMode;
+        
+        set({ isContinuousMode: newMode });
+        
+        // If turning on continuous mode and no active loop, start one
+        if (newMode && !get().isRunningLoop) {
+          get().startNewLoop();
+        }
+      },
+      
+      setLoopDelay: (delay) => {
+        set({ loopDelay: delay });
+      },
+      
+      pauseLoops: () => {
+        set({ isContinuousMode: false });
       }
     }),
     {
@@ -354,3 +484,57 @@ export const useLoopStore = create<LoopState>()(
     }
   )
 );
+
+// Helper function to extract insights from reflection text
+function extractInsights(reflectionText: string): string[] {
+  const insights: string[] = [];
+  
+  // Simple rule-based extraction (can be made more sophisticated)
+  const sentences = reflectionText.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  
+  sentences.forEach(sentence => {
+    // Look for sentences that seem to contain insights
+    if (
+      sentence.toLowerCase().includes('learned') ||
+      sentence.toLowerCase().includes('insight') ||
+      sentence.toLowerCase().includes('pattern') ||
+      sentence.toLowerCase().includes('discovered') ||
+      sentence.toLowerCase().includes('understanding') ||
+      sentence.toLowerCase().includes('key concept')
+    ) {
+      insights.push(sentence.trim());
+    }
+  });
+  
+  return insights;
+}
+
+// Helper function to create a knowledge node from an insight
+function createKnowledgeNode(insight: string, loopNumber: number): KnowledgeNode {
+  // Determine the type of node based on content
+  let nodeType: 'rule' | 'concept' | 'pattern' | 'insight' = 'insight';
+  
+  if (insight.toLowerCase().includes('rule') || insight.toLowerCase().includes('should')) {
+    nodeType = 'rule';
+  } else if (insight.toLowerCase().includes('pattern') || insight.toLowerCase().includes('common')) {
+    nodeType = 'pattern';
+  } else if (insight.toLowerCase().includes('concept') || insight.toLowerCase().includes('understand')) {
+    nodeType = 'concept';
+  }
+  
+  // Generate a title from the insight
+  const title = insight.length > 30 ? `${insight.substring(0, 30)}...` : insight;
+  
+  return {
+    id: `node-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    title,
+    description: insight,
+    type: nodeType,
+    discoveredInLoop: loopNumber,
+    position: {
+      x: Math.random() * 80, // Position as percentage of container
+      y: Math.random() * 80
+    },
+    size: Math.floor(Math.random() * 10) + 10 // Random size between 10-20%
+  };
+}

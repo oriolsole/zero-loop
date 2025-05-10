@@ -1,10 +1,11 @@
 
 import React, { useState } from 'react';
-import { ArrowRight, Brain, CheckCircle, AlertCircle, LightbulbIcon } from 'lucide-react';
+import { ArrowRight, Brain, CheckCircle, AlertCircle, LightbulbIcon, Play, Pause } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
 import { LearningStep } from '../types/intelligence';
 import { useLoopStore } from '../store/useLoopStore';
 import { toast } from '@/components/ui/sonner';
@@ -18,7 +19,11 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
     startNewLoop, 
     advanceToNextStep,
     completeLoop,
-    loadPreviousLoop 
+    loadPreviousLoop,
+    isContinuousMode,
+    toggleContinuousMode,
+    loopDelay,
+    setLoopDelay
   } = useLoopStore();
   
   const steps: LearningStep[] = domain.currentLoop;
@@ -91,14 +96,25 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
         <h3 className="text-lg font-semibold">Current Learning Loop</h3>
         <div className="space-x-2">
           <Button 
-            variant="outline" 
+            variant={isContinuousMode ? "default" : "outline"}
             size="sm"
-            onClick={handlePreviousLoop}
+            onClick={toggleContinuousMode}
+            className="gap-1"
           >
-            View History
+            {isContinuousMode ? (
+              <>
+                <Pause className="w-4 h-4" />
+                <span>Pause Auto</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4" />
+                <span>Run Auto</span>
+              </>
+            )}
           </Button>
           
-          {canAdvanceStep && (
+          {canAdvanceStep && !isContinuousMode && (
             <Button 
               variant="secondary" 
               size="sm"
@@ -108,7 +124,7 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
             </Button>
           )}
           
-          {showNextLoop && (
+          {showNextLoop && !isContinuousMode && (
             <Button 
               variant="default" 
               size="sm"
@@ -120,6 +136,35 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
           )}
         </div>
       </div>
+      
+      {/* Auto-run settings */}
+      {isContinuousMode && (
+        <Card className="bg-secondary/30">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <div className="w-1/2">
+                <div className="text-sm font-medium mb-1">Loop Delay: {loopDelay}ms</div>
+                <Slider
+                  value={[loopDelay]}
+                  min={500}
+                  max={5000}
+                  step={500}
+                  onValueChange={(values) => setLoopDelay(values[0])}
+                  className="w-full"
+                />
+              </div>
+              <div className="space-x-2">
+                <Badge variant={isContinuousMode ? "default" : "secondary"} className="animate-pulse">
+                  Auto Running
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  Loop #{domain.totalLoops}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       
       <div className="relative">
         {steps.map((step, index) => (
@@ -204,7 +249,7 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
           variant="default" 
           size="sm"
           onClick={handleStartLoop}
-          disabled={isRunningLoop && !steps.some(step => step.type === 'mutation' && step.status !== 'pending')}
+          disabled={(isRunningLoop && !steps.some(step => step.type === 'mutation' && step.status !== 'pending')) || isContinuousMode}
         >
           Next Loop
         </Button>

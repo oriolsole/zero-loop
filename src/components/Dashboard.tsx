@@ -5,11 +5,12 @@ import LearningLoop from './LearningLoop';
 import KnowledgeMap from './KnowledgeMap';
 import DomainSelector from './DomainSelector';
 import PerformanceMetrics from './PerformanceMetrics';
+import LoopHistory from './LoopHistory';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLoopStore } from '../store/useLoopStore';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Code, Eye } from 'lucide-react';
+import { Code, Eye, History } from 'lucide-react';
 
 const Dashboard = () => {
   const { 
@@ -46,6 +47,12 @@ const Dashboard = () => {
               <TabsList className="mb-6">
                 <TabsTrigger value="loop">Learning Loop</TabsTrigger>
                 <TabsTrigger value="knowledge">Knowledge Map</TabsTrigger>
+                <TabsTrigger value="history">
+                  <span className="flex items-center gap-1">
+                    <History className="w-4 h-4" />
+                    History
+                  </span>
+                </TabsTrigger>
                 <TabsTrigger value="debug">Debug View</TabsTrigger>
               </TabsList>
               
@@ -55,6 +62,10 @@ const Dashboard = () => {
               
               <TabsContent value="knowledge">
                 <KnowledgeMap domain={activeData} />
+              </TabsContent>
+              
+              <TabsContent value="history">
+                <LoopHistory />
               </TabsContent>
               
               <TabsContent value="debug">
