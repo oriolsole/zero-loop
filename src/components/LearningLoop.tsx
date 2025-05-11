@@ -1,118 +1,103 @@
 
-import React, { useState } from 'react';
-import { toast } from '@/components/ui/sonner';
+import React, { useState, useEffect } from 'react';
 import { useLoopStore } from '../store/useLoopStore';
-import { LearningStep } from '../types/intelligence';
-
-// Import our newly created components
+import { Card } from "@/components/ui/card";
 import Step from './learning-loop/Step';
 import LoopControls from './learning-loop/LoopControls';
 import SourcesToggle from './learning-loop/SourcesToggle';
 import EmptyLoopState from './learning-loop/EmptyLoopState';
 import LoopNavigation from './learning-loop/LoopNavigation';
+import ExternalSources from './ExternalSources';
 
-const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
-  const [showingSources, setShowingSources] = useState<boolean>(false);
-  
+import { domainEngines } from '../engines/domainEngines';
+
+const LearningLoop: React.FC = () => {
   const { 
-    isRunningLoop, 
-    currentStepIndex, 
+    domains, 
+    activeDomainId, 
+    isRunningLoop,
     startNewLoop, 
-    advanceToNextStep,
-    completeLoop,
-    loadPreviousLoop,
-    isContinuousMode,
-    toggleContinuousMode,
-    loopDelay,
-    setLoopDelay
+    advanceToNextStep, 
+    currentStepIndex 
   } = useLoopStore();
+  const [showingSources, setShowingSources] = useState(false);
   
-  const steps: LearningStep[] = domain.currentLoop;
+  const activeDomain = domains.find(d => d.id === activeDomainId);
+  const currentLoop = activeDomain?.currentLoop || [];
+  const currentStep = currentStepIndex !== null ? currentLoop[currentStepIndex] : null;
   
+  // Check if this domain uses web knowledge capabilities
+  const isDomainWebKnowledge = activeDomainId === 'web-knowledge';
+  const hasWebKnowledgeEngine = domainEngines[activeDomainId]?.enrichTask !== undefined;
+  
+  // Determine sources to show from the current step's metadata
+  const currentStepSources = currentStep?.metadata?.sources || [];
+  
+  const handleToggleSources = () => {
+    setShowingSources(prev => !prev);
+  };
+
   const handleStartLoop = async () => {
     try {
       await startNewLoop();
-      toast.success("New learning loop started");
     } catch (error) {
-      toast.error("Error starting loop");
+      console.error("Error starting loop:", error);
     }
   };
-  
-  const handleNextStep = async () => {
-    try {
-      await advanceToNextStep();
-      toast.success("Advanced to next step");
-    } catch (error) {
-      toast.error("Error advancing step");
-    }
-  };
-  
-  const handlePreviousLoop = () => {
-    loadPreviousLoop();
-    toast.info("Loading previous loop");
-  };
-  
-  const toggleSources = () => {
-    setShowingSources(!showingSources);
-  };
-  
-  // Determine if we can advance to the next step within the current loop
-  const canAdvanceStep = isRunningLoop && 
-    currentStepIndex !== null && 
-    steps[currentStepIndex]?.status !== 'pending' && 
-    steps.length < 5;
-  
-  // Determine if we should show the "Next Loop" button
-  const showNextLoop = !isRunningLoop || 
-    (steps.length === 5 && steps[4]?.status !== 'pending');
-    
-  // Check if current domain is web knowledge domain
-  const isWebKnowledgeDomain = domain.id === 'web-knowledge';
+
+  if (!activeDomain) {
+    return <div>No active domain selected</div>;
+  }
+
+  if (!isRunningLoop || currentLoop.length === 0) {
+    return (
+      <EmptyLoopState 
+        handleStartLoop={handleStartLoop} 
+        isDomainWebKnowledge={isDomainWebKnowledge || hasWebKnowledgeEngine}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <LoopControls
-        isContinuousMode={isContinuousMode}
-        canAdvanceStep={canAdvanceStep}
-        showNextLoop={showNextLoop}
-        isRunningLoop={isRunningLoop}
-        loopDelay={loopDelay}
-        totalLoops={domain.totalLoops}
-        handleNextStep={handleNextStep}
-        handleStartLoop={handleStartLoop}
-        toggleContinuousMode={toggleContinuousMode}
-        setLoopDelay={setLoopDelay}
-      />
-      
-      <SourcesToggle 
-        showingSources={showingSources}
-        toggleSources={toggleSources}
-        isDomainWebKnowledge={isWebKnowledgeDomain}
-      />
-      
-      <div className="relative">
-        {steps.map((step, index) => (
-          <Step 
-            key={index}
-            step={step}
-            index={index}
-            currentStepIndex={currentStepIndex}
-            showingSources={showingSources}
-          />
-        ))}
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Learning Loop</h2>
         
-        {steps.length === 0 && (
-          <EmptyLoopState handleStartLoop={handleStartLoop} />
-        )}
+        <SourcesToggle 
+          showingSources={showingSources}
+          toggleSources={handleToggleSources}
+          isDomainWebKnowledge={isDomainWebKnowledge || hasWebKnowledgeEngine}
+          sourceCount={currentStepSources.length}
+        />
       </div>
       
-      <LoopNavigation
-        handlePreviousLoop={handlePreviousLoop}
-        handleStartLoop={handleStartLoop}
-        isRunningLoop={isRunningLoop}
-        showNextLoop={showNextLoop}
-        isContinuousMode={isContinuousMode}
-        totalLoops={domain.totalLoops}
+      <LoopNavigation 
+        steps={currentLoop} 
+        currentStepIndex={currentStepIndex}
+      />
+      
+      <Card className="p-6">
+        {currentLoop.map((step, index) => (
+          <Step 
+            key={index} 
+            step={step} 
+            isActive={index === currentStepIndex} 
+            stepNumber={index + 1}
+          />
+        ))}
+      </Card>
+      
+      {showingSources && currentStepSources.length > 0 && (
+        <ExternalSources 
+          sources={currentStepSources}
+          title={`External Sources for ${currentStep?.title || 'Current Step'}`}
+        />
+      )}
+      
+      <LoopControls 
+        isLastStep={currentStepIndex === currentLoop.length - 1}
+        onAdvance={advanceToNextStep}
+        currentStep={currentStep}
       />
     </div>
   );
