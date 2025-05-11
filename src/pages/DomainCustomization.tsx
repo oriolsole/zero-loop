@@ -36,15 +36,20 @@ const DomainCustomization: React.FC = () => {
       
       // If remote logging is enabled, queue the domain for syncing with Supabase
       if (supabaseState.isRemoteEnabled) {
-        console.log("Queueing domain for Supabase sync:", updatedDomain.id);
-        queueDomain(updatedDomain);
-        
-        // Trigger an immediate sync to save to Supabase
-        const syncResult = await syncPendingItems();
-        if (syncResult) {
-          toast.success('Domain saved locally and synced to Supabase.');
-        } else {
-          toast.warning('Domain saved locally but failed to sync to Supabase.');
+        try {
+          console.log("Queueing domain for Supabase sync:", updatedDomain.id);
+          queueDomain(updatedDomain);
+          
+          // Trigger an immediate sync to save to Supabase
+          const syncResult = await syncPendingItems();
+          if (syncResult) {
+            toast.success('Domain saved locally and synced to Supabase.');
+          } else {
+            toast.warning('Domain saved locally but failed to sync to Supabase.');
+          }
+        } catch (syncError) {
+          console.error("Error syncing to Supabase:", syncError);
+          toast.warning('Domain saved locally but failed to sync to Supabase due to an error.');
         }
       } else {
         console.log("Remote logging disabled, domain will not be synced to Supabase");
@@ -55,9 +60,18 @@ const DomainCustomization: React.FC = () => {
       navigate('/');
     } catch (error) {
       console.error("Error saving domain:", error);
-      setSaveError(error instanceof Error ? error.message : 'Unknown error');
+      
+      // Special handling for storage quota issues
+      if (error instanceof DOMException && 
+          (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+        setSaveError('Browser storage quota exceeded. Try clearing some local data or using Supabase sync.');
+        toast.error('Storage quota exceeded. Your local storage is full.');
+      } else {
+        setSaveError(error instanceof Error ? error.message : 'Unknown error');
+        toast.error(`Failed to save domain: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+      
       setIsSaving(false);
-      toast.error(`Failed to save domain: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
   

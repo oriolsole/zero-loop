@@ -1,12 +1,13 @@
-
 import { useState, useEffect } from 'react';
 import { useLoopStore } from '../store/useLoopStore';
 import { logLoopToSupabase, saveKnowledgeNodeToSupabase, saveKnowledgeEdgeToSupabase, saveDomainToSupabase, updateDomainInSupabase, syncWithSupabase } from '../utils/supabaseUtils';
 import { isSupabaseConfigured } from '../utils/supabase-client';
 import { LoopHistory, KnowledgeNode, KnowledgeEdge, Domain } from '../types/intelligence';
+import { toast } from '@/components/ui/sonner';
 
 const LOCAL_STORAGE_KEY = 'intelligence-loop-sync-queue';
 const LOCAL_STORAGE_STATE_KEY = 'intelligence-loop-sync-state';
+const MAX_QUEUE_ITEMS = 50; // Limit total items in queue
 
 interface SyncQueue {
   loops: LoopHistory[];
@@ -25,13 +26,13 @@ interface SyncState {
 }
 
 const getInitialState = (): SyncState => {
-  const storedState = localStorage.getItem(LOCAL_STORAGE_STATE_KEY);
-  if (storedState) {
-    try {
+  try {
+    const storedState = localStorage.getItem(LOCAL_STORAGE_STATE_KEY);
+    if (storedState) {
       return JSON.parse(storedState);
-    } catch (e) {
-      console.error('Failed to parse stored sync state:', e);
     }
+  } catch (e) {
+    console.error('Failed to parse stored sync state:', e);
   }
   
   return {
@@ -45,13 +46,13 @@ const getInitialState = (): SyncState => {
 };
 
 const getInitialQueue = (): SyncQueue => {
-  const storedQueue = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (storedQueue) {
-    try {
+  try {
+    const storedQueue = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (storedQueue) {
       return JSON.parse(storedQueue);
-    } catch (e) {
-      console.error('Failed to parse stored sync queue:', e);
     }
+  } catch (e) {
+    console.error('Failed to parse stored sync queue:', e);
   }
   
   return {
@@ -62,18 +63,74 @@ const getInitialQueue = (): SyncQueue => {
   };
 };
 
+// Safe storage function that handles quota errors
+const safeSetItem = (key: string, value: string): boolean => {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    console.error(`Storage error for key ${key}:`, e);
+    if (e instanceof DOMException && (
+      e.name === 'QuotaExceededError' || 
+      e.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+    )) {
+      toast.error('Local storage quota exceeded. Some data won\'t be saved locally.');
+      return false;
+    }
+    throw e; // Re-throw if it's not a quota error
+  }
+};
+
 export function useSupabaseLogger() {
   const [state, setState] = useState<SyncState>(getInitialState);
   const [queue, setQueue] = useState<SyncQueue>(getInitialQueue);
   const { loopHistory, domains, activeDomainId } = useLoopStore();
   
-  // Save state and queue to localStorage whenever they change
+  // Save state to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_STATE_KEY, JSON.stringify(state));
+    try {
+      const stateJson = JSON.stringify(state);
+      safeSetItem(LOCAL_STORAGE_STATE_KEY, stateJson);
+    } catch (e) {
+      console.error('Failed to save sync state:', e);
+    }
   }, [state]);
   
+  // Save queue to localStorage whenever it changes, with size management
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(queue));
+    try {
+      const queueJson = JSON.stringify(queue);
+      
+      // Check if we might be approaching the storage limit
+      if (queueJson.length > 2000000) { // ~2MB as a safety threshold
+        console.warn('Queue size is large, attempting to trim oldest items');
+        
+        // Create a trimmed version of the queue with only the most recent items
+        const trimmedQueue: SyncQueue = {
+          loops: queue.loops.slice(-Math.min(MAX_QUEUE_ITEMS, queue.loops.length)),
+          nodes: queue.nodes.slice(-Math.min(MAX_QUEUE_ITEMS, queue.nodes.length)),
+          edges: queue.edges.slice(-Math.min(MAX_QUEUE_ITEMS, queue.edges.length)),
+          domains: queue.domains // Keep all domains as they're typically small and important
+        };
+        
+        const success = safeSetItem(LOCAL_STORAGE_KEY, JSON.stringify(trimmedQueue));
+        if (!success) {
+          // If we still can't save, force a sync and then clear the queue
+          syncPendingItems().finally(() => {
+            setQueue({
+              loops: [],
+              nodes: [],
+              edges: [],
+              domains: []
+            });
+          });
+        }
+      } else {
+        safeSetItem(LOCAL_STORAGE_KEY, queueJson);
+      }
+    } catch (e) {
+      console.error('Failed to save sync queue:', e);
+    }
   }, [queue]);
   
   // Check if Supabase is properly configured
@@ -89,14 +146,25 @@ export function useSupabaseLogger() {
     setState(prev => ({ ...prev, isRemoteEnabled: enabled }));
   };
   
-  // Queue a completed loop for sync
+  // Queue a completed loop for sync, with size management
   const queueLoop = (loop: LoopHistory) => {
     if (!state.isRemoteEnabled) return;
     
-    setQueue(prev => ({
-      ...prev,
-      loops: [...prev.loops, loop]
-    }));
+    setQueue(prev => {
+      // If we're approaching the limit, only keep the most recent items
+      const updatedLoops = [...prev.loops, loop];
+      if (updatedLoops.length > MAX_QUEUE_ITEMS) {
+        console.warn(`Loop queue exceeds ${MAX_QUEUE_ITEMS} items, trimming oldest`);
+        return {
+          ...prev,
+          loops: updatedLoops.slice(-MAX_QUEUE_ITEMS)
+        };
+      }
+      return {
+        ...prev,
+        loops: updatedLoops
+      };
+    });
     
     console.log('Loop queued for sync:', loop.id);
   };
@@ -105,10 +173,19 @@ export function useSupabaseLogger() {
   const queueNode = (node: KnowledgeNode) => {
     if (!state.isRemoteEnabled) return;
     
-    setQueue(prev => ({
-      ...prev,
-      nodes: [...prev.nodes, node]
-    }));
+    setQueue(prev => {
+      const updatedNodes = [...prev.nodes, node];
+      if (updatedNodes.length > MAX_QUEUE_ITEMS) {
+        return {
+          ...prev,
+          nodes: updatedNodes.slice(-MAX_QUEUE_ITEMS)
+        };
+      }
+      return {
+        ...prev,
+        nodes: updatedNodes
+      };
+    });
     
     console.log('Knowledge node queued for sync:', node.id);
   };
@@ -117,10 +194,19 @@ export function useSupabaseLogger() {
   const queueEdge = (edge: KnowledgeEdge) => {
     if (!state.isRemoteEnabled) return;
     
-    setQueue(prev => ({
-      ...prev,
-      edges: [...prev.edges, edge]
-    }));
+    setQueue(prev => {
+      const updatedEdges = [...prev.edges, edge];
+      if (updatedEdges.length > MAX_QUEUE_ITEMS) {
+        return {
+          ...prev,
+          edges: updatedEdges.slice(-MAX_QUEUE_ITEMS)
+        };
+      }
+      return {
+        ...prev,
+        edges: updatedEdges
+      };
+    });
     
     console.log('Knowledge edge queued for sync:', edge.id);
   };
@@ -219,7 +305,7 @@ export function useSupabaseLogger() {
     }
   };
   
-  // Auto-sync every 5 minutes if enabled
+  // Auto-sync every 5 minutes if enabled, but only if there are items to sync
   useEffect(() => {
     if (!state.isRemoteEnabled) return;
     
@@ -227,27 +313,36 @@ export function useSupabaseLogger() {
       const pendingCount = queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length;
       if (pendingCount > 0) {
         console.log('Auto-syncing pending items:', pendingCount);
-        syncPendingItems();
+        syncPendingItems().catch(err => {
+          console.error('Auto-sync failed:', err);
+        });
       }
     }, 5 * 60 * 1000); // 5 minutes
     
     return () => clearInterval(intervalId);
   }, [state.isRemoteEnabled, queue]);
   
-  // Queue new loops for syncing if remote logging is enabled
+  // Queue new loops for syncing if remote logging is enabled, with size limits
   useEffect(() => {
     if (!state.isRemoteEnabled) return;
     
-    // Check if there are any loops not in the queue
+    // Check if there are any loops not in the queue, limiting total size
     const queuedLoopIds = new Set(queue.loops.map(l => l.id));
-    const unqueuedLoops = loopHistory.filter(l => !queuedLoopIds.has(l.id));
+    const unqueuedLoops = loopHistory
+      .filter(l => !queuedLoopIds.has(l.id))
+      .slice(-MAX_QUEUE_ITEMS); // Only take the most recent ones if there are too many
     
     if (unqueuedLoops.length > 0) {
       console.log(`Found ${unqueuedLoops.length} unqueued loops, adding to queue`);
-      setQueue(prev => ({
-        ...prev,
-        loops: [...prev.loops, ...unqueuedLoops]
-      }));
+      setQueue(prev => {
+        const combinedLoops = [...prev.loops, ...unqueuedLoops];
+        return {
+          ...prev,
+          loops: combinedLoops.length > MAX_QUEUE_ITEMS ? 
+            combinedLoops.slice(-MAX_QUEUE_ITEMS) : 
+            combinedLoops
+        };
+      });
     }
   }, [state.isRemoteEnabled, loopHistory, queue.loops]);
 
@@ -267,6 +362,21 @@ export function useSupabaseLogger() {
       }));
     }
   }, [state.isRemoteEnabled, domains, queue.domains]);
+  
+  // Force an immediate sync on component mount if there are pending items
+  useEffect(() => {
+    const pendingCount = queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length;
+    if (state.isRemoteEnabled && pendingCount > 0) {
+      const timer = setTimeout(() => {
+        console.log('Initial sync of pending items');
+        syncPendingItems().catch(err => {
+          console.error('Initial sync failed:', err);
+        });
+      }, 2000); // Wait 2 seconds after mount before syncing
+      
+      return () => clearTimeout(timer);
+    }
+  }, []); // Empty dependency array ensures this runs once on mount
   
   return {
     state,
