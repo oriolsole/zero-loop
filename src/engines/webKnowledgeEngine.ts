@@ -2,7 +2,6 @@
 import { DomainEngine } from '../types/intelligence';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
-import { useExternalKnowledge } from '@/hooks/useExternalKnowledge';
 import { ExternalSource } from '@/types/intelligence';
 
 // The web knowledge engine uses Google Search API through a Supabase Edge Function
@@ -19,7 +18,7 @@ export const webKnowledgeEngine: DomainEngine = {
       });
 
       if (error) throw new Error(`Web knowledge error: ${error.message}`);
-      return data.result || 'Failed to generate task';
+      return data?.result || 'Failed to generate task';
     } catch (error) {
       console.error('Error generating web knowledge task:', error);
       toast.error('Failed to generate research question');
@@ -61,7 +60,7 @@ export const webKnowledgeEngine: DomainEngine = {
         });
 
         if (error) throw new Error(`AI reasoning error: ${error.message}`);
-        solution = data.result || 'Failed to research question';
+        solution = data?.result || 'Failed to research question';
         usedSources = sources;
       } else {
         // Fallback to purely AI-generated answer if no sources found
@@ -75,16 +74,11 @@ export const webKnowledgeEngine: DomainEngine = {
         });
 
         if (error) throw new Error(`Web knowledge error: ${error.message}`);
-        solution = data.result || 'Failed to research question';
+        solution = data?.result || 'Failed to research question';
       }
       
       // Add metadata about the used sources
-      return {
-        content: solution,
-        metadata: {
-          sources: usedSources
-        }
-      };
+      return solution;
     } catch (error) {
       console.error('Error researching question:', error);
       toast.error('Failed to research question');
@@ -118,14 +112,7 @@ export const webKnowledgeEngine: DomainEngine = {
 
       if (error) throw new Error(`Web knowledge error: ${error.message}`);
       
-      // Add metadata about the verification
-      return {
-        content: data.result || 'Failed to verify research',
-        metadata: {
-          sources: verificationResult.sources,
-          confidence: verificationResult.confidence
-        }
-      };
+      return data?.result || 'Failed to verify research';
     } catch (error) {
       console.error('Error verifying research:', error);
       toast.error('Failed to verify research');
@@ -135,30 +122,16 @@ export const webKnowledgeEngine: DomainEngine = {
 
   reflect: async (task: string, solution: string, verification: string) => {
     try {
-      // Get information about any sources used in the solution and verification steps
-      const solutionResult = typeof solution === 'object' ? solution : { content: solution, metadata: {} };
-      const verificationResult = typeof verification === 'object' ? verification : { content: verification, metadata: {} };
+      // Get information about any sources used
+      let sources: ExternalSource[] = [];
       
-      const solutionContent = solutionResult.content || solution;
-      const verificationContent = verificationResult.content || verification;
-      
-      // Combine all sources
-      const allSources = [
-        ...(solutionResult.metadata?.sources || []),
-        ...(verificationResult.metadata?.sources || [])
-      ];
-      
-      // Remove duplicate sources based on link
-      const uniqueSources = allSources.filter((source, index, self) =>
-        index === self.findIndex((s) => s.link === source.link)
-      );
-      
+      // Call the AI for reflection
       const { data, error } = await supabase.functions.invoke('ai-reasoning', {
         body: { 
           operation: 'reflect',
           task,
-          solution: solutionContent,
-          verification: verificationContent,
+          solution,
+          verification,
           domain: 'Web Knowledge',
           domainContext: 'Analyze what we learned from this web research task and what insights we can extract.'
         }
@@ -166,13 +139,7 @@ export const webKnowledgeEngine: DomainEngine = {
 
       if (error) throw new Error(`Web knowledge error: ${error.message}`);
       
-      // Return reflection with metadata about all sources used
-      return {
-        content: data.result || 'Failed to reflect on research',
-        metadata: {
-          sources: uniqueSources
-        }
-      };
+      return data?.result || 'Failed to reflect on research';
     } catch (error) {
       console.error('Error reflecting on research:', error);
       toast.error('Failed to reflect on research');
@@ -192,7 +159,7 @@ export const webKnowledgeEngine: DomainEngine = {
       });
 
       if (error) throw new Error(`Web knowledge error: ${error.message}`);
-      return data.result || 'Failed to create new research question';
+      return data?.result || 'Failed to create new research question';
     } catch (error) {
       console.error('Error creating new research question:', error);
       toast.error('Failed to create new research question');

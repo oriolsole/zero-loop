@@ -183,8 +183,8 @@ export const useLoopStore = create<LoopState>()(
           const taskContent = await engine.generateTask();
           
           // Handle both string and complex object responses
-          const content = typeof taskContent === 'object' ? taskContent.content : taskContent;
-          const metadata = typeof taskContent === 'object' ? taskContent.metadata : undefined;
+          const content = typeof taskContent === 'string' ? taskContent : '';
+          const metadata = typeof taskContent === 'object' && taskContent !== null ? taskContent.metadata : undefined;
           
           const updatedStep: LearningStep = {
             ...initialStep,
@@ -310,12 +310,12 @@ export const useLoopStore = create<LoopState>()(
               result = await engine.solveTask(currentLoop[0].content);
               metrics = { timeMs: Math.floor(Math.random() * 1000) + 200 };
               break;
-            case 'verification':
-              const solutionData = currentLoop[1];
-              const solutionContent = typeof solutionData === 'object' 
-                ? solutionData.content 
-                : solutionData;
-              
+            case 'verification': {
+              const solutionStep = currentLoop[1];
+              const solutionContent = typeof solutionStep === 'object' && solutionStep !== null 
+                ? solutionStep.content 
+                : String(solutionStep); // Convert to string to be safe
+      
               result = await engine.verifySolution(
                 currentLoop[0].content, 
                 solutionContent
@@ -324,13 +324,14 @@ export const useLoopStore = create<LoopState>()(
               // Default metrics if not provided in the result
               const isSuccessful = typeof result === 'object'
                 ? !result.content.toLowerCase().includes('incorrect')
-                : !result.toLowerCase().includes('incorrect');
+                : !String(result).toLowerCase().includes('incorrect');
                 
               metrics = { 
                 correct: isSuccessful,
                 timeMs: Math.floor(Math.random() * 300) + 50 
               };
               break;
+            }
             case 'reflection':
               const verificationData = currentLoop[2];
               const verificationContent = typeof verificationData === 'object'

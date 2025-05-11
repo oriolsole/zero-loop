@@ -12,154 +12,142 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Split text into chunks of appropriate size
-function splitIntoChunks(text, maxChunkSize = 1000, overlapSize = 100) {
-  if (text.length <= maxChunkSize) {
-    return [text];
-  }
-
-  const chunks = [];
-  let startIndex = 0;
-  
-  while (startIndex < text.length) {
-    // Find a good breakpoint (preferably at the end of a sentence or paragraph)
-    let endIndex = Math.min(startIndex + maxChunkSize, text.length);
-    
-    if (endIndex < text.length) {
-      // Try to find sentence endings (. ! ?) followed by a space or newline
-      const lastSentenceEnd = Math.max(
-        text.lastIndexOf('. ', endIndex),
-        text.lastIndexOf('! ', endIndex),
-        text.lastIndexOf('? ', endIndex),
-        text.lastIndexOf('.\n', endIndex),
-        text.lastIndexOf('!\n', endIndex),
-        text.lastIndexOf('?\n', endIndex)
-      );
-      
-      // If we found a good breakpoint, use it
-      if (lastSentenceEnd > startIndex + maxChunkSize / 2) {
-        endIndex = lastSentenceEnd + 1;
-      } else {
-        // Otherwise try to break at a space
-        const lastSpace = text.lastIndexOf(' ', endIndex);
-        if (lastSpace > startIndex + maxChunkSize / 2) {
-          endIndex = lastSpace + 1;
-        }
-      }
-    }
-    
-    chunks.push(text.substring(startIndex, endIndex));
-    
-    // Move start index with overlap
-    startIndex = Math.max(startIndex, endIndex - overlapSize);
-  }
-  
-  return chunks;
-}
-
-// Generate embeddings for a chunk of text
-async function generateEmbedding(text) {
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${openaiApiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'text-embedding-3-small',
-      input: text
-    })
-  });
-  
-  const result = await response.json();
-  
-  if (!result.data || !result.data[0].embedding) {
-    throw new Error('Failed to generate embedding');
-  }
-  
-  return result.data[0].embedding;
-}
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
-  
+
   try {
-    // Initialize Supabase client with service role key for admin access
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    const { 
-      title, 
-      content, 
-      metadata = {}, 
-      domain_id = null, 
-      source_url = null, 
-      chunk_size = 1000, 
-      overlap = 100,
-      user_id = null
+    // Get request body
+    const {
+      title,
+      content,
+      metadata = {},
+      domain_id,
+      source_url,
+      chunk_size = 1000,
+      overlap = 100
     } = await req.json();
     
+    // Validate required fields
     if (!title || !content) {
-      throw new Error('Title and content are required');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Title and content are required' 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
-    
+
+    // Initialize Supabase client with service role key for admin access
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     // Split content into chunks
-    const chunks = splitIntoChunks(content, chunk_size, overlap);
+    const chunks = chunkText(content, chunk_size, overlap);
+    
     console.log(`Split content into ${chunks.length} chunks`);
     
-    // Process chunks and generate embeddings
-    const processedChunks = [];
+    // Get embeddings for all chunks in a single batch request
+    let embeddings: number[][] = [];
     
-    for (let i = 0; i < chunks.length; i++) {
-      const chunkText = chunks[i];
-      const chunkTitle = `${title} (part ${i + 1}/${chunks.length})`;
+    try {
+      // Generate embeddings with OpenAI
+      const embeddingsResponse = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'text-embedding-3-small',
+          input: chunks
+        })
+      });
+  
+      const embeddingsData = await embeddingsResponse.json();
       
-      // Generate embedding for the chunk
-      const embedding = await generateEmbedding(chunkText);
+      if (!embeddingsData.data) {
+        throw new Error(`OpenAI API error: ${JSON.stringify(embeddingsData.error || {})}`);
+      }
       
-      processedChunks.push({
-        title: chunkTitle,
-        content: chunkText,
+      embeddings = embeddingsData.data.map((item: any) => item.embedding);
+    } catch (error) {
+      console.error('Error generating embeddings:', error);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Failed to generate embeddings' 
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    
+    console.log(`Generated ${embeddings.length} embeddings`);
+    
+    // Insert chunks with embeddings into the database
+    const insertPromises = chunks.map((chunk, i) => {
+      return supabase.from('knowledge_chunks').insert({
+        title,
+        content: chunk,
+        embedding: embeddings[i],
+        domain_id,
+        source_url,
         metadata: {
           ...metadata,
           chunk_index: i,
           total_chunks: chunks.length
-        },
-        domain_id,
-        source_url,
-        user_id,
-        embedding
+        }
       });
+    });
+    
+    // Execute all inserts in parallel
+    const results = await Promise.all(insertPromises);
+    
+    // Check for errors
+    const errors = results.filter(r => r.error).map(r => r.error);
+    if (errors.length > 0) {
+      console.error('Errors inserting chunks:', errors);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Failed to insert some chunks',
+          details: errors
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
     
-    // Insert processed chunks into the knowledge_chunks table
-    const { data, error } = await supabase
-      .from('knowledge_chunks')
-      .insert(processedChunks)
-      .select('id');
-      
-    if (error) {
-      throw error;
-    }
+    console.log(`Successfully inserted ${chunks.length} chunks into the knowledge base`);
     
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: `Successfully processed ${chunks.length} chunks`, 
-        chunk_ids: data.map(c => c.id)
+        message: `Uploaded ${chunks.length} chunks successfully` 
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
     );
+    
   } catch (error) {
     console.error('Error processing knowledge upload:', error);
     
     return new Response(
       JSON.stringify({ 
-        success: false,
-        error: 'Failed to process knowledge upload',
-        details: error.message 
+        success: false, 
+        error: 'Failed to process upload',
+        details: error.message
       }),
       { 
         status: 500, 
@@ -168,3 +156,82 @@ serve(async (req) => {
     );
   }
 });
+
+/**
+ * Split text into chunks with overlap
+ */
+function chunkText(text: string, chunkSize: number, overlap: number): string[] {
+  const chunks: string[] = [];
+  
+  // Clean up the text - normalize whitespace
+  const cleanedText = text.replace(/\s+/g, ' ').trim();
+  
+  // If text is shorter than chunk size, return as a single chunk
+  if (cleanedText.length <= chunkSize) {
+    return [cleanedText];
+  }
+  
+  // Split into paragraphs first to try to maintain context
+  const paragraphs = cleanedText.split(/\n+/);
+  let currentChunk = '';
+  
+  for (const paragraph of paragraphs) {
+    // If paragraph is too long, split it further
+    if (paragraph.length > chunkSize) {
+      // If we have content in the current chunk, push it first
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      
+      // Split long paragraph into sentences
+      const sentences = paragraph.split(/(?<=[.!?])\s+/);
+      let sentenceChunk = '';
+      
+      for (const sentence of sentences) {
+        // If adding this sentence exceeds chunk size, push the chunk and start a new one
+        if ((sentenceChunk + ' ' + sentence).length > chunkSize) {
+          if (sentenceChunk) {
+            chunks.push(sentenceChunk.trim());
+            // Keep some overlap with the previous chunk for context
+            const words = sentenceChunk.split(' ');
+            const overlapWords = words.slice(Math.max(0, words.length - overlap / 10)).join(' ');
+            sentenceChunk = overlapWords;
+          }
+        }
+        
+        sentenceChunk += ' ' + sentence;
+        
+        // If we've exceeded chunk size, push it
+        if (sentenceChunk.length >= chunkSize) {
+          chunks.push(sentenceChunk.trim());
+          // Reset with overlap
+          const words = sentenceChunk.split(' ');
+          const overlapWords = words.slice(Math.max(0, words.length - overlap / 10)).join(' ');
+          sentenceChunk = overlapWords;
+        }
+      }
+      
+      // Add any remaining content
+      if (sentenceChunk && sentenceChunk.length > overlap / 5) {
+        currentChunk = sentenceChunk;
+      }
+    }
+    // If paragraph fits in a chunk, add it
+    else if ((currentChunk + ' ' + paragraph).length <= chunkSize) {
+      currentChunk += (currentChunk ? ' ' : '') + paragraph;
+    }
+    // Otherwise, push the current chunk and start a new one
+    else {
+      chunks.push(currentChunk.trim());
+      currentChunk = paragraph;
+    }
+  }
+  
+  // Push any remaining content
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks.filter(chunk => chunk.length > 0);
+}
