@@ -77,6 +77,14 @@ const InsightTimeline: React.FC = () => {
     return JSON.stringify(value);
   };
   
+  // Helper function to safely render loop numbers, ensuring we only render strings
+  const renderLoopNumber = (loopNumber: any): string => {
+    if (typeof loopNumber === "string" || typeof loopNumber === "number") {
+      return loopNumber.toString();
+    }
+    return "?";
+  };
+  
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -102,7 +110,9 @@ const InsightTimeline: React.FC = () => {
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                   <div>
-                    <CardTitle className="text-base">Insight from Loop #{insight.loopNumber}</CardTitle>
+                    <CardTitle className="text-base">
+                      Insight from Loop #{renderLoopNumber(insight.loopNumber)}
+                    </CardTitle>
                     <div className="text-xs text-muted-foreground flex items-center mt-1">
                       <span>{formatDistanceToNow(new Date(insight.timestamp), { addSuffix: true })}</span>
                     </div>
