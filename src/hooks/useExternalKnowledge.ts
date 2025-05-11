@@ -1,17 +1,10 @@
 
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-
-interface SearchResult {
-  title: string;
-  link: string;
-  snippet: string;
-  source: string;
-  date: string | null;
-}
+import { ExternalSource } from '@/components/ExternalSources';
 
 interface SearchResponse {
-  results: SearchResult[];
+  results: ExternalSource[];
   error?: string;
 }
 
@@ -25,7 +18,7 @@ export function useExternalKnowledge() {
   /**
    * Search the web for information related to a query
    */
-  const searchWeb = async (query: string, limit: number = 5): Promise<SearchResult[]> => {
+  const searchWeb = async (query: string, limit: number = 5): Promise<ExternalSource[]> => {
     setIsSearching(true);
     setSearchError(null);
     
@@ -64,7 +57,7 @@ export function useExternalKnowledge() {
   const enrichWithKnowledge = async (
     text: string, 
     maxResults: number = 3
-  ): Promise<{enrichedText: string, sources: SearchResult[]}> => {
+  ): Promise<{enrichedText: string, sources: ExternalSource[]}> => {
     try {
       // Search for relevant information
       const results = await searchWeb(text, maxResults);
@@ -97,3 +90,5 @@ export function useExternalKnowledge() {
     searchError
   };
 }
+
+export type { ExternalSource };

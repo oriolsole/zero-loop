@@ -32,10 +32,10 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
   
   // Function to extract external sources from step metadata if available
   const getExternalSources = (step: LearningStep) => {
-    if (step?.metrics?.externalSources) {
+    if (step?.metrics?.externalSources && Array.isArray(step.metrics.externalSources)) {
       return step.metrics.externalSources;
     }
-    return null;
+    return [];
   };
   
   const getStatusColor = (status: string) => {
@@ -102,6 +102,13 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
   
   const toggleSources = () => {
     setShowingSources(!showingSources);
+  };
+
+  // Check if a step has valid external sources
+  const hasExternalSources = (step: LearningStep): boolean => {
+    return !!step.metrics?.externalSources && 
+           Array.isArray(step.metrics.externalSources) && 
+           step.metrics.externalSources.length > 0;
   };
 
   return (
@@ -233,9 +240,9 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
                   </div>
                   
                   {/* Display external sources if available and sources toggle is on */}
-                  {showingSources && step.metrics?.externalSources && (
+                  {showingSources && hasExternalSources(step) && (
                     <ExternalSources 
-                      sources={step.metrics.externalSources}
+                      sources={getExternalSources(step)}
                       title={`External Sources for ${step.title}`}
                       description="Information used to support this step"
                     />
@@ -266,10 +273,10 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
                 </Button>
                 
                 {/* Show "Has External Sources" badge if sources are available */}
-                {step.metrics?.externalSources && step.metrics.externalSources.length > 0 && (
+                {hasExternalSources(step) && (
                   <Badge variant="outline" className="ml-2 flex items-center gap-1">
                     <Globe className="w-3 h-3" />
-                    {step.metrics.externalSources.length} {step.metrics.externalSources.length === 1 ? 'Source' : 'Sources'}
+                    {getExternalSources(step).length} {getExternalSources(step).length === 1 ? 'Source' : 'Sources'}
                   </Badge>
                 )}
               </CardFooter>
