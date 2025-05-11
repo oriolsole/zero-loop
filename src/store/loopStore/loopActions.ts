@@ -46,15 +46,20 @@ export const createLoopActions = (
       const taskContent = await engine.generateTask();
       
       // Handle both string and complex object responses
-      // Fix for TS2339: Property 'content' does not exist on type 'never'
+      // Fix TypeScript errors by properly checking the type
       let content = '';
       let metadata = undefined;
       
-      if (typeof taskContent === 'string') {
-        content = taskContent;
-      } else if (taskContent && typeof taskContent === 'object') {
-        content = taskContent.content || '';
-        metadata = taskContent.metadata;
+      if (taskContent !== null && taskContent !== undefined) {
+        if (typeof taskContent === 'string') {
+          content = taskContent;
+        } else if (typeof taskContent === 'object') {
+          // Add proper type checking for the object structure
+          content = 'content' in taskContent && taskContent.content !== undefined 
+            ? String(taskContent.content) 
+            : '';
+          metadata = 'metadata' in taskContent ? taskContent.metadata : undefined;
+        }
       }
       
       const updatedStep: LearningStep = {
@@ -193,8 +198,8 @@ export const createLoopActions = (
           );
           
           // Default metrics if not provided in the result
-          const isSuccessful = typeof result === 'object'
-            ? !result.content.toLowerCase().includes('incorrect')
+          const isSuccessful = typeof result === 'object' && result !== null
+            ? !String(result.content).toLowerCase().includes('incorrect')
             : !String(result).toLowerCase().includes('incorrect');
             
           metrics = { 
@@ -215,13 +220,14 @@ export const createLoopActions = (
             verificationContent
           );
           
-          metrics = { insightCount: typeof result === 'string' 
-            ? result.split('.').length - 1 
-            : result.content.split('.').length - 1 
+          metrics = { insightCount: typeof result === 'object' && result !== null
+            ? String(result.content).split('.').length - 1 
+            : String(result).split('.').length - 1 
           };
           
           // Check for knowledge insights in reflection
-          const reflectionText = typeof result === 'object' ? result.content : result;
+          const reflectionText = typeof result === 'object' && result !== null ? 
+            String(result.content) : String(result);
           
           if (nextStep.type === 'reflection' && !reflectionText.toLowerCase().includes('error')) {
             const insights = extractInsightsFromReflection(reflectionText);
@@ -253,8 +259,10 @@ export const createLoopActions = (
       }
       
       // Update step with result, handling both string and object responses
-      const content = typeof result === 'object' ? result.content : result;
-      const metadata = typeof result === 'object' ? result.metadata : undefined;
+      const content = typeof result === 'object' && result !== null ? 
+        String(result.content) : String(result);
+      const metadata = typeof result === 'object' && result !== null ? 
+        result.metadata : undefined;
       
       const status = content.toLowerCase().includes('error') || 
                    (nextStep.type === 'verification' && content.includes('Incorrect')) 
