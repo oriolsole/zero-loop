@@ -11,7 +11,7 @@ import { useLoopStore } from '../store/useLoopStore';
 import { formatDistanceToNow } from 'date-fns';
 import { ExternalSource } from '@/types/intelligence';
 
-// Define interface for ExternalSource if it doesn't exist elsewhere
+// Define interface for external source display
 interface ExternalSourceDisplay {
   title: string;
   link?: string;
