@@ -78,7 +78,7 @@ const Dashboard = () => {
               </TabsList>
               
               <TabsContent value="loop" className="space-y-4">
-                <LearningLoop domain={activeData} />
+                <LearningLoop />
               </TabsContent>
               
               <TabsContent value="knowledge">

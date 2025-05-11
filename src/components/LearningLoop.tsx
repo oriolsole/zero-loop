@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLoopStore } from '../store/useLoopStore';
 import { Card } from "@/components/ui/card";
 import Step from './learning-loop/Step';
@@ -8,7 +8,6 @@ import SourcesToggle from './learning-loop/SourcesToggle';
 import EmptyLoopState from './learning-loop/EmptyLoopState';
 import LoopNavigation from './learning-loop/LoopNavigation';
 import ExternalSources from './ExternalSources';
-
 import { domainEngines } from '../engines/domainEngines';
 
 const LearningLoop: React.FC = () => {

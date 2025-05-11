@@ -21,8 +21,12 @@ export interface LearningStep {
   description: string;
   status: 'success' | 'failure' | 'pending' | 'warning';
   content: string;
+  metadata?: {
+    sources?: ExternalSource[];
+    [key: string]: any;
+  };
   metrics?: {
-    [key: string]: string | number;
+    [key: string]: string | number | ExternalSource[];
   };
 }
 
@@ -156,13 +160,14 @@ export interface SupabaseSchema {
 // New interfaces for external knowledge
 
 export interface ExternalSource {
-  id: string;
   title: string;
-  url: string;
+  link: string;  // Changed from url
   snippet: string;
-  sourceName: string;
-  timestamp: number;
-  relevanceScore: number;
+  source: string;  // Changed from sourceName
+  date?: string;   // Added as optional since it's used in ExternalSources.tsx
+  id?: string;     // Made optional
+  timestamp?: number;
+  relevanceScore?: number;
 }
 
 export interface EnrichedKnowledge {

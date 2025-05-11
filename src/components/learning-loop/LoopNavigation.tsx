@@ -1,42 +1,38 @@
 
 import React from 'react';
 import { Button } from "@/components/ui/button";
+import { LearningStep } from '@/types/intelligence';
 
 interface LoopNavigationProps {
-  handlePreviousLoop: () => void;
-  handleStartLoop: () => Promise<void>;
-  isRunningLoop: boolean;
-  showNextLoop: boolean;
-  isContinuousMode: boolean;
-  totalLoops: number;
+  steps: LearningStep[];
+  currentStepIndex: number | null;
 }
 
 const LoopNavigation: React.FC<LoopNavigationProps> = ({ 
-  handlePreviousLoop, 
-  handleStartLoop, 
-  isRunningLoop, 
-  showNextLoop, 
-  isContinuousMode,
-  totalLoops 
+  steps,
+  currentStepIndex
 }) => {
+  // This component currently just displays the steps status
+  // It will be expanded with navigation functionality later
+  
   return (
-    <div className="flex gap-2">
-      <Button 
-        variant="outline" 
-        size="sm"
-        onClick={handlePreviousLoop}
-      >
-        Previous Loop
-      </Button>
-      <Button 
-        variant="default" 
-        size="sm"
-        onClick={handleStartLoop}
-        disabled={(isRunningLoop && !showNextLoop) || isContinuousMode}
-      >
-        Next Loop
-      </Button>
-      <span className="ml-auto text-sm text-muted-foreground">Loop #{totalLoops} of {totalLoops}</span>
+    <div className="mb-4 flex items-center gap-3">
+      {steps.map((step, index) => (
+        <div 
+          key={index}
+          className={`h-2 w-1/5 rounded-full ${
+            index === currentStepIndex 
+              ? 'bg-primary animate-pulse' 
+              : index < (currentStepIndex || 0)
+                ? step.status === 'success'
+                  ? 'bg-success'
+                  : step.status === 'failure'
+                    ? 'bg-destructive'
+                    : 'bg-warning'
+                : 'bg-muted'
+          }`}
+        />
+      ))}
     </div>
   );
 };

@@ -75,3 +75,4 @@ const ExternalSources: React.FC<ExternalSourcesProps> = ({
 };
 
 export default ExternalSources;
+export type { ExternalSource };

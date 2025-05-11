@@ -4,17 +4,16 @@ import { Brain, ArrowRight, CheckCircle, AlertCircle, LightbulbIcon, Globe } fro
 import { Card, CardHeader, CardContent, CardFooter, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LearningStep } from '../../types/intelligence';
-import ExternalSources, { ExternalSource } from '../ExternalSources';
+import { LearningStep, ExternalSource } from '../../types/intelligence';
+import ExternalSources from '../ExternalSources';
 
 interface StepProps {
   step: LearningStep;
-  index: number;
-  currentStepIndex: number | null;
-  showingSources: boolean;
+  isActive: boolean;
+  stepNumber: number;
 }
 
-const Step: React.FC<StepProps> = ({ step, index, currentStepIndex, showingSources }) => {
+const Step: React.FC<StepProps> = ({ step, isActive, stepNumber }) => {
   const [expanded, setExpanded] = useState<boolean>(false);
   
   const getStatusColor = (status: string) => {
@@ -44,25 +43,21 @@ const Step: React.FC<StepProps> = ({ step, index, currentStepIndex, showingSourc
   
   // Check if a step has valid external sources
   const hasExternalSources = (): boolean => {
-    return !!step.metrics?.externalSources && 
-           Array.isArray(step.metrics.externalSources) && 
-           step.metrics.externalSources.length > 0;
+    return !!step.metadata?.sources && 
+           Array.isArray(step.metadata.sources) && 
+           step.metadata.sources.length > 0;
   };
   
   // Function to get external sources from step metadata if available
   const getExternalSources = (): ExternalSource[] => {
-    if (step?.metrics?.externalSources && Array.isArray(step.metrics.externalSources)) {
-      return step.metrics.externalSources;
+    if (step?.metadata?.sources && Array.isArray(step.metadata.sources)) {
+      return step.metadata.sources;
     }
     return [];
   };
 
   return (
     <div className="mb-6 relative">
-      {index < 4 && (
-        <div className={`connector absolute left-6 top-12 w-0.5 h-12 bg-border ${currentStepIndex && currentStepIndex > index ? 'bg-primary' : ''}`} />
-      )}
-      
       <Card className={`border-l-4 ${getStatusColor(step.status)}`}>
         <CardHeader className="pb-2">
           <div className="flex justify-between items-center">
@@ -89,8 +84,7 @@ const Step: React.FC<StepProps> = ({ step, index, currentStepIndex, showingSourc
               </pre>
             </div>
             
-            {/* Display external sources if available and sources toggle is on */}
-            {showingSources && hasExternalSources() && (
+            {hasExternalSources() && (
               <ExternalSources 
                 sources={getExternalSources()}
                 title={`External Sources for ${step.title}`}
