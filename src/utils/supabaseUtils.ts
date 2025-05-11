@@ -45,6 +45,10 @@ export async function logLoopToSupabase(loop: LoopHistory): Promise<boolean> {
     console.log('Verification content length:', verification.length);
     console.log('Reflection content length:', reflection.length);
 
+    // Get the current user ID for the insertion if available
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || null;
+
     const { data, error } = await supabase
       .from('learning_loops')
       .insert({
@@ -57,7 +61,8 @@ export async function logLoopToSupabase(loop: LoopHistory): Promise<boolean> {
         success: loop.success,
         score: loop.score,
         created_at: new Date(loop.timestamp).toISOString(),
-        metadata: metadataJson
+        metadata: metadataJson,
+        user_id: userId
       })
       .select();
 
@@ -104,6 +109,10 @@ export async function saveKnowledgeNodeToSupabase(node: KnowledgeNode): Promise<
     // Ensure ID is a valid UUID (not string ID)
     const nodeId = isValidUUID(node.id) ? node.id : uuidv4();
 
+    // Get the current user ID for the insertion if available
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || null;
+
     const { error } = await supabase
       .from('knowledge_nodes')
       .insert({
@@ -115,7 +124,8 @@ export async function saveKnowledgeNodeToSupabase(node: KnowledgeNode): Promise<
         discovered_in_loop: node.discoveredInLoop,
         confidence: node.confidence || 0.7,
         created_at: new Date(node.timestamp || Date.now()).toISOString(),
-        metadata: metadataJson
+        metadata: metadataJson,
+        user_id: userId
       });
 
     if (error) {
@@ -154,6 +164,10 @@ export async function saveKnowledgeEdgeToSupabase(edge: KnowledgeEdge): Promise<
     const sourceId = isValidUUID(edge.source) ? edge.source : uuidv4();
     const targetId = isValidUUID(edge.target) ? edge.target : uuidv4();
 
+    // Get the current user ID for the insertion if available
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || null;
+
     const { error } = await supabase
       .from('knowledge_edges')
       .insert({
@@ -164,7 +178,8 @@ export async function saveKnowledgeEdgeToSupabase(edge: KnowledgeEdge): Promise<
         strength: edge.strength,
         label: edge.label || '',
         created_at: new Date().toISOString(),
-        metadata: metadataJson
+        metadata: metadataJson,
+        user_id: userId
       });
 
     if (error) {
@@ -218,8 +233,11 @@ export async function saveDomainToSupabase(domain: Domain): Promise<boolean> {
       metadataSize: JSON.stringify(metadataJson).length
     });
 
-    // Create the domain object for insertion, with the user_id set to null for now
-    // This works because we've updated the RLS policies to allow public access
+    // Get the current user ID for the insertion
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || null;
+
+    // Create the domain object for insertion
     const { error } = await supabase
       .from('domains')
       .insert({
@@ -230,7 +248,7 @@ export async function saveDomainToSupabase(domain: Domain): Promise<boolean> {
         total_loops: domain.totalLoops,
         metadata: metadataJson,
         updated_at: new Date().toISOString(),
-        user_id: null // Explicitly set to null for development without auth
+        user_id: userId
       });
 
     if (error) {
@@ -272,6 +290,10 @@ export async function updateDomainInSupabase(domain: Domain): Promise<boolean> {
       current_loop: domain.currentLoop
     }));
 
+    // Get the current user ID for the update
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || null;
+
     const { error } = await supabase
       .from('domains')
       .update({
@@ -281,7 +303,7 @@ export async function updateDomainInSupabase(domain: Domain): Promise<boolean> {
         total_loops: domain.totalLoops,
         metadata: metadataJson,
         updated_at: new Date().toISOString(),
-        user_id: null // Explicitly set to null for development without auth
+        user_id: userId
       })
       .eq('id', domain.id);
 
@@ -309,10 +331,22 @@ export async function loadDomainsFromSupabase(): Promise<Domain[]> {
       return [];
     }
 
-    const { data, error } = await supabase
-      .from('domains')
-      .select('*')
-      .order('updated_at', { ascending: false });
+    // Get the current user ID to filter domains
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id;
+
+    // If authenticated, filter by user_id, otherwise return public domains
+    let query = supabase.from('domains').select('*').order('updated_at', { ascending: false });
+    
+    // If user is authenticated, filter by their user ID
+    if (userId) {
+      query = query.eq('user_id', userId);
+    } else {
+      // For anonymous users, only return domains with null user_id (public domains)
+      query = query.is('user_id', null);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error loading domains from Supabase:', error);
@@ -366,11 +400,12 @@ export async function loadDomainsFromSupabase(): Promise<Domain[]> {
         currentLoop: currentLoop,
         knowledgeNodes: [], // These will be loaded separately
         knowledgeEdges: [], // These will be loaded separately
-        metrics: metrics
+        metrics: metrics,
+        userId: item.user_id // Add user ID to the domain object
       };
     });
     
-    console.log(`Loaded ${domains.length} domains from Supabase`);
+    console.log(`Loaded ${domains.length} domains from Supabase for user: ${userId || 'anonymous'}`);
     return domains;
   } catch (error) {
     console.error('Exception loading domains from Supabase:', error);
@@ -395,10 +430,19 @@ export async function deleteDomainFromSupabase(domainId: string): Promise<boolea
       return false;
     }
 
-    const { error } = await supabase
-      .from('domains')
-      .delete()
-      .eq('id', domainId);
+    // Get the current user ID
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // If user is authenticated, we need to make sure they only delete their own domains
+    let query = supabase.from('domains').delete();
+    if (user) {
+      query = query.eq('user_id', user.id);
+    } else {
+      // For anonymous users, only delete domains with null user_id
+      query = query.is('user_id', null);
+    }
+
+    const { error } = await query.eq('id', domainId);
 
     if (error) {
       console.error('Error deleting domain from Supabase:', error);

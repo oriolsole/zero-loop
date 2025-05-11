@@ -4,6 +4,7 @@ import { Brain, Pause, Play } from 'lucide-react';
 import { useLoopStore } from '../store/useLoopStore';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import UserMenu from './UserMenu';
 
 const Header = () => {
   const {
@@ -12,7 +13,6 @@ const Header = () => {
     isRunningLoop,
     isContinuousMode,
     toggleContinuousMode,
-    pauseLoops,
     loopHistory
   } = useLoopStore();
   
@@ -20,7 +20,8 @@ const Header = () => {
   const totalLoopsCompleted = activeDomain ? activeDomain.totalLoops : 0;
   const totalHistoryLoops = loopHistory.filter(loop => loop.domainId === activeDomainId).length;
   
-  return <header className="bg-secondary/50 backdrop-blur-sm border-b border-border py-3 px-4 flex items-center justify-between sticky top-0 z-10">
+  return (
+    <header className="bg-secondary/50 backdrop-blur-sm border-b border-border py-3 px-4 flex items-center justify-between sticky top-0 z-10">
       <div className="flex items-center gap-2">
         <Brain className="w-6 h-6 text-primary" />
         <h1 className="text-lg font-semibold">Zero loop</h1>
@@ -63,8 +64,11 @@ const Header = () => {
         <span className="text-sm text-muted-foreground">History: 
           <span className="ml-1 font-medium">{totalHistoryLoops}</span>
         </span>
+        
+        <UserMenu />
       </div>
-    </header>;
+    </header>
+  );
 };
 
 export default Header;

@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from 'lucide-react';
 import { useSupabaseLogger } from '../hooks/useSupabaseLogger';
 import { isSupabaseConfigured } from '../utils/supabase-client';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Helper function to check if browser storage is possibly low
 const isStorageMaybeRunningLow = (): boolean => {
@@ -29,6 +30,7 @@ const DomainCustomization: React.FC = () => {
   const { domainId } = useParams<{ domainId: string }>();
   const { domains, addNewDomain, updateDomain, deleteDomain } = useLoopStore();
   const { state: supabaseState, queueDomain, syncPendingItems } = useSupabaseLogger();
+  const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [storageWarning, setStorageWarning] = useState<boolean>(isStorageMaybeRunningLow());
@@ -42,6 +44,11 @@ const DomainCustomization: React.FC = () => {
       setIsSaving(true);
       setSaveError(null);
       console.log("Saving domain:", updatedDomain);
+      
+      // Associate the domain with the current user if authenticated
+      if (user) {
+        updatedDomain.userId = user.id;
+      }
       
       // If we detect storage might be low and remote logging is not enabled,
       // show a warning and encourage remote syncing
