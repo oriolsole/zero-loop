@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, XCircle, Clock, Brain } from 'lucide-react';
 import { useLoopStore } from '../store/useLoopStore';
-import { LoopHistory as LoopHistoryType } from '../types/intelligence';
+import { LoopHistory as LoopHistoryType, ExternalSource } from '../types/intelligence';
 import { formatDistanceToNow } from 'date-fns';
 
 const LoopHistory = () => {

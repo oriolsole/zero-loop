@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +9,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Brain, ThumbsUp, ThumbsDown, Star } from 'lucide-react';
 import { useLoopStore } from '../store/useLoopStore';
 import { formatDistanceToNow } from 'date-fns';
+import { ExternalSource } from '@/types/intelligence';
+
+// Define interface for ExternalSource if it doesn't exist elsewhere
+interface ExternalSourceDisplay {
+  title: string;
+  link?: string;
+  url?: string;
+  snippet: string;
+  source?: string;
+  sourceName?: string;
+  date?: string;
+}
 
 const InsightTimeline: React.FC = () => {
   const { loopHistory, activeDomainId, setSelectedInsight } = useLoopStore();
@@ -57,7 +70,7 @@ const InsightTimeline: React.FC = () => {
   }
   
   // Helper function to safely render metric values
-  const renderMetricValue = (value: string | number | ExternalSource[] | undefined) => {
+  const renderMetricValue = (value: string | number | ExternalSource[] | undefined): string => {
     if (value === undefined) return "-";
     if (typeof value === "string" || typeof value === "number") return value.toString();
     if (Array.isArray(value)) return `${value.length} sources`;
