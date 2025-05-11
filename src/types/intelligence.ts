@@ -1,4 +1,3 @@
-
 export interface Domain {
   id: string;
   name: string;
@@ -73,6 +72,32 @@ export interface DomainEngine {
   verifySolution: (task: string, solution: string) => Promise<string>;
   reflect: (task: string, solution: string, verification: string) => Promise<string>;
   mutateTask: (task: string, previousSteps: string[]) => Promise<string>;
+  
+  // New methods for external knowledge integration
+  enrichTask?: (task: string) => Promise<{
+    enrichedTask: string;
+    sources: Array<{title: string; link: string; snippet: string; source: string;}>;
+  }>;
+  
+  validateWithExternalKnowledge?: (
+    task: string, 
+    solution: string
+  ) => Promise<{
+    isValid: boolean;
+    explanation: string;
+    confidence: number;
+    sources: Array<{title: string; link: string; snippet: string; source: string;}>;
+  }>;
+  
+  generateInsightsFromExternalKnowledge?: (
+    task: string,
+    solution: string,
+    verification: string
+  ) => Promise<Array<{
+    insight: string;
+    confidence: number;
+    sources: Array<{title: string; link: string; snippet: string; source: string;}>;
+  }>>;
 }
 
 export interface LoopHistory {
@@ -126,4 +151,39 @@ export interface SupabaseSchema {
     created_at: string;
     user_id?: string;
   };
+}
+
+// New interfaces for external knowledge
+
+export interface ExternalSource {
+  id: string;
+  title: string;
+  url: string;
+  snippet: string;
+  sourceName: string;
+  timestamp: number;
+  relevanceScore: number;
+}
+
+export interface EnrichedKnowledge {
+  originalText: string;
+  enrichedText: string;
+  sources: ExternalSource[];
+  timestamp: number;
+  confidence: number;
+}
+
+export interface SelfRewardMetrics {
+  novelty: number;        // 0-1 score for how new this insight is compared to existing knowledge
+  utility: number;        // 0-1 score for how useful this insight is for future tasks
+  accuracy: number;       // 0-1 score for factual correctness
+  consistency: number;    // 0-1 score for alignment with existing knowledge
+  generalizable: number;  // 0-1 score for how widely applicable the insight is
+  
+  // Overall "reward signal" - weighted combination of the above metrics
+  rewardSignal: number;   // 0-1 final score representing the value of this insight
+  
+  // Metadata about how this reward was computed
+  computationMethod: 'self-evaluation' | 'external-validation' | 'hybrid';
+  evaluationTimestamp: number;
 }

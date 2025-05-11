@@ -4,11 +4,13 @@
 import { DomainEngine } from '../types/intelligence';
 import { logicalReasoningEngine } from './logicalReasoning';
 import { regexPatternsEngine } from './regexPatterns';
+import { webKnowledgeEngine } from './webKnowledgeEngine';
 
 // Registry of all available domain engines
 export const domainEngines: Record<string, DomainEngine> = {
   'logic': logicalReasoningEngine,
   'programming': regexPatternsEngine,
+  'web-knowledge': webKnowledgeEngine, // Add the new web knowledge engine
   'math': {
     generateTask: async () => 'Solve for x: 2x + 5 = 13',
     solveTask: async () => 'x = 4',
@@ -31,3 +33,4 @@ export const domainEngines: Record<string, DomainEngine> = {
     mutateTask: async () => 'Develop a customer retention strategy for a subscription-based SaaS product.'
   }
 };
+

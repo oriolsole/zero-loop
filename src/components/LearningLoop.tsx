@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ArrowRight, Brain, CheckCircle, AlertCircle, LightbulbIcon, Play, Pause } from 'lucide-react';
+import { ArrowRight, Brain, CheckCircle, AlertCircle, LightbulbIcon, Play, Pause, Globe } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +9,11 @@ import { Slider } from "@/components/ui/slider";
 import { LearningStep } from '../types/intelligence';
 import { useLoopStore } from '../store/useLoopStore';
 import { toast } from '@/components/ui/sonner';
+import ExternalSources from './ExternalSources';
 
 const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [showingSources, setShowingSources] = useState<boolean>(false);
   
   const { 
     isRunningLoop, 
@@ -27,6 +29,14 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
   } = useLoopStore();
   
   const steps: LearningStep[] = domain.currentLoop;
+  
+  // Function to extract external sources from step metadata if available
+  const getExternalSources = (step: LearningStep) => {
+    if (step?.metrics?.externalSources) {
+      return step.metrics.externalSources;
+    }
+    return null;
+  };
   
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -89,6 +99,10 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
   // Determine if we should show the "Next Loop" button
   const showNextLoop = !isRunningLoop || 
     (steps.length === 5 && steps[4]?.status !== 'pending');
+  
+  const toggleSources = () => {
+    setShowingSources(!showingSources);
+  };
 
   return (
     <div className="space-y-6">
@@ -166,6 +180,25 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
         </Card>
       )}
       
+      {/* External Knowledge toggle */}
+      {domain.id === 'web-knowledge' && (
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={toggleSources}
+            className="flex items-center gap-1"
+          >
+            <Globe className="h-4 w-4" />
+            {showingSources ? 'Hide External Sources' : 'Show External Sources'}
+          </Button>
+          
+          <span className="text-sm text-muted-foreground">
+            Using external knowledge for enhanced learning
+          </span>
+        </div>
+      )}
+      
       <div className="relative">
         {steps.map((step, index) => (
           <div key={index} className="mb-6 relative">
@@ -199,14 +232,25 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
                     </pre>
                   </div>
                   
+                  {/* Display external sources if available and sources toggle is on */}
+                  {showingSources && step.metrics?.externalSources && (
+                    <ExternalSources 
+                      sources={step.metrics.externalSources}
+                      title={`External Sources for ${step.title}`}
+                      description="Information used to support this step"
+                    />
+                  )}
+                  
                   {step.metrics && Object.keys(step.metrics).length > 0 && (
                     <div className="mt-4 grid grid-cols-2 gap-4">
-                      {Object.entries(step.metrics).map(([key, value]) => (
-                        <div key={key} className="bg-secondary/30 p-2 rounded">
-                          <div className="text-xs text-muted-foreground">{key}</div>
-                          <div className="font-medium">{value.toString()}</div>
-                        </div>
-                      ))}
+                      {Object.entries(step.metrics)
+                        .filter(([key]) => key !== 'externalSources') // Skip showing external sources here
+                        .map(([key, value]) => (
+                          <div key={key} className="bg-secondary/30 p-2 rounded">
+                            <div className="text-xs text-muted-foreground">{key}</div>
+                            <div className="font-medium">{value.toString()}</div>
+                          </div>
+                        ))}
                     </div>
                   )}
                 </CardContent>
@@ -220,6 +264,14 @@ const LearningLoop: React.FC<{ domain: any }> = ({ domain }) => {
                 >
                   {expanded === index ? 'Hide Details' : 'Show Details'}
                 </Button>
+                
+                {/* Show "Has External Sources" badge if sources are available */}
+                {step.metrics?.externalSources && step.metrics.externalSources.length > 0 && (
+                  <Badge variant="outline" className="ml-2 flex items-center gap-1">
+                    <Globe className="w-3 h-3" />
+                    {step.metrics.externalSources.length} {step.metrics.externalSources.length === 1 ? 'Source' : 'Sources'}
+                  </Badge>
+                )}
               </CardFooter>
             </Card>
           </div>
