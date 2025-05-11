@@ -1,71 +1,56 @@
 
 import React from 'react';
-import { Brain, Pause, Play } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useLoopStore } from '../store/useLoopStore';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Brain, PlusCircle, User } from 'lucide-react';
 import UserMenu from './UserMenu';
 
-const Header = () => {
-  const {
-    domains,
-    activeDomainId,
-    isRunningLoop,
-    isContinuousMode,
-    toggleContinuousMode,
-    loopHistory
-  } = useLoopStore();
+const Header: React.FC = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { domains } = useLoopStore();
   
-  const activeDomain = domains.find(domain => domain.id === activeDomainId) || domains[0];
-  const totalLoopsCompleted = activeDomain ? activeDomain.totalLoops : 0;
-  const totalHistoryLoops = loopHistory.filter(loop => loop.domainId === activeDomainId).length;
+  const handleAddDomain = () => {
+    navigate('/domain/new');
+  };
   
   return (
-    <header className="bg-secondary/50 backdrop-blur-sm border-b border-border py-3 px-4 flex items-center justify-between sticky top-0 z-10">
-      <div className="flex items-center gap-2">
-        <Brain className="w-6 h-6 text-primary" />
-        <h1 className="text-lg font-semibold">Zero loop</h1>
-      </div>
-      <div className="flex items-center gap-4">
-        <Button 
-          variant="ghost"
-          size="sm"
-          className="flex items-center gap-1"
-          onClick={toggleContinuousMode}
-        >
-          {isContinuousMode ? (
-            <>
-              <Pause className="w-4 h-4" />
-              <span className="text-sm">Pause</span>
-            </>
+    <header className="sticky top-0 z-10 bg-background shadow">
+      <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2">
+            <Brain className="h-6 w-6 text-primary" />
+            <h1 className="text-xl font-bold">ZeroLoop</h1>
+          </Link>
+          <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+            {domains.length} Domain{domains.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleAddDomain}
+            className="hidden sm:flex items-center gap-1"
+          >
+            <PlusCircle className="h-4 w-4" />
+            New Domain
+          </Button>
+          
+          {user ? (
+            <UserMenu />
           ) : (
-            <>
-              <Play className="w-4 h-4" />
-              <span className="text-sm">Auto Run</span>
-            </>
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/auth">
+                <User className="h-4 w-4 mr-2" />
+                Sign In
+              </Link>
+            </Button>
           )}
-        </Button>
-        
-        <span className="text-sm text-muted-foreground">Learning Status: 
-          <Badge variant={isContinuousMode ? "outline" : "secondary"} className={`ml-1 ${isRunningLoop ? 'animate-pulse' : ''}`}>
-            {isContinuousMode 
-              ? "Continuous" 
-              : isRunningLoop 
-                ? 'Active' 
-                : 'Idle'}
-          </Badge>
-        </span>
-        <span className="text-sm text-muted-foreground">Domain: 
-          <span className="ml-1 font-medium">{activeDomain?.name || 'None'}</span>
-        </span>
-        <span className="text-sm text-muted-foreground">Loops: 
-          <span className="ml-1 font-medium">{totalLoopsCompleted}</span>
-        </span>
-        <span className="text-sm text-muted-foreground">History: 
-          <span className="ml-1 font-medium">{totalHistoryLoops}</span>
-        </span>
-        
-        <UserMenu />
+        </div>
       </div>
     </header>
   );
