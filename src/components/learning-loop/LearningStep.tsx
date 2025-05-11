@@ -1,9 +1,12 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { LearningStep as LearningStepType } from '@/types/intelligence';
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Loader2, CheckCircle, AlertTriangle, XCircle, Globe, Database } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import ExternalSources from '@/components/ExternalSources';
 
 interface LearningStepProps {
   step: LearningStepType;
@@ -11,6 +14,20 @@ interface LearningStepProps {
 }
 
 const LearningStep: React.FC<LearningStepProps> = ({ step, index }) => {
+  const [showSources, setShowSources] = useState(false);
+  
+  // Check if step has external sources in its metadata
+  const hasSources = step.metadata?.sources && step.metadata.sources.length > 0;
+  const sourceCount = hasSources ? step.metadata?.sources?.length : 0;
+  
+  // Determine source type (web, knowledge base, or both)
+  const hasWebSources = hasSources && step.metadata?.sources?.some(
+    source => source.source.includes('Google')
+  );
+  const hasKbSources = hasSources && step.metadata?.sources?.some(
+    source => source.source.includes('Knowledge Base') || source.source === 'Internal Knowledge Base'
+  );
+  
   // Status indicator with appropriate icon and color
   const renderStatusIndicator = () => {
     switch (step.status) {
@@ -71,11 +88,68 @@ const LearningStep: React.FC<LearningStepProps> = ({ step, index }) => {
         )}
       </div>
       
-      {step.metadata?.sources && step.metadata.sources.length > 0 && (
+      {hasSources && (
         <div className="mt-3 border-t border-border pt-2">
-          <p className="text-xs text-muted-foreground">
-            This step references {step.metadata.sources.length} external source{step.metadata.sources.length > 1 ? 's' : ''}.
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              This step used {sourceCount} external source{sourceCount > 1 ? 's' : ''}.
+              {hasWebSources && hasKbSources && " (Web and Knowledge Base)"}
+              {hasWebSources && !hasKbSources && " (Web only)"}
+              {!hasWebSources && hasKbSources && " (Knowledge Base only)"}
+            </p>
+            
+            <div className="flex gap-2">
+              {hasKbSources && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-blue-500">
+                        <Database className="h-4 w-4" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">Used internal knowledge base sources</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              
+              {hasWebSources && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-green-500">
+                        <Globe className="h-4 w-4" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">Used web knowledge sources</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-6 text-xs"
+                onClick={() => setShowSources(!showSources)}
+              >
+                {showSources ? 'Hide Sources' : 'Show Sources'}
+              </Button>
+            </div>
+          </div>
+          
+          {showSources && (
+            <div className="mt-3">
+              <ExternalSources 
+                sources={step.metadata?.sources || []}
+                title="Knowledge Sources"
+                description="Sources used to enhance this reasoning step"
+                maxHeight="200px"
+              />
+            </div>
+          )}
         </div>
       )}
     </Card>

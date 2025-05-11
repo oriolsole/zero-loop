@@ -3,19 +3,35 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ExternalSource } from '@/types/intelligence';
 import { toast } from '@/components/ui/sonner';
+import { useKnowledgeBase } from './useKnowledgeBase';
+
+interface SearchOptions {
+  useWeb?: boolean;
+  useKnowledgeBase?: boolean;
+  limit?: number;
+}
 
 interface SearchResponse {
   results: ExternalSource[];
   error?: string;
 }
 
+const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
+  useWeb: true,
+  useKnowledgeBase: true,
+  limit: 5
+};
+
 /**
- * Hook for accessing external knowledge via Google Search
+ * Hook for accessing external knowledge via Google Search and internal knowledge base
  */
 export function useExternalKnowledge() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [recentSources, setRecentSources] = useState<ExternalSource[]>([]);
+  
+  // Get knowledge base methods
+  const { queryKnowledgeBase } = useKnowledgeBase();
   
   /**
    * Search the web for information related to a query
@@ -58,17 +74,82 @@ export function useExternalKnowledge() {
       setIsSearching(false);
     }
   };
+
+  /**
+   * Search for information across knowledge sources (web and/or knowledge base)
+   */
+  const searchKnowledge = async (
+    query: string, 
+    options: SearchOptions = DEFAULT_SEARCH_OPTIONS
+  ): Promise<ExternalSource[]> => {
+    setIsSearching(true);
+    setSearchError(null);
+    
+    try {
+      const sources: ExternalSource[] = [];
+      
+      // Search knowledge base if enabled
+      if (options.useKnowledgeBase !== false) {
+        try {
+          const kbResults = await queryKnowledgeBase({
+            query,
+            limit: options.limit || 5
+          });
+          
+          if (kbResults.length > 0) {
+            sources.push(...kbResults.map(result => ({
+              ...result,
+              source: `Knowledge Base: ${result.source}`
+            })));
+          }
+        } catch (error) {
+          console.warn('Knowledge base search failed:', error);
+          // Continue with web search even if KB search fails
+        }
+      }
+      
+      // Search web if enabled and if we need more results
+      if (options.useWeb !== false && 
+          (sources.length < (options.limit || 5) || !options.useKnowledgeBase)) {
+        try {
+          const remainingLimit = options.limit 
+            ? Math.max(1, options.limit - sources.length)
+            : 5;
+            
+          const webResults = await searchWeb(query, remainingLimit);
+          
+          if (webResults.length > 0) {
+            sources.push(...webResults);
+          }
+        } catch (error) {
+          console.warn('Web search failed:', error);
+          // Continue with what we have from knowledge base
+        }
+      }
+      
+      setRecentSources(sources);
+      return sources;
+    } catch (error) {
+      console.error('Error searching knowledge sources:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setSearchError(errorMessage);
+      toast.error('Failed to search knowledge');
+      return [];
+    } finally {
+      setIsSearching(false);
+    }
+  };
   
   /**
-   * Enrich a text with information from web search
+   * Enrich a text with information from knowledge sources
    */
   const enrichWithKnowledge = async (
     text: string, 
-    maxResults: number = 3
+    options: SearchOptions = DEFAULT_SEARCH_OPTIONS
   ): Promise<{enrichedText: string, sources: ExternalSource[]}> => {
     try {
       // Search for relevant information
-      const results = await searchWeb(text, maxResults);
+      const results = await searchKnowledge(text, options);
       
       if (results.length === 0) {
         return { enrichedText: text, sources: [] };
@@ -94,15 +175,15 @@ export function useExternalKnowledge() {
   };
   
   /**
-   * Verify a claim or fact using web search
+   * Verify a claim or fact using knowledge sources
    */
   const verifyWithKnowledge = async (
     claim: string,
-    maxResults: number = 3
+    options: SearchOptions = DEFAULT_SEARCH_OPTIONS
   ): Promise<{isVerified: boolean, confidence: number, sources: ExternalSource[]}> => {
     try {
       // Search with "fact check" prefix to get verification information
-      const results = await searchWeb(`fact check: ${claim}`, maxResults);
+      const results = await searchKnowledge(`fact check: ${claim}`, options);
       
       if (results.length === 0) {
         return { isVerified: false, confidence: 0, sources: [] };
@@ -142,6 +223,7 @@ export function useExternalKnowledge() {
   
   return {
     searchWeb,
+    searchKnowledge,
     enrichWithKnowledge,
     verifyWithKnowledge,
     isSearching,
@@ -150,4 +232,4 @@ export function useExternalKnowledge() {
   };
 }
 
-export type { ExternalSource };
+export type { ExternalSource, SearchOptions };

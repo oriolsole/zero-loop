@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useLoopStore } from '../store/useLoopStore';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from "@/components/ui/button";
-import { Brain, PlusCircle, User } from 'lucide-react';
+import { Brain, PlusCircle, User, Database } from 'lucide-react';
 import UserMenu from './UserMenu';
 
 const Header: React.FC = () => {
@@ -30,6 +30,18 @@ const Header: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-4">
+          {user && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate('/knowledge')}
+              className="hidden sm:flex items-center gap-1"
+            >
+              <Database className="h-4 w-4" />
+              Knowledge
+            </Button>
+          )}
+          
           <Button 
             variant="outline" 
             size="sm"

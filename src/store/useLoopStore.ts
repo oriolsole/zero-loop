@@ -182,10 +182,15 @@ export const useLoopStore = create<LoopState>()(
           const engine = domainEngines[activeDomainId] || domainEngines[Object.keys(domainEngines)[0]];
           const taskContent = await engine.generateTask();
           
+          // Handle both string and complex object responses
+          const content = typeof taskContent === 'object' ? taskContent.content : taskContent;
+          const metadata = typeof taskContent === 'object' ? taskContent.metadata : undefined;
+          
           const updatedStep: LearningStep = {
             ...initialStep,
             status: 'success',
-            content: taskContent,
+            content,
+            metadata,
             title: 'Task',
             description: 'A new problem to solve'
           };
@@ -306,26 +311,48 @@ export const useLoopStore = create<LoopState>()(
               metrics = { timeMs: Math.floor(Math.random() * 1000) + 200 };
               break;
             case 'verification':
+              const solutionData = currentLoop[1];
+              const solutionContent = typeof solutionData === 'object' 
+                ? solutionData.content 
+                : solutionData;
+              
               result = await engine.verifySolution(
                 currentLoop[0].content, 
-                currentLoop[1].content
+                solutionContent
               );
+              
+              // Default metrics if not provided in the result
+              const isSuccessful = typeof result === 'object'
+                ? !result.content.toLowerCase().includes('incorrect')
+                : !result.toLowerCase().includes('incorrect');
+                
               metrics = { 
-                correct: result.includes('Correct'),
+                correct: isSuccessful,
                 timeMs: Math.floor(Math.random() * 300) + 50 
               };
               break;
             case 'reflection':
+              const verificationData = currentLoop[2];
+              const verificationContent = typeof verificationData === 'object'
+                ? verificationData.content
+                : verificationData;
+                
               result = await engine.reflect(
                 currentLoop[0].content,
-                currentLoop[1].content,
-                currentLoop[2].content
+                currentLoop[1].content || currentLoop[1],
+                verificationContent
               );
-              metrics = { insightCount: result.split('.').length - 1 };
+              
+              metrics = { insightCount: typeof result === 'string' 
+                ? result.split('.').length - 1 
+                : result.content.split('.').length - 1 
+              };
               
               // Check for knowledge insights in reflection
-              if (nextStep.type === 'reflection' && !result.toLowerCase().includes('error')) {
-                const insights = extractInsightsFromReflection(result);
+              const reflectionText = typeof result === 'object' ? result.content : result;
+              
+              if (nextStep.type === 'reflection' && !reflectionText.toLowerCase().includes('error')) {
+                const insights = extractInsightsFromReflection(reflectionText);
                 if (insights.length > 0) {
                   const newDomains = [...get().domains];
                   const domain = { ...newDomains[activeDomainIndex] };
@@ -344,7 +371,7 @@ export const useLoopStore = create<LoopState>()(
             case 'mutation':
               result = await engine.mutateTask(
                 currentLoop[0].content,
-                currentLoop.slice(1, 4).map(s => s.content)
+                currentLoop.slice(1, 4).map(s => typeof s === 'object' ? s.content : s)
               );
               metrics = { complexity: Math.floor(Math.random() * 10) + 1 };
               break;
@@ -352,15 +379,19 @@ export const useLoopStore = create<LoopState>()(
               result = "Unexpected step type";
           }
           
-          // Update step with result
-          const status = result.toLowerCase().includes('error') || 
-                         (nextStep.type === 'verification' && result.includes('Incorrect')) 
-                         ? 'failure' : 'success';
+          // Update step with result, handling both string and object responses
+          const content = typeof result === 'object' ? result.content : result;
+          const metadata = typeof result === 'object' ? result.metadata : undefined;
+          
+          const status = content.toLowerCase().includes('error') || 
+                       (nextStep.type === 'verification' && content.includes('Incorrect')) 
+                       ? 'failure' : 'success';
           
           const updatedStep: LearningStep = {
             ...nextStep,
             status,
-            content: result,
+            content,
+            metadata,
             metrics
           };
           
