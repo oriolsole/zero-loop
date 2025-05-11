@@ -23,7 +23,7 @@ const LoopHistory = () => {
     setSelectedLoop(loopId);
   };
   
-  // Helper function to safely render potentially complex metric values
+  // Helper function to safely render potentially complex metric values - explicitly returns a string
   const formatMetricValue = (value: string | number | any[] | unknown): string => {
     if (value === undefined || value === null) return '-';
     if (typeof value === 'string' || typeof value === 'number') return value.toString();
