@@ -28,15 +28,31 @@ export const createSyncActions = (
         limit: 3
       });
       
+      // If the sources include files, include that in the context
+      const fileContexts = verificationResult.sources
+        .filter(source => source.fileType || source.fileUrl)
+        .map(source => {
+          if (source.fileType?.includes('image')) {
+            return `[Image file available at ${source.fileUrl}]`;
+          } else if (source.fileType?.includes('pdf')) {
+            return `[PDF file available at ${source.fileUrl}]`;
+          } else {
+            return `[File: ${source.fileType || 'unknown'} at ${source.fileUrl}]`;
+          }
+        });
+        
+      const fileContext = fileContexts.length > 0 
+        ? `Referenced files: ${fileContexts.join(', ')}.\n`
+        : '';
+      
       // Call the AI for verification with the sources as context
-      // Fix: Use the imported supabase client to avoid the error
       const { data, error } = await supabase.functions.invoke('ai-reasoning', {
         body: { 
           operation: 'verifySolution',
           task,
           solution,
           domain: 'Web Knowledge',
-          domainContext: `Evaluate the factual accuracy and completeness of this research answer. Confidence score: ${verificationResult.confidence}.`
+          domainContext: `Evaluate the factual accuracy and completeness of this research answer. ${fileContext}Confidence score: ${verificationResult.confidence}.`
         }
       });
 

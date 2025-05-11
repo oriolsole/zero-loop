@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.upload-knowledge]
 verify_jwt = false
+
+[functions.ai-reasoning]
+verify_jwt = false

@@ -83,14 +83,31 @@ serve(async (req) => {
     }
 
     // Format results for consistency with external sources format
-    const formattedResults = results.map(chunk => ({
-      title: chunk.title || 'Knowledge Document',
-      link: chunk.source_url || '',
-      snippet: chunk.content,
-      source: 'Internal Knowledge Base',
-      date: new Date(chunk.created_at).toISOString().split('T')[0],
-      relevanceScore: chunk.similarity || 1.0
-    }));
+    const formattedResults = results.map(chunk => {
+      // Get file URL if it exists
+      let fileUrl = '';
+      if (chunk.file_path) {
+        const { data } = supabase.storage
+          .from('knowledge_files')
+          .getPublicUrl(chunk.file_path);
+        fileUrl = data.publicUrl;
+      }
+      
+      return {
+        title: chunk.title || 'Knowledge Document',
+        link: chunk.source_url || fileUrl || '',
+        snippet: chunk.content,
+        source: chunk.original_file_type 
+          ? `File: ${chunk.original_file_type.toUpperCase()}`
+          : 'Internal Knowledge Base',
+        date: new Date(chunk.created_at).toISOString().split('T')[0],
+        relevanceScore: chunk.similarity || 1.0,
+        fileType: chunk.original_file_type || null,
+        filePath: chunk.file_path || null,
+        fileUrl: fileUrl || null,
+        metadata: chunk.metadata || {}
+      };
+    });
 
     return new Response(
       JSON.stringify({ results: formattedResults }),

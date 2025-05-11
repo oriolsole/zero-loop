@@ -22,6 +22,22 @@ export const createKnowledgeActions = (
     const updatedDomains = [...domains];
     const domain = { ...updatedDomains[activeDomainIndex] };
     
+    // Add file type as metadata to nodes that represent files
+    domain.knowledgeNodes = domain.knowledgeNodes.map(node => {
+      if (node.metadata?.fileType) {
+        return {
+          ...node,
+          metadata: {
+            ...node.metadata,
+            isFile: true,
+            fileType: node.metadata.fileType,
+            fileUrl: node.metadata.fileUrl || node.metadata.public_url
+          }
+        };
+      }
+      return node;
+    });
+    
     // Recalculate node positions
     domain.knowledgeNodes = calculateGraphLayout(
       domain.knowledgeNodes, 

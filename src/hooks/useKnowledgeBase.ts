@@ -6,7 +6,8 @@ import { ExternalSource } from '@/types/intelligence';
 
 interface KnowledgeUploadOptions {
   title: string;
-  content: string;
+  content?: string;
+  file?: File;
   metadata?: Record<string, any>;
   domainId?: string;
   sourceUrl?: string;
@@ -20,6 +21,12 @@ interface KnowledgeQueryOptions {
   useEmbeddings?: boolean;
 }
 
+export type FileUploadProgress = {
+  status: 'pending' | 'processing' | 'embedding' | 'saving' | 'complete' | 'error';
+  progress: number;
+  message?: string;
+};
+
 /**
  * Hook for accessing and managing the knowledge base
  */
@@ -29,6 +36,7 @@ export function useKnowledgeBase() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [recentResults, setRecentResults] = useState<ExternalSource[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<FileUploadProgress | null>(null);
   
   /**
    * Upload knowledge to the knowledge base
@@ -36,35 +44,114 @@ export function useKnowledgeBase() {
   const uploadKnowledge = async (options: KnowledgeUploadOptions): Promise<boolean> => {
     setIsUploading(true);
     setUploadError(null);
+    setUploadProgress(null);
     
     try {
-      const { data, error } = await supabase.functions.invoke('upload-knowledge', {
-        body: {
-          title: options.title,
-          content: options.content,
-          metadata: options.metadata || {},
-          domain_id: options.domainId,
-          source_url: options.sourceUrl,
-          chunk_size: options.chunkSize || 1000,
-          overlap: options.overlap || 100
+      // Handle file upload
+      if (options.file) {
+        const file = options.file;
+        
+        // Check file size
+        if (file.size > 10 * 1024 * 1024) { // 10MB limit
+          setUploadError('File size exceeds the 10MB limit');
+          toast.error('File size exceeds the 10MB limit');
+          return false;
         }
-      });
-      
-      if (error) {
-        console.error('Error uploading knowledge:', error);
-        setUploadError(error.message || 'Failed to upload knowledge');
-        toast.error('Failed to upload knowledge');
+        
+        setUploadProgress({
+          status: 'processing',
+          progress: 10,
+          message: 'Reading file...'
+        });
+        
+        // Read file as base64
+        const reader = new FileReader();
+        const fileBase64 = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        
+        setUploadProgress({
+          status: 'processing',
+          progress: 30,
+          message: 'Extracting content...'
+        });
+        
+        // Upload file and get it processed
+        const { data, error } = await supabase.functions.invoke('upload-knowledge', {
+          body: {
+            contentType: 'file',
+            title: options.title,
+            fileBase64,
+            fileType: file.type,
+            fileName: file.name,
+            fileSize: file.size,
+            metadata: options.metadata || {},
+            domain_id: options.domainId,
+            source_url: options.sourceUrl,
+            chunk_size: options.chunkSize || 1000,
+            overlap: options.overlap || 100
+          }
+        });
+        
+        if (error) {
+          console.error('Error uploading file:', error);
+          setUploadError(error.message || 'Failed to upload file');
+          toast.error('Failed to upload file');
+          return false;
+        }
+        
+        if (!data.success) {
+          setUploadError(data.error || 'Failed to process file');
+          toast.error(data.error || 'Failed to process file');
+          return false;
+        }
+        
+        toast.success('File uploaded and processed successfully');
+        return true;
+      }
+      // Handle text content upload
+      else if (options.content) {
+        setUploadProgress({
+          status: 'processing',
+          progress: 30,
+          message: 'Processing text content...'
+        });
+        
+        const { data, error } = await supabase.functions.invoke('upload-knowledge', {
+          body: {
+            contentType: 'text',
+            title: options.title,
+            content: options.content,
+            metadata: options.metadata || {},
+            domain_id: options.domainId,
+            source_url: options.sourceUrl,
+            chunk_size: options.chunkSize || 1000,
+            overlap: options.overlap || 100
+          }
+        });
+        
+        if (error) {
+          console.error('Error uploading knowledge:', error);
+          setUploadError(error.message || 'Failed to upload knowledge');
+          toast.error('Failed to upload knowledge');
+          return false;
+        }
+        
+        if (!data.success) {
+          setUploadError(data.error || 'Failed to upload knowledge');
+          toast.error(data.error || 'Failed to upload knowledge');
+          return false;
+        }
+        
+        toast.success('Knowledge uploaded successfully');
+        return true;
+      } else {
+        setUploadError('Either content or file must be provided');
+        toast.error('Either content or file must be provided');
         return false;
       }
-      
-      if (!data.success) {
-        setUploadError(data.error || 'Failed to upload knowledge');
-        toast.error(data.error || 'Failed to upload knowledge');
-        return false;
-      }
-      
-      toast.success('Knowledge uploaded successfully');
-      return true;
     } catch (error) {
       console.error('Exception when uploading knowledge:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -73,6 +160,7 @@ export function useKnowledgeBase() {
       return false;
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
     }
   };
   
@@ -216,7 +304,8 @@ export function useKnowledgeBase() {
     isQuerying,
     uploadError,
     queryError,
-    recentResults
+    recentResults,
+    uploadProgress
   };
 }
 

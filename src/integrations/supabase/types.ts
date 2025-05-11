@@ -51,9 +51,14 @@ export type Database = {
           created_at: string | null
           domain_id: string | null
           embedding: string | null
+          file_path: string | null
+          file_size: number | null
           id: string
           metadata: Json | null
+          ocr_processed: boolean | null
+          original_file_type: string | null
           source_url: string | null
+          thumbnail_path: string | null
           title: string
           updated_at: string | null
           user_id: string | null
@@ -63,9 +68,14 @@ export type Database = {
           created_at?: string | null
           domain_id?: string | null
           embedding?: string | null
+          file_path?: string | null
+          file_size?: number | null
           id?: string
           metadata?: Json | null
+          ocr_processed?: boolean | null
+          original_file_type?: string | null
           source_url?: string | null
+          thumbnail_path?: string | null
           title: string
           updated_at?: string | null
           user_id?: string | null
@@ -75,9 +85,14 @@ export type Database = {
           created_at?: string | null
           domain_id?: string | null
           embedding?: string | null
+          file_path?: string | null
+          file_size?: number | null
           id?: string
           metadata?: Json | null
+          ocr_processed?: boolean | null
+          original_file_type?: string | null
           source_url?: string | null
+          thumbnail_path?: string | null
           title?: string
           updated_at?: string | null
           user_id?: string | null
