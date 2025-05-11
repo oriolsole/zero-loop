@@ -183,7 +183,8 @@ export const useLoopStore = create<LoopState>()(
           const taskContent = await engine.generateTask();
           
           // Handle both string and complex object responses
-          const content = typeof taskContent === 'string' ? taskContent : '';
+          // Fix for error TS18047: 'taskContent' is possibly 'null'
+          const content = typeof taskContent === 'string' ? taskContent : (taskContent?.content || '');
           const metadata = typeof taskContent === 'object' && taskContent !== null ? taskContent.metadata : undefined;
           
           const updatedStep: LearningStep = {
@@ -312,6 +313,7 @@ export const useLoopStore = create<LoopState>()(
               break;
             case 'verification': {
               const solutionStep = currentLoop[1];
+              // Fix for error TS2345: Convert to string properly
               const solutionContent = typeof solutionStep === 'object' && solutionStep !== null 
                 ? solutionStep.content 
                 : String(solutionStep); // Convert to string to be safe
@@ -334,13 +336,14 @@ export const useLoopStore = create<LoopState>()(
             }
             case 'reflection':
               const verificationData = currentLoop[2];
-              const verificationContent = typeof verificationData === 'object'
+              // Fix similar string conversion issue
+              const verificationContent = typeof verificationData === 'object' && verificationData !== null
                 ? verificationData.content
-                : verificationData;
+                : String(verificationData);
                 
               result = await engine.reflect(
                 currentLoop[0].content,
-                currentLoop[1].content || currentLoop[1],
+                currentLoop[1].content || String(currentLoop[1]),
                 verificationContent
               );
               
@@ -372,7 +375,7 @@ export const useLoopStore = create<LoopState>()(
             case 'mutation':
               result = await engine.mutateTask(
                 currentLoop[0].content,
-                currentLoop.slice(1, 4).map(s => typeof s === 'object' ? s.content : s)
+                currentLoop.slice(1, 4).map(s => typeof s === 'object' && s !== null ? s.content : String(s))
               );
               metrics = { complexity: Math.floor(Math.random() * 10) + 1 };
               break;
@@ -817,6 +820,40 @@ export const useLoopStore = create<LoopState>()(
         }
         
         toast.success('Domain deleted!');
+      },
+      
+      verifySolution: async (task: string, solution: string) => {
+        try {
+          // Initialize the useExternalKnowledge hook functions
+          const knowledgeModule = await import('../hooks/useExternalKnowledge');
+          const { verifyWithKnowledge } = knowledgeModule.useExternalKnowledge();
+          
+          // Use the knowledge base and web to verify the solution
+          const verificationResult = await verifyWithKnowledge(solution, { 
+            useWeb: true, 
+            useKnowledgeBase: true,
+            limit: 3
+          });
+          
+          // Call the AI for verification with the sources as context
+          const { data, error } = await supabase.functions.invoke('ai-reasoning', {
+            body: { 
+              operation: 'verifySolution',
+              task,
+              solution,
+              domain: 'Web Knowledge',
+              domainContext: `Evaluate the factual accuracy and completeness of this research answer. Confidence score: ${verificationResult.confidence}.`
+            }
+          });
+
+          if (error) throw new Error(`Web knowledge error: ${error.message}`);
+          
+          return data?.result || 'Failed to verify research';
+        } catch (error) {
+          console.error('Error verifying research:', error);
+          toast.error('Failed to verify research');
+          return 'Error verifying research. Please try again later.';
+        }
       }
     }),
     {
