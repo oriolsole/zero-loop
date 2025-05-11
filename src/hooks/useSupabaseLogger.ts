@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useLoopStore } from '../store/useLoopStore';
-import { logLoopToSupabase, saveKnowledgeNodeToSupabase, saveKnowledgeEdgeToSupabase, saveDomainToSupabase, updateDomainInSupabase, syncWithSupabase } from '../utils/supabaseUtils';
+import { 
+  logLoopToSupabase, 
+  saveKnowledgeNodeToSupabase, 
+  saveKnowledgeEdgeToSupabase, 
+  syncWithSupabase 
+} from '../utils/supabase';
 import { isSupabaseConfigured } from '../utils/supabase-client';
 import { LoopHistory, KnowledgeNode, KnowledgeEdge, Domain } from '../types/intelligence';
 import { toast } from '@/components/ui/sonner';
