@@ -1,3 +1,4 @@
+
 import { LearningStep } from '../../types/intelligence';
 import { LoopState } from '../useLoopStore';
 import { domainEngines } from '../../engines/domainEngines';
@@ -54,11 +55,10 @@ export const createLoopActions = (
         if (typeof taskContent === 'string') {
           content = taskContent;
         } else if (typeof taskContent === 'object') {
-          // Add proper type checking for the object structure
-          content = 'content' in taskContent && taskContent.content !== undefined 
-            ? String(taskContent.content) 
-            : '';
-          metadata = 'metadata' in taskContent ? taskContent.metadata : undefined;
+          // Add proper type assertions to avoid 'never' type errors
+          const taskObj = taskContent as { content?: string; metadata?: any };
+          content = taskObj.content !== undefined ? String(taskObj.content) : '';
+          metadata = taskObj.metadata;
         }
       }
       
