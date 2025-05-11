@@ -14,7 +14,7 @@ import {
   updateDomainInSupabase, 
   deleteDomainFromSupabase,
   loadDomainsFromSupabase
-} from '../utils/supabaseUtils';
+} from '../utils/supabase';
 import { isSupabaseConfigured } from '../utils/supabase-client';
 import { toast } from '@/components/ui/sonner';
 import { v4 as uuidv4 } from 'uuid';
@@ -474,7 +474,7 @@ export const useLoopStore = create<LoopState>()(
         
         // If remote logging is enabled, save to Supabase
         if (useRemoteLogging) {
-          import('../utils/supabaseUtils').then(({ 
+          import('../utils/supabase').then(({ 
             logLoopToSupabase, 
             saveKnowledgeNodeToSupabase, 
             saveKnowledgeEdgeToSupabase, 
