@@ -1,3 +1,4 @@
+
 export interface Domain {
   id: string;
   name: string;
@@ -55,6 +56,13 @@ export interface KnowledgeNode {
   sourceInsights?: string[];  // IDs of insights this node builds upon
   loopReference?: string;     // ID of the loop that produced this insight
   qualityMetrics?: QualityMetrics;
+  metadata?: {
+    fileType?: string;
+    fileUrl?: string;
+    isFile?: boolean;
+    public_url?: string;
+    [key: string]: any;
+  };
 }
 
 export interface KnowledgeEdge {
@@ -168,6 +176,9 @@ export interface ExternalSource {
   id?: string;     // Made optional
   timestamp?: number;
   relevanceScore?: number;
+  fileType?: string;  // Added for file support
+  fileUrl?: string;   // Added for file support
+  public_url?: string; // Added for Supabase storage URLs
 }
 
 export interface EnrichedKnowledge {

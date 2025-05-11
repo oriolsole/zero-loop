@@ -33,11 +33,11 @@ export const createSyncActions = (
         .filter(source => source.fileType || source.fileUrl)
         .map(source => {
           if (source.fileType?.includes('image')) {
-            return `[Image file available at ${source.fileUrl}]`;
+            return `[Image file available at ${source.fileUrl || source.link}]`;
           } else if (source.fileType?.includes('pdf')) {
-            return `[PDF file available at ${source.fileUrl}]`;
+            return `[PDF file available at ${source.fileUrl || source.link}]`;
           } else {
-            return `[File: ${source.fileType || 'unknown'} at ${source.fileUrl}]`;
+            return `[File: ${source.fileType || 'unknown'} at ${source.fileUrl || source.link}]`;
           }
         });
         

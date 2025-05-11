@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useKnowledgeBase, FileUploadProgress } from "@/hooks/useKnowledgeBase";
-import { Loader2, Upload, FileText, Link as LinkIcon, Image as ImageIcon, FileUp, FilePdf } from "lucide-react";
+import { Loader2, Upload, FileText, Link as LinkIcon, Image as ImageIcon, FileUp, File } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLoopStore } from '@/store/useLoopStore';
@@ -123,7 +123,7 @@ const KnowledgeUpload: React.FC = () => {
     if (!selectedFile) return <FileUp className="h-10 w-10" />;
     
     if (selectedFile.type.includes('pdf')) {
-      return <FilePdf className="h-10 w-10 text-red-500" />;
+      return <File className="h-10 w-10 text-red-500" />;
     } else if (selectedFile.type.includes('image')) {
       return <ImageIcon className="h-10 w-10 text-blue-500" />;
     } else {
