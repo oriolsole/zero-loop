@@ -149,7 +149,8 @@ const KnowledgeUploadForm: React.FC = () => {
             <SelectValue placeholder="Select a domain" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">No specific domain</SelectItem>
+            {/* Fix: Replace empty string value with a non-empty string value */}
+            <SelectItem value="no-domain">No specific domain</SelectItem>
             {domains.map((domain) => (
               <SelectItem key={domain.id} value={domain.id}>
                 {domain.name}
