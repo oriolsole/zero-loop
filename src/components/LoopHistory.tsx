@@ -23,7 +23,7 @@ const LoopHistory = () => {
     setSelectedLoop(loopId);
   };
   
-  // Helper function to safely render potentially complex metric values - explicitly returns a string
+  // Helper function to safely get a string representation of metric values
   const formatMetricValue = (value: string | number | any[] | unknown): string => {
     if (value === undefined || value === null) return '-';
     if (typeof value === 'string' || typeof value === 'number') return value.toString();
@@ -66,7 +66,9 @@ const LoopHistory = () => {
                     ) : (
                       <XCircle className="text-destructive w-4 h-4" />
                     )}
-                    Loop #{loop.steps[0]?.metrics?.loopNumber || '?'}
+                    Loop #{typeof loop.steps[0]?.metrics?.loopNumber === 'string' || typeof loop.steps[0]?.metrics?.loopNumber === 'number' 
+                      ? loop.steps[0].metrics.loopNumber 
+                      : '?'}
                   </CardTitle>
                   <Badge variant={loop.success ? "default" : "destructive"}>
                     {loop.success ? "Success" : "Failure"}

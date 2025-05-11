@@ -69,7 +69,7 @@ const InsightTimeline: React.FC = () => {
     );
   }
   
-  // Helper function to safely render metric values - explicitly returns a string
+  // Helper function to safely get a string representation of metric values
   const renderMetricValue = (value: string | number | ExternalSource[] | undefined): string => {
     if (value === undefined) return "-";
     if (typeof value === "string" || typeof value === "number") return value.toString();
