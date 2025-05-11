@@ -23,6 +23,14 @@ const LoopHistory = () => {
     setSelectedLoop(loopId);
   };
   
+  // Helper function to safely render potentially complex metric values
+  const formatMetricValue = (value: string | number | any[] | unknown): string => {
+    if (value === undefined || value === null) return '-';
+    if (typeof value === 'string' || typeof value === 'number') return value.toString();
+    if (Array.isArray(value)) return `${value.length} items`;
+    return JSON.stringify(value);
+  };
+  
   if (domainHistory.length === 0) {
     return (
       <Card className="border-dashed border-2 p-8 flex flex-col items-center justify-center">

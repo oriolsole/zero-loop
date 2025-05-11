@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +55,14 @@ const InsightTimeline: React.FC = () => {
       </Card>
     );
   }
+  
+  // Helper function to safely render metric values
+  const renderMetricValue = (value: string | number | ExternalSource[] | undefined) => {
+    if (value === undefined) return "-";
+    if (typeof value === "string" || typeof value === "number") return value.toString();
+    if (Array.isArray(value)) return `${value.length} sources`;
+    return JSON.stringify(value);
+  };
   
   return (
     <div className="space-y-6">
