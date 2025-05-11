@@ -29,6 +29,9 @@ const LearningLoop: React.FC = () => {
   const isDomainWebKnowledge = activeDomainId === 'web-knowledge';
   const hasWebKnowledgeEngine = domainEngines[activeDomainId]?.enrichTask !== undefined;
   
+  // Check if this domain uses AI reasoning
+  const isAIReasoning = activeDomainId === 'ai-reasoning';
+  
   // Determine sources to show from the current step's metadata
   const currentStepSources = currentStep?.metadata?.sources || [];
   
@@ -53,6 +56,7 @@ const LearningLoop: React.FC = () => {
       <EmptyLoopState 
         handleStartLoop={handleStartLoop} 
         isDomainWebKnowledge={isDomainWebKnowledge || hasWebKnowledgeEngine}
+        isAIReasoning={isAIReasoning}
       />
     );
   }
@@ -60,7 +64,18 @@ const LearningLoop: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Learning Loop</h2>
+        <h2 className="text-2xl font-bold">
+          {isAIReasoning ? (
+            <span className="flex items-center">
+              AI-Powered Learning Loop
+              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                AI
+              </span>
+            </span>
+          ) : (
+            "Learning Loop"
+          )}
+        </h2>
         
         <SourcesToggle 
           showingSources={showingSources}

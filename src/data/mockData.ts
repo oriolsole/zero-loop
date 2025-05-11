@@ -1,4 +1,3 @@
-
 import { Domain, LearningStep, KnowledgeNode, KnowledgeEdge } from '../types/intelligence';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -529,6 +528,25 @@ export const domainsData: Domain[] = [
         { name: 'Probability', level: 62 },
         { name: 'Number Theory', level: 58 }
       ]
+    }
+  }
+];
+
+export const extraDomains = [
+  {
+    id: 'ai-reasoning',
+    name: 'AI Reasoning',
+    shortDesc: 'Learn using AI-powered reasoning',
+    description: 'This domain uses AI reasoning to generate tasks, solutions, and insights. It leverages large language models to create a more dynamic and adaptive learning experience.',
+    totalLoops: 0,
+    currentLoop: [],
+    knowledgeNodes: [],
+    knowledgeEdges: [],
+    metrics: {
+      successRate: 0,
+      knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
+      taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],
+      skills: [{ name: 'AI Reasoning', level: 1 }]
     }
   }
 ];
