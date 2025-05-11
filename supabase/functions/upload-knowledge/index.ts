@@ -96,20 +96,34 @@ serve(async (req) => {
       
       console.log(`Generated ${embeddings.length} embeddings`);
       
+      // Prepare the base insert object (without domain_id if not provided)
+      const baseInsertObject: Record<string, any> = {
+        title,
+        content: '',  // Will be overridden for each chunk
+        embedding: [],  // Will be overridden for each chunk
+        source_url,
+        metadata: {}  // Will be extended for each chunk
+      };
+      
+      // Only add domain_id if it's provided and valid
+      if (domain_id) {
+        baseInsertObject.domain_id = domain_id;
+      }
+      
       // Insert chunks with embeddings into the database
       const insertPromises = chunks.map((chunk, i) => {
-        return supabase.from('knowledge_chunks').insert({
-          title,
+        const insertObject = {
+          ...baseInsertObject,
           content: chunk,
           embedding: embeddings[i],
-          domain_id,
-          source_url,
           metadata: {
             ...metadata,
             chunk_index: i,
             total_chunks: chunks.length
           }
-        });
+        };
+        
+        return supabase.from('knowledge_chunks').insert(insertObject);
       });
       
       // Execute all inserts in parallel
@@ -311,46 +325,52 @@ serve(async (req) => {
         }
       }
       
+      // Prepare the base insert object (without domain_id if not provided)
+      const baseInsertObject: Record<string, any> = {
+        title,
+        content: '',  // Will be overridden for each chunk
+        file_path: filePath,
+        original_file_type: fileType,
+        file_size: fileSize,
+        ocr_processed: true,
+        source_url,
+        metadata: {
+          ...metadata,
+          file_name: fileName,
+          public_url: publicUrl
+        }
+      };
+      
+      // Only add domain_id if it's provided and valid
+      if (domain_id) {
+        baseInsertObject.domain_id = domain_id;
+      }
+      
       // For each chunk, store in the database
       const insertPromises = chunks.map((chunk, i) => {
-        return supabase.from('knowledge_chunks').insert({
-          title,
+        const insertObject = {
+          ...baseInsertObject,
           content: chunk,
           embedding: embeddings[i],
-          domain_id,
-          source_url,
-          file_path: filePath,
-          original_file_type: fileType,
-          file_size: fileSize,
-          ocr_processed: true,
           metadata: {
-            ...metadata,
+            ...baseInsertObject.metadata,
             chunk_index: i,
-            total_chunks: chunks.length,
-            file_name: fileName,
-            public_url: publicUrl
+            total_chunks: chunks.length
           }
-        });
+        };
+        
+        return supabase.from('knowledge_chunks').insert(insertObject);
       });
       
       // If no chunks were created (e.g., empty PDF), create a placeholder entry
       if (chunks.length === 0) {
+        const placeholderInsertObject = {
+          ...baseInsertObject,
+          content: `[File: ${fileName}]`,
+        };
+        
         insertPromises.push(
-          supabase.from('knowledge_chunks').insert({
-            title,
-            content: `[File: ${fileName}]`,
-            domain_id,
-            source_url,
-            file_path: filePath,
-            original_file_type: fileType,
-            file_size: fileSize,
-            ocr_processed: true,
-            metadata: {
-              ...metadata,
-              file_name: fileName,
-              public_url: publicUrl
-            }
-          })
+          supabase.from('knowledge_chunks').insert(placeholderInsertObject)
         );
       }
       

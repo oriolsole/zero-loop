@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -88,7 +87,7 @@ export function useKnowledgeBase() {
             fileName: file.name,
             fileSize: file.size,
             metadata: options.metadata || {},
-            domain_id: options.domainId,
+            domain_id: options.domainId, // No need for "no-domain" check here as it's already handled in form
             source_url: options.sourceUrl,
             chunk_size: options.chunkSize || 1000,
             overlap: options.overlap || 100
@@ -125,7 +124,7 @@ export function useKnowledgeBase() {
             title: options.title,
             content: options.content,
             metadata: options.metadata || {},
-            domain_id: options.domainId,
+            domain_id: options.domainId, // No need for "no-domain" check here as it's already handled in form
             source_url: options.sourceUrl,
             chunk_size: options.chunkSize || 1000,
             overlap: options.overlap || 100

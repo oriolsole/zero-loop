@@ -80,12 +80,14 @@ const KnowledgeUploadForm: React.FC = () => {
     
     try {
       let success;
+      // Process domain ID - convert "no-domain" to undefined to avoid foreign key constraint errors
+      const processedDomainId = domainId === "no-domain" ? undefined : domainId;
       
       if (activeTab === 'text') {
         success = await uploadKnowledge({
           title,
           content,
-          domainId: domainId || undefined,
+          domainId: processedDomainId,
           sourceUrl: sourceUrl || undefined,
           chunkSize,
           overlap,
@@ -94,7 +96,7 @@ const KnowledgeUploadForm: React.FC = () => {
         success = await uploadKnowledge({
           title,
           file: selectedFile!,
-          domainId: domainId || undefined,
+          domainId: processedDomainId,
           sourceUrl: sourceUrl || undefined,
           chunkSize,
           overlap,
@@ -149,7 +151,6 @@ const KnowledgeUploadForm: React.FC = () => {
             <SelectValue placeholder="Select a domain" />
           </SelectTrigger>
           <SelectContent>
-            {/* Fix: Replace empty string value with a non-empty string value */}
             <SelectItem value="no-domain">No specific domain</SelectItem>
             {domains.map((domain) => (
               <SelectItem key={domain.id} value={domain.id}>
