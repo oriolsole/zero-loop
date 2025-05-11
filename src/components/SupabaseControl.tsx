@@ -18,6 +18,7 @@ const SupabaseControl = () => {
   const { state, toggleRemoteLogging, syncPendingItems, pendingItemsCount, queueDomain } = useSupabaseLogger();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
+  const [lastSyncStatus, setLastSyncStatus] = useState<'success' | 'warning' | 'error' | null>(null);
 
   useEffect(() => {
     // Check if Supabase is configured
@@ -66,13 +67,16 @@ const SupabaseControl = () => {
       if (success) {
         console.log("Sync completed successfully");
         toast.success('Sync completed successfully');
+        setLastSyncStatus('success');
       } else {
         console.log("Sync completed with some failures");
         toast.warning('Sync completed with some failures');
+        setLastSyncStatus('warning');
       }
     } catch (error) {
       console.error('Error during sync:', error);
       toast.error('Sync failed');
+      setLastSyncStatus('error');
     } finally {
       setIsSyncing(false);
     }
@@ -86,6 +90,16 @@ const SupabaseControl = () => {
           <AlertTitle>Remote Logging Disabled</AlertTitle>
           <AlertDescription>
             Enable Remote Logging to sync your data with Supabase
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      {lastSyncStatus === 'error' && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Sync Failed</AlertTitle>
+          <AlertDescription>
+            The last sync attempt failed. Check console for details.
           </AlertDescription>
         </Alert>
       )}
@@ -145,6 +159,16 @@ const SupabaseControl = () => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Total synced:</span>
                 <span>{state.syncStats.totalSynced}</span>
+              </div>
+              
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Last sync status:</span>
+                <span>
+                  {lastSyncStatus === 'success' && <CheckCircle className="w-4 h-4 text-green-500" />}
+                  {lastSyncStatus === 'warning' && <AlertCircle className="w-4 h-4 text-amber-500" />}
+                  {lastSyncStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
+                  {!lastSyncStatus && <span className="text-muted-foreground">No sync yet</span>}
+                </span>
               </div>
             </div>
 

@@ -218,6 +218,8 @@ export async function saveDomainToSupabase(domain: Domain): Promise<boolean> {
       metadataSize: JSON.stringify(metadataJson).length
     });
 
+    // Create the domain object for insertion, with the user_id set to null for now
+    // This works because we've updated the RLS policies to allow public access
     const { error } = await supabase
       .from('domains')
       .insert({
@@ -227,7 +229,8 @@ export async function saveDomainToSupabase(domain: Domain): Promise<boolean> {
         description: domain.description,
         total_loops: domain.totalLoops,
         metadata: metadataJson,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        user_id: null // Explicitly set to null for development without auth
       });
 
     if (error) {
@@ -277,7 +280,8 @@ export async function updateDomainInSupabase(domain: Domain): Promise<boolean> {
         description: domain.description,
         total_loops: domain.totalLoops,
         metadata: metadataJson,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        user_id: null // Explicitly set to null for development without auth
       })
       .eq('id', domain.id);
 
@@ -480,17 +484,22 @@ export async function syncWithSupabase(
 
     // Sync domains
     for (const domain of domains) {
-      // For existing domains, update; for new ones, save
-      let success: boolean;
-      if (isValidUUID(domain.id) && await domainExistsInSupabase(domain.id)) {
-        success = await updateDomainInSupabase(domain);
-      } else {
-        success = await saveDomainToSupabase(domain);
-      }
-      
-      if (success) {
-        stats.domains++;
-      } else {
+      try {
+        // For existing domains, update; for new ones, save
+        let success: boolean;
+        if (isValidUUID(domain.id) && await domainExistsInSupabase(domain.id)) {
+          success = await updateDomainInSupabase(domain);
+        } else {
+          success = await saveDomainToSupabase(domain);
+        }
+        
+        if (success) {
+          stats.domains++;
+        } else {
+          stats.failures++;
+        }
+      } catch (error) {
+        console.error('Error syncing domain:', domain.id, error);
         stats.failures++;
       }
     }
