@@ -9,7 +9,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } fr
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Domain } from '../types/intelligence';
-import { Brain, Code, Calculator, Puzzle, FileText, Briefcase, Save, Copy, Trash } from 'lucide-react';
+import { Brain, Code, Calculator, Puzzle, FileText, Briefcase, Save, Copy, Trash, Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -19,6 +19,7 @@ interface DomainEditorProps {
   onCancel: () => void;
   onDelete?: (domainId: string) => void;
   isNew: boolean;
+  isSaving?: boolean;  // New prop to show loading state
 }
 
 interface DomainFormValues {
@@ -38,7 +39,8 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
   onSave, 
   onCancel,
   onDelete,
-  isNew 
+  isNew, 
+  isSaving 
 }) => {
   const [activeTab, setActiveTab] = useState('basic');
   
@@ -351,6 +353,7 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
                 type="button" 
                 variant="outline"
                 onClick={onCancel}
+                disabled={isSaving}
               >
                 Cancel
               </Button>
@@ -363,6 +366,7 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
                     type="button"
                     variant="outline"
                     onClick={handleClone}
+                    disabled={isSaving}
                   >
                     <Copy className="w-4 h-4 mr-2" /> Clone
                   </Button>
@@ -371,14 +375,23 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
                     type="button"
                     variant="destructive"
                     onClick={handleDelete}
+                    disabled={isSaving}
                   >
                     <Trash className="w-4 h-4 mr-2" /> Delete
                   </Button>
                 </>
               )}
               
-              <Button type="submit">
-                <Save className="w-4 h-4 mr-2" /> {isNew ? 'Create Domain' : 'Save Changes'}
+              <Button type="submit" disabled={isSaving}>
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" /> {isNew ? 'Create Domain' : 'Save Changes'}
+                  </>
+                )}
               </Button>
             </div>
           </CardFooter>

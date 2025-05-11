@@ -9,6 +9,21 @@ import { AlertCircle } from 'lucide-react';
 import { useSupabaseLogger } from '../hooks/useSupabaseLogger';
 import { isSupabaseConfigured } from '../utils/supabase-client';
 
+// Helper function to check if browser storage is possibly low
+const isStorageMaybeRunningLow = (): boolean => {
+  try {
+    // Try to estimate available storage by writing a test value
+    const testKey = `storage-test-${Date.now()}`;
+    const testData = new Array(100000).join('a'); // Create a ~100KB string
+    localStorage.setItem(testKey, testData);
+    localStorage.removeItem(testKey);
+    return false; // If we got here, we likely have space
+  } catch (e) {
+    console.warn('Storage test failed, might be running low on space');
+    return true; // If we caught an error, we might be running low
+  }
+};
+
 const DomainCustomization: React.FC = () => {
   const navigate = useNavigate();
   const { domainId } = useParams<{ domainId: string }>();
@@ -16,6 +31,7 @@ const DomainCustomization: React.FC = () => {
   const { state: supabaseState, queueDomain, syncPendingItems } = useSupabaseLogger();
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState<boolean>(isStorageMaybeRunningLow());
   
   // Find the domain if editing an existing one
   const domain = domains.find(d => d.id === domainId);
@@ -26,6 +42,12 @@ const DomainCustomization: React.FC = () => {
       setIsSaving(true);
       setSaveError(null);
       console.log("Saving domain:", updatedDomain);
+      
+      // If we detect storage might be low and remote logging is not enabled,
+      // show a warning and encourage remote syncing
+      if (storageWarning && !supabaseState.isRemoteEnabled) {
+        toast.warning('Your local storage is running low. Consider enabling Remote Logging.');
+      }
       
       // Save locally first
       if (isNew) {
@@ -64,8 +86,18 @@ const DomainCustomization: React.FC = () => {
       // Special handling for storage quota issues
       if (error instanceof DOMException && 
           (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
-        setSaveError('Browser storage quota exceeded. Try clearing some local data or using Supabase sync.');
-        toast.error('Storage quota exceeded. Your local storage is full.');
+        
+        const errorMessage = 'Browser storage quota exceeded. Please enable Remote Logging or clear some local data.';
+        setSaveError(errorMessage);
+        toast.error(errorMessage);
+        setStorageWarning(true);
+        
+        // If Supabase is configured but not enabled, suggest enabling it
+        if (isSupabaseConfigured() && !supabaseState.isRemoteEnabled) {
+          toast.error('Enable Remote Logging in settings to avoid storage issues.', {
+            duration: 6000
+          });
+        }
       } else {
         setSaveError(error instanceof Error ? error.message : 'Unknown error');
         toast.error(`Failed to save domain: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -96,6 +128,16 @@ const DomainCustomization: React.FC = () => {
         </Alert>
       )}
       
+      {storageWarning && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Storage Space Low</AlertTitle>
+          <AlertDescription>
+            Your browser storage is running low. Enable Remote Logging to avoid data loss.
+          </AlertDescription>
+        </Alert>
+      )}
+      
       {saveError && (
         <Alert variant="destructive" className="mb-4">
           <AlertCircle className="h-4 w-4" />
@@ -112,6 +154,7 @@ const DomainCustomization: React.FC = () => {
         onCancel={handleCancel} 
         onDelete={handleDelete}
         isNew={isNew}
+        isSaving={isSaving}
       />
     </div>
   );

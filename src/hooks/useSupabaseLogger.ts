@@ -7,7 +7,7 @@ import { toast } from '@/components/ui/sonner';
 
 const LOCAL_STORAGE_KEY = 'intelligence-loop-sync-queue';
 const LOCAL_STORAGE_STATE_KEY = 'intelligence-loop-sync-state';
-const MAX_QUEUE_ITEMS = 50; // Limit total items in queue
+const MAX_QUEUE_ITEMS = 30; // Reduced from 50 to limit total items in queue
 
 interface SyncQueue {
   loops: LoopHistory[];
@@ -81,6 +81,11 @@ const safeSetItem = (key: string, value: string): boolean => {
   }
 };
 
+// Calculate size of an object in bytes (approximate)
+const calculateObjectSize = (obj: any): number => {
+  return new TextEncoder().encode(JSON.stringify(obj)).length;
+};
+
 export function useSupabaseLogger() {
   const [state, setState] = useState<SyncState>(getInitialState);
   const [queue, setQueue] = useState<SyncQueue>(getInitialQueue);
@@ -99,23 +104,36 @@ export function useSupabaseLogger() {
   // Save queue to localStorage whenever it changes, with size management
   useEffect(() => {
     try {
-      const queueJson = JSON.stringify(queue);
+      // First check if we're approaching storage limits before stringifying
+      const totalSize = 
+        calculateObjectSize(queue.loops) + 
+        calculateObjectSize(queue.nodes) + 
+        calculateObjectSize(queue.edges) + 
+        calculateObjectSize(queue.domains);
       
-      // Check if we might be approaching the storage limit
-      if (queueJson.length > 2000000) { // ~2MB as a safety threshold
-        console.warn('Queue size is large, attempting to trim oldest items');
+      console.log(`Sync queue size estimate: ${Math.round(totalSize / 1024)}KB`);
+      
+      // If we're approaching the 5MB limit (~5,000,000 bytes), trim the queue
+      if (totalSize > 1500000) { // ~1.5MB as a safety threshold 
+        console.warn('Queue size is large, automatically trimming older items');
         
         // Create a trimmed version of the queue with only the most recent items
         const trimmedQueue: SyncQueue = {
-          loops: queue.loops.slice(-Math.min(MAX_QUEUE_ITEMS, queue.loops.length)),
-          nodes: queue.nodes.slice(-Math.min(MAX_QUEUE_ITEMS, queue.nodes.length)),
-          edges: queue.edges.slice(-Math.min(MAX_QUEUE_ITEMS, queue.edges.length)),
-          domains: queue.domains // Keep all domains as they're typically small and important
+          loops: queue.loops.slice(-Math.min(10, queue.loops.length)),
+          nodes: queue.nodes.slice(-Math.min(10, queue.nodes.length)),
+          edges: queue.edges.slice(-Math.min(10, queue.edges.length)),
+          domains: queue.domains.slice(-Math.min(5, queue.domains.length)) 
         };
         
-        const success = safeSetItem(LOCAL_STORAGE_KEY, JSON.stringify(trimmedQueue));
+        setQueue(trimmedQueue);
+        toast.warning('Storage approaching limit - older items removed from queue');
+        
+        // Immediate attempt to save the trimmed queue
+        const trimmedJson = JSON.stringify(trimmedQueue);
+        const success = safeSetItem(LOCAL_STORAGE_KEY, trimmedJson);
+        
         if (!success) {
-          // If we still can't save, force a sync and then clear the queue
+          // If we still can't save, force a sync and then clear
           syncPendingItems().finally(() => {
             setQueue({
               loops: [],
@@ -125,9 +143,14 @@ export function useSupabaseLogger() {
             });
           });
         }
-      } else {
-        safeSetItem(LOCAL_STORAGE_KEY, queueJson);
+        
+        return; // Skip the normal save below since we've already handled it
       }
+      
+      // Normal case - attempt to save the queue
+      const queueJson = JSON.stringify(queue);
+      safeSetItem(LOCAL_STORAGE_KEY, queueJson);
+      
     } catch (e) {
       console.error('Failed to save sync queue:', e);
     }
@@ -228,14 +251,50 @@ export function useSupabaseLogger() {
         };
       }
       
+      // Keep only MAX_QUEUE_ITEMS domains in the queue
+      let updatedDomains = [...prev.domains, domain];
+      if (updatedDomains.length > MAX_QUEUE_ITEMS) {
+        updatedDomains = updatedDomains.slice(-MAX_QUEUE_ITEMS);
+      }
+      
       // Add the new domain to the queue
       return {
         ...prev,
-        domains: [...prev.domains, domain]
+        domains: updatedDomains
       };
     });
     
     console.log('Domain queued for sync:', domain.id);
+  };
+  
+  // Clear sync queue method
+  const clearSyncQueue = async (): Promise<void> => {
+    // First try to sync any pending items if remoteEnabled
+    if (state.isRemoteEnabled && 
+        queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length > 0) {
+      try {
+        await syncPendingItems();
+      } catch (error) {
+        console.error('Error syncing before queue clear:', error);
+      }
+    }
+    
+    // Then clear the queue
+    setQueue({
+      loops: [],
+      nodes: [],
+      edges: [],
+      domains: []
+    });
+    
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      console.log('Local storage queue cleared');
+    } catch (error) {
+      console.error('Error clearing local storage:', error);
+    }
+    
+    return Promise.resolve();
   };
   
   // Sync all pending items in the queue
@@ -248,19 +307,26 @@ export function useSupabaseLogger() {
       return true;
     }
     
+    // To avoid storage issues, limit what we sync at once
+    const batchSize = 5;
+    const syncLoops = queue.loops.slice(0, batchSize);
+    const syncNodes = queue.nodes.slice(0, batchSize);
+    const syncEdges = queue.edges.slice(0, batchSize);
+    const syncDomains = queue.domains; // Domains are important, sync them all
+    
     try {
       console.log('Starting sync of pending items:', {
-        loops: queue.loops.length,
-        nodes: queue.nodes.length,
-        edges: queue.edges.length,
-        domains: queue.domains.length
+        loops: syncLoops.length,
+        nodes: syncNodes.length,
+        edges: syncEdges.length,
+        domains: syncDomains.length
       });
       
       const result = await syncWithSupabase(
-        queue.loops,
-        queue.nodes,
-        queue.edges,
-        queue.domains
+        syncLoops,
+        syncNodes,
+        syncEdges,
+        syncDomains
       );
       
       const totalSynced = 
@@ -281,14 +347,14 @@ export function useSupabaseLogger() {
         }
       }));
       
-      // Clear synced items from queue
+      // If successful, remove synced items from queue
       if (result.success) {
-        setQueue({
-          loops: [],
-          nodes: [],
-          edges: [],
-          domains: []
-        });
+        setQueue(prev => ({
+          loops: prev.loops.slice(syncLoops.length),
+          nodes: prev.nodes.slice(syncNodes.length),
+          edges: prev.edges.slice(syncEdges.length),
+          domains: [] // Clear domains since we synced all
+        }));
       }
       
       return result.success;
@@ -335,6 +401,7 @@ export function useSupabaseLogger() {
     if (unqueuedLoops.length > 0) {
       console.log(`Found ${unqueuedLoops.length} unqueued loops, adding to queue`);
       setQueue(prev => {
+        // If we're approaching the limit, only keep the most recent items
         const combinedLoops = [...prev.loops, ...unqueuedLoops];
         return {
           ...prev,
@@ -356,10 +423,16 @@ export function useSupabaseLogger() {
     
     if (unqueuedDomains.length > 0) {
       console.log(`Found ${unqueuedDomains.length} unqueued domains, adding to queue`);
-      setQueue(prev => ({
-        ...prev,
-        domains: [...prev.domains, ...unqueuedDomains]
-      }));
+      setQueue(prev => {
+        // Make sure we're not exceeding MAX_QUEUE_ITEMS domains
+        const combinedDomains = [...prev.domains, ...unqueuedDomains];
+        return {
+          ...prev,
+          domains: combinedDomains.length > MAX_QUEUE_ITEMS ? 
+            combinedDomains.slice(-MAX_QUEUE_ITEMS) : 
+            combinedDomains
+        };
+      });
     }
   }, [state.isRemoteEnabled, domains, queue.domains]);
   
@@ -387,6 +460,7 @@ export function useSupabaseLogger() {
     queueEdge,
     queueDomain,
     syncPendingItems,
+    clearSyncQueue, // New method to clear the sync queue
     pendingItemsCount: queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length
   };
 }

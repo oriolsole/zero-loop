@@ -5,20 +5,31 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Loader, Database, Upload, AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { Loader, Database, Upload, AlertCircle, CheckCircle, Info, Trash2 } from 'lucide-react';
 import { useLoopStore } from "../store/useLoopStore";
 import { useSupabaseLogger } from "../hooks/useSupabaseLogger";
 import { isSupabaseConfigured } from "../utils/supabase-client";
 import { toast } from '@/components/ui/sonner';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // The component no longer accepts onToggleRemote prop as it uses the store directly
 const SupabaseControl = () => {
   const { useRemoteLogging, setUseRemoteLogging, initializeFromSupabase, domains } = useLoopStore();
-  const { state, toggleRemoteLogging, syncPendingItems, pendingItemsCount, queueDomain } = useSupabaseLogger();
+  const { state, toggleRemoteLogging, syncPendingItems, pendingItemsCount, queueDomain, clearSyncQueue } = useSupabaseLogger();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const [lastSyncStatus, setLastSyncStatus] = useState<'success' | 'warning' | 'error' | null>(null);
+  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
   useEffect(() => {
     // Check if Supabase is configured
@@ -79,6 +90,17 @@ const SupabaseControl = () => {
       setLastSyncStatus('error');
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleClearStorage = async () => {
+    try {
+      await clearSyncQueue();
+      toast.success('Local storage queue cleared successfully');
+      setIsClearDialogOpen(false);
+    } catch (error) {
+      console.error('Error clearing storage:', error);
+      toast.error('Failed to clear local storage queue');
     }
   };
 
@@ -172,26 +194,37 @@ const SupabaseControl = () => {
               </div>
             </div>
 
-            {isConfigured && (
+            <div className="flex flex-col space-y-2">
+              {isConfigured && (
+                <Button 
+                  onClick={handleSyncNow} 
+                  disabled={isSyncing || !state.isRemoteEnabled || pendingItemsCount === 0}
+                  variant={pendingItemsCount > 0 ? "default" : "outline"}
+                  className="w-full"
+                >
+                  {isSyncing ? (
+                    <>
+                      <Loader className="w-4 h-4 mr-2 animate-spin" />
+                      Syncing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Sync Now {pendingItemsCount > 0 ? `(${pendingItemsCount})` : ''}
+                    </>
+                  )}
+                </Button>
+              )}
+              
               <Button 
-                onClick={handleSyncNow} 
-                disabled={isSyncing || !state.isRemoteEnabled || pendingItemsCount === 0}
-                variant={pendingItemsCount > 0 ? "default" : "outline"}
-                className="w-full"
+                onClick={() => setIsClearDialogOpen(true)} 
+                variant="outline" 
+                className="w-full border-dashed border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
               >
-                {isSyncing ? (
-                  <>
-                    <Loader className="w-4 h-4 mr-2 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Sync Now {pendingItemsCount > 0 ? `(${pendingItemsCount})` : ''}
-                  </>
-                )}
+                <Trash2 className="w-4 h-4 mr-2" />
+                Clear Local Storage Queue
               </Button>
-            )}
+            </div>
 
             <div className="text-xs text-muted-foreground rounded-md p-2 bg-secondary/30">
               <div className="flex items-start gap-2">
@@ -233,6 +266,25 @@ const SupabaseControl = () => {
           </div>
         </CardContent>
       </Card>
+      
+      {/* Confirmation dialog for clearing storage */}
+      <AlertDialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear all pending items from the local storage queue. If you haven't synced your data to Supabase yet, 
+              these items will be lost. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleClearStorage} className="bg-red-500 hover:bg-red-600">
+              Yes, clear storage
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
