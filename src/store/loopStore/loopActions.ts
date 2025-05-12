@@ -1,3 +1,4 @@
+
 import { LearningStep } from '../../types/intelligence';
 import { LoopState } from '../useLoopStore';
 import { domainEngines } from '../../engines/domainEngines';
@@ -499,8 +500,16 @@ export const createLoopActions = (
     // Log the cancellation for debugging
     console.log('Canceling current learning loop');
     
-    // Reset the running state but keep the loop data for reference
+    // Reset the running state AND clear the current loop
+    const updatedDomains = [...domains];
+    const updatedDomain = { ...updatedDomains[activeDomainIndex] };
+    // Clear the current loop completely so we can start a new one
+    updatedDomain.currentLoop = [];
+    updatedDomains[activeDomainIndex] = updatedDomain;
+    
+    // Update the state
     set({ 
+      domains: updatedDomains,
       isRunningLoop: false,
       currentStepIndex: null
     });

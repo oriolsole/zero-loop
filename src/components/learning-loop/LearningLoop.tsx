@@ -90,6 +90,17 @@ const LearningLoop: React.FC = () => {
   }
 
   const currentLoop = activeDomain.currentLoop;
+  // No loop steps means we need to show the empty state
+  if (currentLoop.length === 0) {
+    return (
+      <EmptyLoopState 
+        handleStartLoop={handleStartLoop} 
+        isDomainWebKnowledge={isDomainWebKnowledge}
+        isAIReasoning={isAIReasoning}
+      />
+    );
+  }
+  
   const completedSteps = currentLoop.filter(step => step.status === 'success');
   const pendingSteps = currentLoop.filter(step => step.status === 'pending');
   
