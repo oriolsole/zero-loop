@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { query, limit = 5, useEmbeddings = true } = await req.json();
+    const { query, limit = 5, useEmbeddings = true, matchThreshold = 0.5 } = await req.json();
     
     if (!query) {
       throw new Error('Query parameter is required');
@@ -20,7 +20,8 @@ serve(async (req) => {
     const results = await processQuery({
       query,
       limit,
-      useEmbeddings
+      useEmbeddings,
+      matchThreshold
     });
 
     return new Response(

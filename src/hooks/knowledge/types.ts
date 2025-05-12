@@ -22,6 +22,7 @@ export interface KnowledgeQueryOptions {
   query: string;
   limit?: number;
   useEmbeddings?: boolean;
+  matchThreshold?: number;
 }
 
 export type { ExternalSource };

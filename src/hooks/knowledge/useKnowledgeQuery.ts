@@ -11,6 +11,7 @@ export function useKnowledgeQuery() {
   const [isQuerying, setIsQuerying] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [recentResults, setRecentResults] = useState<ExternalSource[]>([]);
+  const [searchMode, setSearchMode] = useState<'semantic' | 'text'>('semantic');
   
   /**
    * Query the knowledge base
@@ -24,7 +25,8 @@ export function useKnowledgeQuery() {
         body: {
           query: options.query,
           limit: options.limit || 5,
-          useEmbeddings: options.useEmbeddings !== false
+          useEmbeddings: options.useEmbeddings !== false,
+          matchThreshold: options.matchThreshold || 0.5
         }
       });
       
@@ -43,6 +45,7 @@ export function useKnowledgeQuery() {
       
       const results = data.results || [];
       setRecentResults(results);
+      setSearchMode(options.useEmbeddings !== false ? 'semantic' : 'text');
       
       return results;
     } catch (error) {
@@ -60,6 +63,7 @@ export function useKnowledgeQuery() {
     queryKnowledgeBase,
     isQuerying,
     queryError,
-    recentResults
+    recentResults,
+    searchMode
   };
 }

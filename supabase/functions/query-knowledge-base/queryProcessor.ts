@@ -6,6 +6,7 @@ interface QueryOptions {
   query: string;
   limit: number;
   useEmbeddings: boolean;
+  matchThreshold?: number;
 }
 
 interface KnowledgeChunk {
@@ -38,32 +39,70 @@ export interface FormattedResult {
  * Process a knowledge base query using vector or text search
  */
 export async function processQuery(options: QueryOptions): Promise<FormattedResult[]> {
-  const { query, limit = 5, useEmbeddings = true } = options;
+  const { 
+    query, 
+    limit = 5, 
+    useEmbeddings = true,
+    matchThreshold = 0.5 // Lower default threshold for better recall
+  } = options;
+  
   const supabase = createSupabaseClient();
   
   let results: KnowledgeChunk[];
   
   if (useEmbeddings) {
-    // Get embeddings for the query
-    const embedding = await generateQueryEmbedding(query);
-
-    // Query using vector similarity search
-    const { data: vectorResults, error: vectorError } = await supabase.rpc(
-      'match_knowledge_chunks',
-      {
-        query_embedding: embedding,
-        match_threshold: 0.7,
-        match_count: limit
+    try {
+      // Get embeddings for the query
+      const embedding = await generateQueryEmbedding(query);
+  
+      // Query using vector similarity search
+      const { data: vectorResults, error: vectorError } = await supabase.rpc(
+        'match_knowledge_chunks',
+        {
+          query_embedding: embedding,
+          match_threshold: matchThreshold,
+          match_count: limit
+        }
+      );
+  
+      if (vectorError) {
+        throw vectorError;
       }
-    );
+  
+      results = vectorResults || [];
+      
+      // If no results with vector search, fall back to text search
+      if (results.length === 0) {
+        console.log(`No vector results found, falling back to text search for: ${query}`);
+        const { data: textResults, error: textError } = await supabase
+          .from('knowledge_chunks')
+          .select('*')
+          .textSearch('content', query)
+          .limit(limit);
+  
+        if (textError) {
+          throw textError;
+        }
+  
+        results = textResults || [];
+      }
+    } catch (error) {
+      console.error("Error in vector search:", error);
+      // Fallback to text search on error
+      const { data: textResults, error: textError } = await supabase
+        .from('knowledge_chunks')
+        .select('*')
+        .textSearch('content', query)
+        .limit(limit);
 
-    if (vectorError) {
-      throw vectorError;
+      if (textError) {
+        throw textError;
+      }
+
+      results = textResults || [];
     }
-
-    results = vectorResults;
   } else {
-    // Fallback to text search if embeddings aren't used
+    // Direct text search if embeddings aren't used
     const { data: textResults, error: textError } = await supabase
       .from('knowledge_chunks')
       .select('*')
