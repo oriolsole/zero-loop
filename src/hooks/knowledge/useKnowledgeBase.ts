@@ -10,7 +10,7 @@ import { ExternalSource, FileUploadProgress, KnowledgeQueryOptions, KnowledgeUpl
  */
 export function useKnowledgeBase() {
   const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeUpload();
-  const { queryKnowledgeBase, isQuerying, queryError, recentResults } = useKnowledgeQuery();
+  const { queryKnowledgeBase, isQuerying, queryError, recentResults, searchMode } = useKnowledgeQuery();
   const { enrichWithKnowledge, verifyWithKnowledge } = useKnowledgeEnrich();
   
   return {
@@ -25,6 +25,7 @@ export function useKnowledgeBase() {
     isQuerying,
     queryError,
     recentResults,
+    searchMode,
     
     // Enrichment capabilities
     enrichWithKnowledge,
