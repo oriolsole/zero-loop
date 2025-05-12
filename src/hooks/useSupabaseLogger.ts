@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLoopStore } from '../store/useLoopStore';
 import { 
   logLoopToSupabase, 
@@ -12,8 +12,12 @@ import { toast } from '@/components/ui/sonner';
 
 const LOCAL_STORAGE_KEY = 'intelligence-loop-sync-queue';
 const LOCAL_STORAGE_STATE_KEY = 'intelligence-loop-sync-state';
-const MAX_QUEUE_ITEMS = 15; // Reduced from 30 to limit total items in queue
+const PROCESSED_ITEMS_KEY = 'intelligence-loop-processed-items';
+const MAX_QUEUE_ITEMS = 5; // Reduced from 15 to 5
+const MAX_DOMAIN_QUEUE_ITEMS = 3; // Separate limit for domains
 const TOAST_COOLDOWN_KEY = 'storage-warning-cooldown';
+const SYNC_COOLDOWN_MS = 60000; // Cooldown period of 1 minute between sync attempts for same item
+const MAX_PROCESSED_ITEMS = 100; // Maximum number of items to track as processed
 
 interface SyncQueue {
   loops: LoopHistory[];
@@ -28,6 +32,15 @@ interface SyncState {
   syncStats: {
     totalSynced: number;
     failedSyncs: number;
+  };
+  lastSyncAttempt: number;
+}
+
+interface ProcessedItemMap {
+  [id: string]: {
+    timestamp: number;
+    attempts: number;
+    type: 'loop' | 'node' | 'edge' | 'domain';
   };
 }
 
@@ -66,7 +79,8 @@ const getInitialState = (): SyncState => {
     syncStats: {
       totalSynced: 0,
       failedSyncs: 0
-    }
+    },
+    lastSyncAttempt: 0
   };
 };
 
@@ -86,6 +100,19 @@ const getInitialQueue = (): SyncQueue => {
     edges: [],
     domains: []
   };
+};
+
+const getProcessedItems = (): ProcessedItemMap => {
+  try {
+    const storedItems = localStorage.getItem(PROCESSED_ITEMS_KEY);
+    if (storedItems) {
+      return JSON.parse(storedItems);
+    }
+  } catch (e) {
+    console.error('Failed to parse processed items:', e);
+  }
+  
+  return {};
 };
 
 // Safe storage function that handles quota errors
@@ -114,7 +141,7 @@ const calculateObjectSize = (obj: any): number => {
 
 // Trim large text fields to reduce storage size
 const trimLargeLoopFields = (loop: LoopHistory): LoopHistory => {
-  const maxLength = 1000; // Max characters per field
+  const maxLength = 500; // Reduced from 1000 to 500 characters per field
   
   // Create a shallow copy of the loop
   const trimmedLoop = { ...loop };
@@ -132,13 +159,92 @@ const trimLargeLoopFields = (loop: LoopHistory): LoopHistory => {
     });
   }
   
+  // Also trim insights
+  if (trimmedLoop.insights && Array.isArray(trimmedLoop.insights)) {
+    trimmedLoop.insights = trimmedLoop.insights.map(insight => {
+      if (typeof insight === 'object' && insight && 'content' in insight && 
+          typeof insight.content === 'string' && insight.content.length > maxLength) {
+        return {
+          ...insight,
+          content: insight.content.substring(0, maxLength) + '... [trimmed]'
+        };
+      }
+      return insight;
+    });
+  }
+  
   return trimmedLoop;
+};
+
+// Check if an item should be processed based on cooldown period and previous attempts
+const shouldProcessItem = (
+  itemId: string, 
+  itemType: 'loop' | 'node' | 'edge' | 'domain',
+  processedItems: ProcessedItemMap
+): boolean => {
+  const now = Date.now();
+  const itemRecord = processedItems[itemId];
+  
+  if (!itemRecord) {
+    return true; // New item, should process
+  }
+  
+  // If too many attempts or recent attempt, skip
+  const attemptCooldown = itemRecord.attempts * SYNC_COOLDOWN_MS; // Progressive backoff
+  if (itemRecord.attempts > 5 || (now - itemRecord.timestamp) < attemptCooldown) {
+    return false; // Skip processing
+  }
+  
+  return true; // Should process this item
+};
+
+// Mark item as processed with current timestamp
+const markItemProcessed = (
+  itemId: string, 
+  itemType: 'loop' | 'node' | 'edge' | 'domain',
+  processedItems: ProcessedItemMap
+): ProcessedItemMap => {
+  const now = Date.now();
+  const updatedItems = { ...processedItems };
+  
+  // Update existing record or create new one
+  if (updatedItems[itemId]) {
+    updatedItems[itemId] = {
+      ...updatedItems[itemId],
+      timestamp: now,
+      attempts: updatedItems[itemId].attempts + 1
+    };
+  } else {
+    updatedItems[itemId] = {
+      timestamp: now,
+      attempts: 1,
+      type: itemType
+    };
+  }
+  
+  // Prune old records if map gets too large
+  const itemIds = Object.keys(updatedItems);
+  if (itemIds.length > MAX_PROCESSED_ITEMS) {
+    // Sort by timestamp (oldest first)
+    const sortedIds = itemIds.sort((a, b) => 
+      updatedItems[a].timestamp - updatedItems[b].timestamp);
+      
+    // Remove oldest items to stay under limit
+    const itemsToRemove = sortedIds.slice(0, itemIds.length - MAX_PROCESSED_ITEMS);
+    itemsToRemove.forEach(id => {
+      delete updatedItems[id];
+    });
+  }
+  
+  return updatedItems;
 };
 
 export function useSupabaseLogger() {
   const [state, setState] = useState<SyncState>(getInitialState);
   const [queue, setQueue] = useState<SyncQueue>(getInitialQueue);
+  const [processedItems, setProcessedItems] = useState<ProcessedItemMap>(getProcessedItems);
   const { loopHistory, domains, activeDomainId } = useLoopStore();
+  const syncAttemptRef = useRef<number>(0); // Track sync attempts to avoid concurrent syncs
   
   // Save state to localStorage whenever it changes
   useEffect(() => {
@@ -149,6 +255,16 @@ export function useSupabaseLogger() {
       console.error('Failed to save sync state:', e);
     }
   }, [state]);
+  
+  // Save processed items to localStorage whenever they change
+  useEffect(() => {
+    try {
+      const itemsJson = JSON.stringify(processedItems);
+      safeSetItem(PROCESSED_ITEMS_KEY, itemsJson);
+    } catch (e) {
+      console.error('Failed to save processed items:', e);
+    }
+  }, [processedItems]);
   
   // Save queue to localStorage whenever it changes, with size management
   useEffect(() => {
@@ -162,16 +278,16 @@ export function useSupabaseLogger() {
       
       console.log(`Sync queue size estimate: ${Math.round(totalSize / 1024)}KB`);
       
-      // If we're approaching the 1.5MB limit (~1,500,000 bytes), trim the queue
-      if (totalSize > 1000000) { // ~1MB as a safety threshold 
+      // If we're approaching the 1MB limit (~1,000,000 bytes), trim the queue
+      if (totalSize > 700000) { // ~700KB as a safety threshold (reduced from 1MB)
         console.warn('Queue size is large, automatically trimming older items');
         
         // Create a trimmed version of the queue with only the most recent items
         const trimmedQueue: SyncQueue = {
-          loops: queue.loops.slice(-Math.min(5, queue.loops.length)),
-          nodes: queue.nodes.slice(-Math.min(5, queue.nodes.length)),
-          edges: queue.edges.slice(-Math.min(5, queue.edges.length)),
-          domains: queue.domains.slice(-Math.min(3, queue.domains.length)) 
+          loops: queue.loops.slice(-Math.min(3, queue.loops.length)),
+          nodes: queue.nodes.slice(-Math.min(3, queue.nodes.length)),
+          edges: queue.edges.slice(-Math.min(3, queue.edges.length)),
+          domains: queue.domains.slice(-Math.min(2, queue.domains.length)) 
         };
         
         setQueue(trimmedQueue);
@@ -221,14 +337,23 @@ export function useSupabaseLogger() {
   const queueLoop = (loop: LoopHistory) => {
     if (!state.isRemoteEnabled) return;
     
+    // Skip if this loop was recently processed
+    if (!shouldProcessItem(loop.id, 'loop', processedItems)) {
+      console.log(`Skipping loop ${loop.id} - recently processed`);
+      return;
+    }
+    
     // Trim large fields before storing
     const trimmedLoop = trimLargeLoopFields(loop);
+    
+    // Mark as processed with current timestamp
+    setProcessedItems(prev => markItemProcessed(loop.id, 'loop', prev));
     
     setQueue(prev => {
       // If we're approaching the limit, only keep the most recent items
       const updatedLoops = [...prev.loops, trimmedLoop];
       if (updatedLoops.length > MAX_QUEUE_ITEMS) {
-        console.warn(`Loop queue exceeds ${MAX_QUEUE_ITEMS} items, trimming oldest`);
+        console.log(`Loop queue exceeds ${MAX_QUEUE_ITEMS} items, trimming oldest`);
         return {
           ...prev,
           loops: updatedLoops.slice(-MAX_QUEUE_ITEMS)
@@ -246,6 +371,14 @@ export function useSupabaseLogger() {
   // Queue a knowledge node for sync
   const queueNode = (node: KnowledgeNode) => {
     if (!state.isRemoteEnabled) return;
+    
+    // Skip if this node was recently processed
+    if (!shouldProcessItem(node.id, 'node', processedItems)) {
+      return;
+    }
+    
+    // Mark as processed with current timestamp
+    setProcessedItems(prev => markItemProcessed(node.id, 'node', prev));
     
     setQueue(prev => {
       const updatedNodes = [...prev.nodes, node];
@@ -268,6 +401,14 @@ export function useSupabaseLogger() {
   const queueEdge = (edge: KnowledgeEdge) => {
     if (!state.isRemoteEnabled) return;
     
+    // Skip if this edge was recently processed
+    if (!shouldProcessItem(edge.id, 'edge', processedItems)) {
+      return;
+    }
+    
+    // Mark as processed with current timestamp
+    setProcessedItems(prev => markItemProcessed(edge.id, 'edge', prev));
+    
     setQueue(prev => {
       const updatedEdges = [...prev.edges, edge];
       if (updatedEdges.length > MAX_QUEUE_ITEMS) {
@@ -289,6 +430,15 @@ export function useSupabaseLogger() {
   const queueDomain = (domain: Domain) => {
     if (!state.isRemoteEnabled) return;
     
+    // Skip if this domain was recently processed
+    if (!shouldProcessItem(domain.id, 'domain', processedItems)) {
+      console.log(`Skipping domain ${domain.id} - recently processed`);
+      return;
+    }
+    
+    // Mark as processed with current timestamp
+    setProcessedItems(prev => markItemProcessed(domain.id, 'domain', prev));
+    
     setQueue(prev => {
       // Check if the domain is already in the queue
       const existingIndex = prev.domains.findIndex(d => d.id === domain.id);
@@ -302,10 +452,10 @@ export function useSupabaseLogger() {
         };
       }
       
-      // Keep only MAX_QUEUE_ITEMS domains in the queue
+      // Keep only MAX_DOMAIN_QUEUE_ITEMS domains in the queue
       let updatedDomains = [...prev.domains, domain];
-      if (updatedDomains.length > MAX_QUEUE_ITEMS) {
-        updatedDomains = updatedDomains.slice(-MAX_QUEUE_ITEMS);
+      if (updatedDomains.length > MAX_DOMAIN_QUEUE_ITEMS) {
+        updatedDomains = updatedDomains.slice(-MAX_DOMAIN_QUEUE_ITEMS);
       }
       
       // Add the new domain to the queue
@@ -348,8 +498,49 @@ export function useSupabaseLogger() {
     return Promise.resolve();
   };
   
+  // Clear all tracked data (queue and processed items)
+  const clearAllTrackedData = async (): Promise<void> => {
+    // Clear queue
+    setQueue({
+      loops: [],
+      nodes: [],
+      edges: [],
+      domains: []
+    });
+    
+    // Clear processed items
+    setProcessedItems({});
+    
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      localStorage.removeItem(PROCESSED_ITEMS_KEY);
+      console.log('All tracking data cleared');
+    } catch (error) {
+      console.error('Error clearing tracked data:', error);
+    }
+    
+    return Promise.resolve();
+  };
+  
   // Sync all pending items in the queue
   const syncPendingItems = async (): Promise<boolean> => {
+    // Generate a new sync attempt ID
+    const currentSyncAttempt = Date.now();
+    syncAttemptRef.current = currentSyncAttempt;
+    
+    // Cooldown check - don't sync too frequently
+    const lastAttempt = state.lastSyncAttempt || 0;
+    if (Date.now() - lastAttempt < 3000) { // 3-second cooldown between sync attempts
+      console.log('Sync cooldown in effect, skipping this attempt');
+      return true;
+    }
+    
+    // Update last sync attempt time
+    setState(prev => ({
+      ...prev,
+      lastSyncAttempt: Date.now()
+    }));
+    
     if (queue.loops.length === 0 && 
         queue.nodes.length === 0 && 
         queue.edges.length === 0 &&
@@ -359,11 +550,11 @@ export function useSupabaseLogger() {
     }
     
     // To avoid storage issues, limit what we sync at once
-    const batchSize = 5;
+    const batchSize = 3; // Reduced from 5 to 3
+    const syncDomains = queue.domains.slice(0, 2); // Prioritize domains, up to 2
     const syncLoops = queue.loops.slice(0, batchSize);
     const syncNodes = queue.nodes.slice(0, batchSize);
     const syncEdges = queue.edges.slice(0, batchSize);
-    const syncDomains = queue.domains.slice(0, 3); // Limiting domains to 3 at a time
     
     try {
       console.log('Starting sync of pending items:', {
@@ -372,6 +563,12 @@ export function useSupabaseLogger() {
         edges: syncEdges.length,
         domains: syncDomains.length
       });
+      
+      // If this sync attempt is no longer the current one, abort
+      if (syncAttemptRef.current !== currentSyncAttempt) {
+        console.log('Sync attempt superseded by newer attempt, aborting');
+        return false;
+      }
       
       const result = await syncWithSupabase(
         syncLoops,
@@ -404,7 +601,7 @@ export function useSupabaseLogger() {
           loops: prev.loops.slice(syncLoops.length),
           nodes: prev.nodes.slice(syncNodes.length),
           edges: prev.edges.slice(syncEdges.length),
-          domains: prev.domains.slice(syncDomains.length) // Only clear synced domains
+          domains: prev.domains.slice(syncDomains.length) 
         }));
       }
       
@@ -434,90 +631,45 @@ export function useSupabaseLogger() {
           console.error('Auto-sync failed:', err);
         });
       }
-    }, 2 * 60 * 1000); // 2 minutes (reduced from 5)
+    }, 2 * 60 * 1000); // 2 minutes
     
     return () => clearInterval(intervalId);
   }, [state.isRemoteEnabled, queue]);
   
-  // Queue new loops for syncing if remote logging is enabled, with size limits
+  // Queue domains for syncing if remote logging is enabled - SIMPLIFIED to reduce re-renders
   useEffect(() => {
     if (!state.isRemoteEnabled) return;
     
-    // Check if there are any loops not in the queue, limiting total size
-    const queuedLoopIds = new Set(queue.loops.map(l => l.id));
-    const unqueuedLoops = loopHistory
-      .filter(l => !queuedLoopIds.has(l.id))
-      .slice(-MAX_QUEUE_ITEMS); // Only take the most recent ones
-    
-    if (unqueuedLoops.length > 0) {
-      console.log(`Found ${unqueuedLoops.length} unqueued loops, adding to queue`);
-      
-      // Trim content fields to reduce storage size
-      const trimmedLoops = unqueuedLoops.map(loop => trimLargeLoopFields(loop));
-      
-      setQueue(prev => {
-        // If we're approaching the limit, only keep the most recent items
-        const combinedLoops = [...prev.loops, ...trimmedLoops];
-        return {
-          ...prev,
-          loops: combinedLoops.length > MAX_QUEUE_ITEMS ? 
-            combinedLoops.slice(-MAX_QUEUE_ITEMS) : 
-            combinedLoops
-        };
-      });
-    }
-  }, [state.isRemoteEnabled, loopHistory, queue.loops]);
-
-  // Queue domains for syncing if remote logging is enabled
-  useEffect(() => {
-    if (!state.isRemoteEnabled) return;
-    
-    // Check if any domains need to be added to the queue
+    // Only check once when enabled
     const queuedDomainIds = new Set(queue.domains.map(d => d.id));
-    const unqueuedDomains = domains.filter(d => !queuedDomainIds.has(d.id));
+    const unqueuedDomainsCount = domains.filter(d => !queuedDomainIds.has(d.id)).length;
     
-    if (unqueuedDomains.length > 0) {
-      console.log(`Found ${unqueuedDomains.length} unqueued domains, adding to queue`);
-      setQueue(prev => {
-        // Make sure we're not exceeding MAX_QUEUE_ITEMS domains
-        const combinedDomains = [...prev.domains, ...unqueuedDomains];
-        return {
-          ...prev,
-          domains: combinedDomains.length > MAX_QUEUE_ITEMS ? 
-            combinedDomains.slice(-MAX_QUEUE_ITEMS) : 
-            combinedDomains
-        };
-      });
-    }
-  }, [state.isRemoteEnabled, domains, queue.domains]);
-  
-  // Force sync on component mount if storage is likely to be full
-  useEffect(() => {
-    const pendingCount = queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length;
-    if (state.isRemoteEnabled && pendingCount > 0) {
-      // Determine storage fullness by checking failure to write a test value
-      try {
-        const testKey = `storage-test-${Date.now()}`;
-        const testData = new Array(1000).join('a'); // Create a ~1KB string
-        localStorage.setItem(testKey, testData);
-        localStorage.removeItem(testKey);
-        
-        // Normal sync with slight delay
-        const timer = setTimeout(() => {
-          console.log('Initial sync of pending items');
-          syncPendingItems().catch(err => {
-            console.error('Initial sync failed:', err);
-          });
-        }, 2000); // Wait 2 seconds after mount before syncing
-        
-        return () => clearTimeout(timer);
-      } catch (e) {
-        // If writing test data fails, storage is likely full - do immediate sync
-        console.warn('Storage test failed, immediate sync required');
-        syncPendingItems().catch(err => {
-          console.error('Immediate sync failed:', err);
+    if (unqueuedDomainsCount > 0) {
+      console.log(`Found ${unqueuedDomainsCount} unqueued domains`);
+      // We don't sync all domains at once to avoid excessive rerendering
+      const domainsToSync = domains.filter(d => !queuedDomainIds.has(d.id)).slice(0, 2);
+      
+      if (domainsToSync.length > 0) {
+        domainsToSync.forEach(domain => {
+          queueDomain(domain);
         });
       }
+    }
+  }, [state.isRemoteEnabled, domains.length]); // Only depend on the length to reduce renders
+  
+  // Force sync on component mount if storage is likely to be full - MODIFIED to be less aggressive
+  useEffect(() => {
+    const pendingCount = queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length;
+    if (state.isRemoteEnabled && pendingCount > 10) { // Only trigger if many pending items
+      // Normal sync with slight delay
+      const timer = setTimeout(() => {
+        console.log('Initial sync of pending items');
+        syncPendingItems().catch(err => {
+          console.error('Initial sync failed:', err);
+        });
+      }, 5000); // Wait 5 seconds after mount before syncing (up from 2s)
+      
+      return () => clearTimeout(timer);
     }
   }, []); // Empty dependency array ensures this runs once on mount
   
@@ -531,6 +683,7 @@ export function useSupabaseLogger() {
     queueDomain,
     syncPendingItems,
     clearSyncQueue,
+    clearAllTrackedData,
     pendingItemsCount: queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length
   };
 }

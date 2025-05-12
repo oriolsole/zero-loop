@@ -18,9 +18,15 @@ export const useLoopStoreInit = () => {
   } = useLoopStore();
   
   const [isInitializing, setIsInitializing] = useState(true);
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   // Initialize the store when auth state changes
   useEffect(() => {
+    // Skip if already initialized to prevent repeated initialization
+    if (hasInitialized && !authLoading) {
+      return;
+    }
+    
     const initializeStore = async () => {
       if (authLoading) return;
       
@@ -41,15 +47,23 @@ export const useLoopStoreInit = () => {
             console.log('No domains found, creating template domains');
             const templateDomains = getTemplateDomains();
             
+            // Create only the first two template domains to avoid overloading
+            const limitedDomains = templateDomains.slice(0, 2);
+            
             // Create each template domain in Supabase and add it to the store
-            for (const domain of templateDomains) {
-              await saveDomainToSupabase(domain);
-              addNewDomain(domain);
+            for (const domain of limitedDomains) {
+              try {
+                await saveDomainToSupabase(domain);
+                addNewDomain(domain);
+              } catch (err) {
+                console.error('Error saving domain template:', err);
+              }
             }
             
-            // If template domains were created, re-initialize from Supabase
-            if (templateDomains.length > 0) {
-              await initializeFromSupabase();
+            // If we created domains, note that but don't re-initialize
+            // to avoid creating an initialization loop
+            if (limitedDomains.length > 0) {
+              console.log(`Created ${limitedDomains.length} template domains`);
             }
           }
           
@@ -62,13 +76,16 @@ export const useLoopStoreInit = () => {
           // If no domains exist at all, create template domains locally
           if (domains.length === 0) {
             console.log('No domains found locally, creating template domains');
-            const templateDomains = getTemplateDomains();
+            // Only create two domains to avoid overloading storage
+            const templateDomains = getTemplateDomains().slice(0, 2);
             
             for (const domain of templateDomains) {
               addNewDomain(domain);
             }
           }
         }
+        
+        setHasInitialized(true);
       } catch (error) {
         console.error('Error initializing store:', error);
         toast.error('Failed to initialize application data');
@@ -78,7 +95,7 @@ export const useLoopStoreInit = () => {
     };
     
     initializeStore();
-  }, [user, authLoading, initializeFromSupabase, setUseRemoteLogging, domains]);
+  }, [user, authLoading, initializeFromSupabase, setUseRemoteLogging, domains, hasInitialized]);
   
   return { isInitializing };
 };

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Loader, Database, Upload, AlertCircle, CheckCircle, Info, Trash2 } from 'lucide-react';
+import { Loader, Database, Upload, AlertCircle, CheckCircle, Info, Trash2, RefreshCw } from 'lucide-react';
 import { useLoopStore } from "../store/useLoopStore";
 import { useSupabaseLogger } from "../hooks/useSupabaseLogger";
 import { isSupabaseConfigured } from "../utils/supabase-client";
@@ -22,14 +22,23 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-// The component no longer accepts onToggleRemote prop as it uses the store directly
 const SupabaseControl = () => {
   const { useRemoteLogging, setUseRemoteLogging, initializeFromSupabase, domains } = useLoopStore();
-  const { state, toggleRemoteLogging, syncPendingItems, pendingItemsCount, queueDomain, clearSyncQueue } = useSupabaseLogger();
+  const { 
+    state, 
+    toggleRemoteLogging, 
+    syncPendingItems, 
+    pendingItemsCount, 
+    queueDomain, 
+    clearSyncQueue,
+    clearAllTrackedData
+  } = useSupabaseLogger();
+  
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const [lastSyncStatus, setLastSyncStatus] = useState<'success' | 'warning' | 'error' | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
 
   useEffect(() => {
     // Check if Supabase is configured
@@ -48,10 +57,11 @@ const SupabaseControl = () => {
       try {
         await initializeFromSupabase();
         
-        // Queue all existing domains for syncing
+        // Queue a subset of domains for syncing to avoid overloading
         if (domains && domains.length > 0) {
-          console.log(`Queueing ${domains.length} domains for initial sync`);
-          domains.forEach(domain => {
+          console.log(`Queueing domains for initial sync (limited to 2)`);
+          // Only queue up to 2 domains to prevent overwhelming the system
+          domains.slice(0, 2).forEach(domain => {
             queueDomain(domain);
           });
         }
@@ -101,6 +111,17 @@ const SupabaseControl = () => {
     } catch (error) {
       console.error('Error clearing storage:', error);
       toast.error('Failed to clear local storage queue');
+    }
+  };
+
+  const handleResetAllData = async () => {
+    try {
+      await clearAllTrackedData();
+      toast.success('All sync data has been reset');
+      setIsResetDialogOpen(false);
+    } catch (error) {
+      console.error('Error resetting all data:', error);
+      toast.error('Failed to reset sync data');
     }
   };
 
@@ -219,10 +240,19 @@ const SupabaseControl = () => {
               <Button 
                 onClick={() => setIsClearDialogOpen(true)} 
                 variant="outline" 
-                className="w-full border-dashed border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
+                className="w-full border-dashed"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Clear Local Storage Queue
+              </Button>
+              
+              <Button 
+                onClick={() => setIsResetDialogOpen(true)} 
+                variant="outline" 
+                className="w-full border-dashed border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Reset All Sync Data
               </Button>
             </div>
 
@@ -281,6 +311,26 @@ const SupabaseControl = () => {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleClearStorage} className="bg-red-500 hover:bg-red-600">
               Yes, clear storage
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+      {/* Confirmation dialog for resetting all data */}
+      <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset All Sync Data</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear all pending items AND reset the processed items tracking system.
+              This is useful if you're experiencing sync issues or queue warnings.
+              Any unsynced data will be permanently lost. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetAllData} className="bg-red-500 hover:bg-red-600">
+              Yes, reset all data
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
