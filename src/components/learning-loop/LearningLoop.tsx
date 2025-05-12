@@ -90,14 +90,14 @@ const LearningLoop: React.FC = () => {
   }
 
   const currentLoop = activeDomain.currentLoop;
-  const completedSteps = currentLoop.filter(step => step.status === 'complete');
+  const completedSteps = currentLoop.filter(step => step.status === 'success');
   const pendingSteps = currentLoop.filter(step => step.status === 'pending');
   
   // Check if all steps are complete
   const allStepsComplete = completedSteps.length === currentLoop.length;
   
-  // Check if there's a step currently in progress (not pending, not complete)
-  const hasInProgressStep = currentLoop.some(step => step.status === 'in-progress');
+  // Check if there's a step currently in progress (not pending or success, which means it's failure or warning)
+  const hasInProgressStep = currentLoop.some(step => step.status !== 'success' && step.status !== 'pending');
   
   // Check if the last step is pending (which means we're waiting for it to complete)
   const isLastStepPending = currentLoop[currentLoop.length - 1].status === 'pending';
