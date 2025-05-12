@@ -12,7 +12,8 @@ import { toast } from '@/components/ui/sonner';
 
 const LOCAL_STORAGE_KEY = 'intelligence-loop-sync-queue';
 const LOCAL_STORAGE_STATE_KEY = 'intelligence-loop-sync-state';
-const MAX_QUEUE_ITEMS = 30; // Reduced from 50 to limit total items in queue
+const MAX_QUEUE_ITEMS = 15; // Reduced from 30 to limit total items in queue
+const TOAST_COOLDOWN_KEY = 'storage-warning-cooldown';
 
 interface SyncQueue {
   loops: LoopHistory[];
@@ -29,6 +30,25 @@ interface SyncState {
     failedSyncs: number;
   };
 }
+
+// Show rate-limited warnings (max once per hour)
+const showStorageWarning = () => {
+  const now = Date.now();
+  const lastWarning = parseInt(localStorage.getItem(TOAST_COOLDOWN_KEY) || '0', 10);
+  
+  // Only show warning once per hour
+  if (now - lastWarning > 3600000) {
+    toast.warning('Local storage quota exceeded. Some data won\'t be saved locally.', {
+      id: 'storage-warning', // Use ID to prevent duplicates
+      duration: 6000
+    });
+    try {
+      localStorage.setItem(TOAST_COOLDOWN_KEY, now.toString());
+    } catch (e) {
+      // Ignore if this also fails
+    }
+  }
+};
 
 const getInitialState = (): SyncState => {
   try {
@@ -79,7 +99,8 @@ const safeSetItem = (key: string, value: string): boolean => {
       e.name === 'QuotaExceededError' || 
       e.name === 'NS_ERROR_DOM_QUOTA_REACHED'
     )) {
-      toast.error('Local storage quota exceeded. Some data won\'t be saved locally.');
+      // Use rate-limited warning
+      showStorageWarning();
       return false;
     }
     throw e; // Re-throw if it's not a quota error
@@ -89,6 +110,29 @@ const safeSetItem = (key: string, value: string): boolean => {
 // Calculate size of an object in bytes (approximate)
 const calculateObjectSize = (obj: any): number => {
   return new TextEncoder().encode(JSON.stringify(obj)).length;
+};
+
+// Trim large text fields to reduce storage size
+const trimLargeLoopFields = (loop: LoopHistory): LoopHistory => {
+  const maxLength = 1000; // Max characters per field
+  
+  // Create a shallow copy of the loop
+  const trimmedLoop = { ...loop };
+  
+  // Trim large content fields in steps
+  if (trimmedLoop.steps) {
+    trimmedLoop.steps = trimmedLoop.steps.map(step => {
+      if (step.content && step.content.length > maxLength) {
+        return {
+          ...step,
+          content: step.content.substring(0, maxLength) + '... [trimmed for storage]'
+        };
+      }
+      return step;
+    });
+  }
+  
+  return trimmedLoop;
 };
 
 export function useSupabaseLogger() {
@@ -118,20 +162,19 @@ export function useSupabaseLogger() {
       
       console.log(`Sync queue size estimate: ${Math.round(totalSize / 1024)}KB`);
       
-      // If we're approaching the 5MB limit (~5,000,000 bytes), trim the queue
-      if (totalSize > 1500000) { // ~1.5MB as a safety threshold 
+      // If we're approaching the 1.5MB limit (~1,500,000 bytes), trim the queue
+      if (totalSize > 1000000) { // ~1MB as a safety threshold 
         console.warn('Queue size is large, automatically trimming older items');
         
         // Create a trimmed version of the queue with only the most recent items
         const trimmedQueue: SyncQueue = {
-          loops: queue.loops.slice(-Math.min(10, queue.loops.length)),
-          nodes: queue.nodes.slice(-Math.min(10, queue.nodes.length)),
-          edges: queue.edges.slice(-Math.min(10, queue.edges.length)),
-          domains: queue.domains.slice(-Math.min(5, queue.domains.length)) 
+          loops: queue.loops.slice(-Math.min(5, queue.loops.length)),
+          nodes: queue.nodes.slice(-Math.min(5, queue.nodes.length)),
+          edges: queue.edges.slice(-Math.min(5, queue.edges.length)),
+          domains: queue.domains.slice(-Math.min(3, queue.domains.length)) 
         };
         
         setQueue(trimmedQueue);
-        toast.warning('Storage approaching limit - older items removed from queue');
         
         // Immediate attempt to save the trimmed queue
         const trimmedJson = JSON.stringify(trimmedQueue);
@@ -178,9 +221,12 @@ export function useSupabaseLogger() {
   const queueLoop = (loop: LoopHistory) => {
     if (!state.isRemoteEnabled) return;
     
+    // Trim large fields before storing
+    const trimmedLoop = trimLargeLoopFields(loop);
+    
     setQueue(prev => {
       // If we're approaching the limit, only keep the most recent items
-      const updatedLoops = [...prev.loops, loop];
+      const updatedLoops = [...prev.loops, trimmedLoop];
       if (updatedLoops.length > MAX_QUEUE_ITEMS) {
         console.warn(`Loop queue exceeds ${MAX_QUEUE_ITEMS} items, trimming oldest`);
         return {
@@ -317,7 +363,7 @@ export function useSupabaseLogger() {
     const syncLoops = queue.loops.slice(0, batchSize);
     const syncNodes = queue.nodes.slice(0, batchSize);
     const syncEdges = queue.edges.slice(0, batchSize);
-    const syncDomains = queue.domains; // Domains are important, sync them all
+    const syncDomains = queue.domains.slice(0, 3); // Limiting domains to 3 at a time
     
     try {
       console.log('Starting sync of pending items:', {
@@ -358,7 +404,7 @@ export function useSupabaseLogger() {
           loops: prev.loops.slice(syncLoops.length),
           nodes: prev.nodes.slice(syncNodes.length),
           edges: prev.edges.slice(syncEdges.length),
-          domains: [] // Clear domains since we synced all
+          domains: prev.domains.slice(syncDomains.length) // Only clear synced domains
         }));
       }
       
@@ -376,7 +422,7 @@ export function useSupabaseLogger() {
     }
   };
   
-  // Auto-sync every 5 minutes if enabled, but only if there are items to sync
+  // Auto-sync every 2 minutes if enabled, but only if there are items to sync
   useEffect(() => {
     if (!state.isRemoteEnabled) return;
     
@@ -388,7 +434,7 @@ export function useSupabaseLogger() {
           console.error('Auto-sync failed:', err);
         });
       }
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 2 * 60 * 1000); // 2 minutes (reduced from 5)
     
     return () => clearInterval(intervalId);
   }, [state.isRemoteEnabled, queue]);
@@ -401,13 +447,17 @@ export function useSupabaseLogger() {
     const queuedLoopIds = new Set(queue.loops.map(l => l.id));
     const unqueuedLoops = loopHistory
       .filter(l => !queuedLoopIds.has(l.id))
-      .slice(-MAX_QUEUE_ITEMS); // Only take the most recent ones if there are too many
+      .slice(-MAX_QUEUE_ITEMS); // Only take the most recent ones
     
     if (unqueuedLoops.length > 0) {
       console.log(`Found ${unqueuedLoops.length} unqueued loops, adding to queue`);
+      
+      // Trim content fields to reduce storage size
+      const trimmedLoops = unqueuedLoops.map(loop => trimLargeLoopFields(loop));
+      
       setQueue(prev => {
         // If we're approaching the limit, only keep the most recent items
-        const combinedLoops = [...prev.loops, ...unqueuedLoops];
+        const combinedLoops = [...prev.loops, ...trimmedLoops];
         return {
           ...prev,
           loops: combinedLoops.length > MAX_QUEUE_ITEMS ? 
@@ -441,18 +491,33 @@ export function useSupabaseLogger() {
     }
   }, [state.isRemoteEnabled, domains, queue.domains]);
   
-  // Force an immediate sync on component mount if there are pending items
+  // Force sync on component mount if storage is likely to be full
   useEffect(() => {
     const pendingCount = queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length;
     if (state.isRemoteEnabled && pendingCount > 0) {
-      const timer = setTimeout(() => {
-        console.log('Initial sync of pending items');
+      // Determine storage fullness by checking failure to write a test value
+      try {
+        const testKey = `storage-test-${Date.now()}`;
+        const testData = new Array(1000).join('a'); // Create a ~1KB string
+        localStorage.setItem(testKey, testData);
+        localStorage.removeItem(testKey);
+        
+        // Normal sync with slight delay
+        const timer = setTimeout(() => {
+          console.log('Initial sync of pending items');
+          syncPendingItems().catch(err => {
+            console.error('Initial sync failed:', err);
+          });
+        }, 2000); // Wait 2 seconds after mount before syncing
+        
+        return () => clearTimeout(timer);
+      } catch (e) {
+        // If writing test data fails, storage is likely full - do immediate sync
+        console.warn('Storage test failed, immediate sync required');
         syncPendingItems().catch(err => {
-          console.error('Initial sync failed:', err);
+          console.error('Immediate sync failed:', err);
         });
-      }, 2000); // Wait 2 seconds after mount before syncing
-      
-      return () => clearTimeout(timer);
+      }
     }
   }, []); // Empty dependency array ensures this runs once on mount
   
@@ -465,7 +530,7 @@ export function useSupabaseLogger() {
     queueEdge,
     queueDomain,
     syncPendingItems,
-    clearSyncQueue, // New method to clear the sync queue
+    clearSyncQueue,
     pendingItemsCount: queue.loops.length + queue.nodes.length + queue.edges.length + queue.domains.length
   };
 }
