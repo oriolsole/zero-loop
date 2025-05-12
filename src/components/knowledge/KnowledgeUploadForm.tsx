@@ -2,21 +2,21 @@
 import React, { useState } from 'react';
 import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Upload, Link as LinkIcon } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useKnowledgeBase, FileUploadProgress } from "@/hooks/useKnowledgeBase";
-import { useLoopStore } from '@/store/useLoopStore';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useKnowledgeBase } from "@/hooks/useKnowledgeBase";
+import { useLoopStore } from '@/store/useLoopStore';
 import { AlertCircle } from 'lucide-react';
 
+import { TitleInput } from "./TitleInput";
+import { DomainSelector } from "./DomainSelector";
+import { SourceUrlInput } from "./SourceUrlInput";
+import { TextUploadTab } from "./TextUploadTab";
 import { FileUploadArea } from "./FileUploadArea";
 import { FileUploadPreview } from "./FileUploadPreview";
 import { UploadProgress } from "./UploadProgress";
 import { AdvancedOptions } from "./AdvancedOptions";
+import { SubmitButton } from "./SubmitButton";
 
 const KnowledgeUploadForm: React.FC = () => {
   const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeBase();
@@ -133,46 +133,9 @@ const KnowledgeUploadForm: React.FC = () => {
         </Alert>
       )}
       
-      <div className="space-y-2">
-        <Label htmlFor="title">Title</Label>
-        <Input
-          id="title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Document title"
-          required
-        />
-      </div>
-      
-      <div className="space-y-2">
-        <Label htmlFor="domain">Domain</Label>
-        <Select value={domainId} onValueChange={setDomainId}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select a domain" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="no-domain">No specific domain</SelectItem>
-            {domains.map((domain) => (
-              <SelectItem key={domain.id} value={domain.id}>
-                {domain.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      
-      <div className="space-y-2">
-        <Label htmlFor="source">Source URL (Optional)</Label>
-        <div className="flex items-center space-x-2">
-          <LinkIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          <Input
-            id="source"
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            placeholder="https://example.com/document"
-          />
-        </div>
-      </div>
+      <TitleInput title={title} setTitle={setTitle} />
+      <DomainSelector domainId={domainId} setDomainId={setDomainId} domains={domains} />
+      <SourceUrlInput sourceUrl={sourceUrl} setSourceUrl={setSourceUrl} />
       
       <Tabs defaultValue="text" value={activeTab} onValueChange={(v) => setActiveTab(v as 'text' | 'file')}>
         <TabsList className="grid w-full grid-cols-2">
@@ -181,22 +144,11 @@ const KnowledgeUploadForm: React.FC = () => {
         </TabsList>
         
         <TabsContent value="text" className="space-y-4 pt-4">
-          <div className="space-y-2">
-            <Label htmlFor="content">Content</Label>
-            <Textarea
-              id="content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Paste or type your knowledge content here"
-              className="min-h-[200px]"
-              required={activeTab === 'text'}
-            />
-          </div>
+          <TextUploadTab content={content} setContent={setContent} />
         </TabsContent>
         
         <TabsContent value="file" className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="file">Upload File</Label>
             <FileUploadArea 
               selectedFile={selectedFile} 
               fileName={fileName}
@@ -234,23 +186,11 @@ const KnowledgeUploadForm: React.FC = () => {
       
       {uploadProgress && <UploadProgress progress={uploadProgress} />}
       
-      <Button 
-        type="submit" 
-        disabled={isUploading || (!content && activeTab === 'text') || (!selectedFile && activeTab === 'file')} 
-        className="w-full"
-      >
-        {isUploading ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            {activeTab === 'file' ? 'Uploading File...' : 'Uploading...'}
-          </>
-        ) : (
-          <>
-            <Upload className="mr-2 h-4 w-4" />
-            {activeTab === 'file' ? 'Upload File' : 'Upload Knowledge'}
-          </>
-        )}
-      </Button>
+      <SubmitButton 
+        isUploading={isUploading} 
+        isDisabled={(activeTab === 'text' && !content) || (activeTab === 'file' && !selectedFile)}
+        isFileUpload={activeTab === 'file'} 
+      />
     </form>
   );
 };
