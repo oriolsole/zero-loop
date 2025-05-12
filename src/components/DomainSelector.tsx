@@ -60,7 +60,7 @@ const DomainSelector: React.FC<{
                   </Badge>
                 </div>
                 
-                <Link to={`/domain/edit/${domain.id}`} onClick={(e) => e.stopPropagation()}>
+                <Link to={`/domain/${domain.id}`} onClick={(e) => e.stopPropagation()}>
                   <Button variant="ghost" size="sm" className="p-1 h-auto">
                     <Settings className="w-4 h-4" />
                   </Button>
