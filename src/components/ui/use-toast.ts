@@ -1,6 +1,14 @@
 
-import { useToast as useSonnerToast, toast as sonnerToast } from "sonner";
+// The sonner library doesn't have a useToast export
+// It only exports the toast function and some related features
+// Let's update our implementation to use what's actually available
 
-// Use Sonner toast instead of the custom implementation to prevent duplicates
-export const useToast = useSonnerToast;
-export const toast = sonnerToast;
+import { toast } from "sonner";
+
+// Create our own useToast hook that wraps the toast function
+export const useToast = () => {
+  return { toast };
+};
+
+// Re-export the toast function for direct usage
+export { toast };
