@@ -5,13 +5,24 @@ import LearningStep from './LearningStep';
 import EmptyLoopState from './EmptyLoopState';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, FastForward, Pause, SkipForward } from 'lucide-react';
+import { Loader2, Play, FastForward, Pause, SkipForward, X } from 'lucide-react';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const LearningLoop: React.FC = () => {
   const { 
@@ -24,7 +35,8 @@ const LearningLoop: React.FC = () => {
     toggleContinuousMode,
     loopDelay,
     setLoopDelay,
-    pauseLoops
+    pauseLoops,
+    cancelCurrentLoop
   } = useLoopStore();
 
   const activeDomain = domains.find(domain => domain.id === activeDomainId);
@@ -96,6 +108,30 @@ const LearningLoop: React.FC = () => {
             </Button>
           ) : (
             <>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600 gap-1">
+                    <X className="h-4 w-4" />
+                    Cancel Loop
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Cancel learning loop?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will cancel the current learning loop. Any progress in this loop will not be saved to your knowledge graph.
+                      You will be able to start a new learning loop or switch domains after cancellation.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Continue Learning</AlertDialogCancel>
+                    <AlertDialogAction onClick={cancelCurrentLoop} className="bg-red-500 hover:bg-red-600">
+                      Cancel Loop
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
               {isContinuousMode ? (
                 <Button onClick={handleToggleContinuous} variant="outline" className="gap-1">
                   <Pause className="h-4 w-4" />
