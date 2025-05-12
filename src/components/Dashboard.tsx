@@ -1,26 +1,25 @@
 
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import Header from './Header';
-import LearningLoop from './LearningLoop';
+import LearningLoop from './learning-loop/LearningLoop';
 import KnowledgeMap from './KnowledgeMap';
 import InsightTimeline from './InsightTimeline';
 import DomainSelector from './DomainSelector';
 import PerformanceMetrics from './PerformanceMetrics';
 import LoopHistory from './LoopHistory';
-import SupabaseControl from './SupabaseControl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLoopStore } from '../store/useLoopStore';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Code, Brain, History, LineChart, Database } from 'lucide-react';
+import { Code, Brain, History, LineChart, Database, Settings as SettingsIcon } from 'lucide-react';
 
 const Dashboard = () => {
   const { 
     domains, 
     activeDomainId, 
     setActiveDomain,
-    useRemoteLogging,
-    setUseRemoteLogging
+    useRemoteLogging
   } = useLoopStore();
 
   const [activeTab, setActiveTab] = useState('loop');
@@ -35,12 +34,33 @@ const Dashboard = () => {
   const debugData = {
     activeDomain: activeDomainId,
     domainData: activeData,
-    currentLoop: activeData.currentLoop,
-    metrics: activeData.metrics,
-    knowledgeNodeCount: activeData.knowledgeNodes.length,
-    knowledgeEdgeCount: activeData.knowledgeEdges?.length || 0,
+    currentLoop: activeData?.currentLoop || [],
+    metrics: activeData?.metrics || {},
+    knowledgeNodeCount: activeData?.knowledgeNodes?.length || 0,
+    knowledgeEdgeCount: activeData?.knowledgeEdges?.length || 0,
     useRemoteLogging
   };
+
+  if (!activeData) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col">
+        <Header />
+        <div className="flex-1 container mx-auto p-8 flex items-center justify-center">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="text-center">No Domains Available</CardTitle>
+            </CardHeader>
+            <CardContent className="text-center">
+              <p className="mb-4">No learning domains are available. Please create a new domain.</p>
+              <Link to="/domain/new">
+                <Button className="mt-2">Create New Domain</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -68,12 +88,6 @@ const Dashboard = () => {
                     Loop History
                   </span>
                 </TabsTrigger>
-                <TabsTrigger value="sync">
-                  <span className="flex items-center gap-1">
-                    <Database className="w-4 h-4" />
-                    Sync Control
-                  </span>
-                </TabsTrigger>
                 <TabsTrigger value="debug">Debug View</TabsTrigger>
               </TabsList>
               
@@ -91,10 +105,6 @@ const Dashboard = () => {
               
               <TabsContent value="history">
                 <LoopHistory />
-              </TabsContent>
-              
-              <TabsContent value="sync">
-                <SupabaseControl />
               </TabsContent>
               
               <TabsContent value="debug">
@@ -164,6 +174,15 @@ const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
+
+            <div className="mt-6">
+              <Link to="/settings">
+                <Button variant="outline" size="sm" className="w-full">
+                  <SettingsIcon className="w-4 h-4 mr-2" />
+                  Settings
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </main>

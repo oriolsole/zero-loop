@@ -12,7 +12,6 @@ import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
-import { extraDomains } from '@/data/mockData';
 
 const LearningLoop: React.FC = () => {
   const { 
@@ -31,7 +30,7 @@ const LearningLoop: React.FC = () => {
   const activeDomain = domains.find(domain => domain.id === activeDomainId);
 
   const isDomainWebKnowledge = activeDomain?.id === 'web-knowledge';
-  const isAIReasoning = activeDomain?.id === 'ai-reasoning' || activeDomain?.name === 'AI Reasoning';
+  const isAIReasoning = activeDomain?.name === 'AI Reasoning';
 
   const handleStartLoop = async () => {
     try {

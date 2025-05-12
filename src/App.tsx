@@ -6,6 +6,7 @@ import Index from './pages/Index';
 import KnowledgeManagement from './pages/KnowledgeManagement';
 import Auth from './pages/Auth';
 import NotFound from './pages/NotFound';
+import Settings from './pages/Settings';
 import DomainCustomization from './pages/DomainCustomization';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -53,6 +54,11 @@ function App() {
             <Route path="/knowledge" element={
               <ProtectedRoute>
                 <KnowledgeManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings" element={
+              <ProtectedRoute>
+                <Settings />
               </ProtectedRoute>
             } />
             <Route path="/404" element={<NotFound />} />

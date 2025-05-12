@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { Domain, LearningStep, LoopHistory } from '../types/intelligence';
-import { domainsData } from '../data/mockData';
 import { isSupabaseConfigured } from '../utils/supabase-client';
 import { loadDomainsFromSupabase } from '../utils/supabase';
 
@@ -44,30 +43,13 @@ export interface LoopState {
   deleteDomain: (domainId: string) => void;
 }
 
-// Convert existing domain IDs to UUIDs if they're not already
-const convertedDomains = domainsData.map(domain => {
-  // Check if the domain ID is already a UUID
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(domain.id)) {
-    return {
-      ...domain,
-      id: uuidv4(),
-      knowledgeEdges: domain.knowledgeEdges || []
-    };
-  }
-  return {
-    ...domain,
-    knowledgeEdges: domain.knowledgeEdges || []
-  };
-});
-
 export const useLoopStore = create<LoopState>()(
   persist(
     (set, get) => {
       // Create the base state
       const baseState = {
-        domains: convertedDomains,
-        activeDomainId: convertedDomains[0]?.id || '',
+        domains: [],
+        activeDomainId: '',
         isRunningLoop: false,
         currentStepIndex: null,
         isContinuousMode: false,

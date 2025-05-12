@@ -4,7 +4,8 @@ import { useLoopStore } from './useLoopStore';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
-import { extraDomains } from '@/data/mockData';
+import { getTemplateDomains } from '@/utils/templateData';
+import { saveDomainToSupabase } from '@/utils/supabase';
 
 export const useLoopStoreInit = () => {
   const { user, isLoading: authLoading } = useAuth();
@@ -35,20 +36,20 @@ export const useLoopStoreInit = () => {
           
           await initializeFromSupabase();
           
-          // Add AI Reasoning domain if it doesn't exist yet
-          const aiReasoningDomain = domains.find(d => 
-            d.id === 'ai-reasoning' || 
-            d.name.toLowerCase().includes('ai reasoning')
-          );
-          
-          if (!aiReasoningDomain) {
-            console.log('Adding AI Reasoning domain');
-            const aiDomain = extraDomains.find(d => d.id === 'ai-reasoning');
-            if (aiDomain) {
-              addNewDomain({
-                ...aiDomain,
-                id: 'ai-reasoning'
-              });
+          // If no domains were loaded from Supabase, create default template domains
+          if (domains.length === 0) {
+            console.log('No domains found, creating template domains');
+            const templateDomains = getTemplateDomains();
+            
+            // Create each template domain in Supabase and add it to the store
+            for (const domain of templateDomains) {
+              await saveDomainToSupabase(domain);
+              addNewDomain(domain);
+            }
+            
+            // If template domains were created, re-initialize from Supabase
+            if (templateDomains.length > 0) {
+              await initializeFromSupabase();
             }
           }
           
@@ -57,6 +58,16 @@ export const useLoopStoreInit = () => {
           // If no user, default to local storage only
           console.log('No user authenticated, using local storage only');
           setUseRemoteLogging(false);
+          
+          // If no domains exist at all, create template domains locally
+          if (domains.length === 0) {
+            console.log('No domains found locally, creating template domains');
+            const templateDomains = getTemplateDomains();
+            
+            for (const domain of templateDomains) {
+              addNewDomain(domain);
+            }
+          }
         }
       } catch (error) {
         console.error('Error initializing store:', error);
@@ -67,7 +78,7 @@ export const useLoopStoreInit = () => {
     };
     
     initializeStore();
-  }, [user, authLoading, initializeFromSupabase, setUseRemoteLogging]);
+  }, [user, authLoading, initializeFromSupabase, setUseRemoteLogging, domains]);
   
   return { isInitializing };
 };
