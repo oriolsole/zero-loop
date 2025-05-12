@@ -5,7 +5,7 @@ import LearningStep from './LearningStep';
 import EmptyLoopState from './EmptyLoopState';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, FastForward, Pause, SkipForward, X } from 'lucide-react';
+import { Loader2, Play, FastForward, Pause, SkipForward, X, CheckCircle, RotateCw } from 'lucide-react';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -23,6 +23,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const LearningLoop: React.FC = () => {
   const { 
@@ -83,10 +90,23 @@ const LearningLoop: React.FC = () => {
   }
 
   const currentLoop = activeDomain.currentLoop;
-  const completedSteps = currentLoop.filter(step => step.status !== 'pending');
+  const completedSteps = currentLoop.filter(step => step.status === 'complete');
+  const pendingSteps = currentLoop.filter(step => step.status === 'pending');
+  
+  // Check if all steps are complete
   const allStepsComplete = completedSteps.length === currentLoop.length;
+  
+  // Check if there's a step currently in progress (not pending, not complete)
+  const hasInProgressStep = currentLoop.some(step => step.status === 'in-progress');
+  
+  // Check if the last step is pending (which means we're waiting for it to complete)
   const isLastStepPending = currentLoop[currentLoop.length - 1].status === 'pending';
-  const canAdvance = !allStepsComplete && !isLastStepPending;
+  
+  // We can advance if there are more steps to complete and no step is currently pending processing
+  const canAdvance = !allStepsComplete && !isLastStepPending && !hasInProgressStep;
+  
+  // Determine what button/state to show
+  const isLoopFinished = allStepsComplete && !hasInProgressStep && !isLastStepPending;
 
   return (
     <div className="space-y-6">
@@ -96,6 +116,11 @@ const LearningLoop: React.FC = () => {
           {isRunningLoop && (
             <Badge variant="outline" className="ml-2">
               {isContinuousMode ? 'Continuous Mode' : 'Interactive Mode'}
+            </Badge>
+          )}
+          {isLoopFinished && (
+            <Badge variant="outline" className="ml-2 bg-green-500/10 text-green-600 border-green-200">
+              <CheckCircle className="h-3 w-3 mr-1" /> Complete
             </Badge>
           )}
         </div>
@@ -137,41 +162,89 @@ const LearningLoop: React.FC = () => {
                   <Pause className="h-4 w-4" />
                   Pause
                 </Button>
+              ) : isLoopFinished ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        onClick={handleStartLoop} 
+                        variant="default" 
+                        className="gap-1 bg-green-600 hover:bg-green-700"
+                      >
+                        <RotateCw className="h-4 w-4" />
+                        Start New Loop
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Current loop is complete. Start a new learning cycle.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               ) : (
-                <Button 
-                  onClick={handleNextStep} 
-                  disabled={!canAdvance}
-                  variant="default"
-                  className="gap-1"
-                >
-                  {isLastStepPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Processing
-                    </>
-                  ) : (
-                    <>
-                      <SkipForward className="h-4 w-4" />
-                      Next Step
-                    </>
-                  )}
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <Button 
+                          onClick={handleNextStep} 
+                          disabled={!canAdvance}
+                          variant="default"
+                          className="gap-1"
+                        >
+                          {isLastStepPending ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Processing
+                            </>
+                          ) : (
+                            <>
+                              <SkipForward className="h-4 w-4" />
+                              Next Step
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {!canAdvance && !isLoopFinished && (
+                        <p>
+                          {isLastStepPending 
+                            ? "Please wait for the current step to complete" 
+                            : hasInProgressStep 
+                              ? "A step is currently in progress" 
+                              : "All steps are complete"}
+                        </p>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
               
-              <Button 
-                onClick={handleToggleContinuous} 
-                variant={isContinuousMode ? "default" : "outline"}
-                className="gap-1"
-              >
-                <FastForward className="h-4 w-4" />
-                {isContinuousMode ? 'Running' : 'Auto Run'}
-              </Button>
+              {!isLoopFinished && (
+                <Button 
+                  onClick={handleToggleContinuous} 
+                  variant={isContinuousMode ? "default" : "outline"}
+                  className="gap-1"
+                >
+                  <FastForward className="h-4 w-4" />
+                  {isContinuousMode ? 'Running' : 'Auto Run'}
+                </Button>
+              )}
             </>
           )}
         </div>
       </div>
       
-      {isContinuousMode && (
+      {isLoopFinished && (
+        <Alert className="bg-green-50 border-green-200">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-700">
+            Learning loop completed successfully. You can now start a new loop or review the insights generated.
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      {isContinuousMode && !isLoopFinished && (
         <Card className="p-4 bg-muted/50">
           <div className="flex justify-between items-center">
             <div className="space-y-1">
