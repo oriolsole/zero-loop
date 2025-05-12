@@ -13,7 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { X } from 'lucide-react';
+import { X, Loader2, ArrowRight } from 'lucide-react';
 import { useLoopStore } from '@/store/useLoopStore';
 
 interface LoopControlsProps {
@@ -28,6 +28,12 @@ const LoopControls: React.FC<LoopControlsProps> = ({
   currentStep
 }) => {
   const { cancelCurrentLoop } = useLoopStore();
+  
+  // Determine if the current step is in a loading/pending state
+  const isLoading = currentStep?.status === 'pending';
+  
+  // Determine if button should be enabled - we'll allow advancing if the step is loaded (not pending)
+  const canAdvance = currentStep && !isLoading;
   
   return (
     <div className="flex justify-between mt-4">
@@ -60,10 +66,23 @@ const LoopControls: React.FC<LoopControlsProps> = ({
       
       <Button 
         onClick={onAdvance}
-        disabled={!currentStep}
+        disabled={!canAdvance}
         variant={isLastStep ? "default" : "outline"}
+        className="flex items-center gap-2"
       >
-        {isLastStep ? "Complete Loop & Generate Insights" : "Next Step"}
+        {isLoading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Generating task...
+          </>
+        ) : isLastStep ? (
+          "Complete Loop & Generate Insights"
+        ) : (
+          <>
+            Next Step
+            <ArrowRight className="h-4 w-4" />
+          </>
+        )}
       </Button>
     </div>
   );

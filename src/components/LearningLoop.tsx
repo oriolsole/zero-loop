@@ -9,6 +9,8 @@ import EmptyLoopState from './learning-loop/EmptyLoopState';
 import LoopNavigation from './learning-loop/LoopNavigation';
 import ExternalSources from './ExternalSources';
 import { domainEngines } from '../engines/domainEngines';
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2 } from 'lucide-react';
 
 const LearningLoop: React.FC = () => {
   const { 
@@ -34,6 +36,9 @@ const LearningLoop: React.FC = () => {
   
   // Determine sources to show from the current step's metadata
   const currentStepSources = currentStep?.metadata?.sources || [];
+  
+  // Check if the first step is still being generated
+  const isTaskGenerating = currentLoop.length > 0 && currentLoop[0].status === 'pending';
   
   const handleToggleSources = () => {
     setShowingSources(prev => !prev);
@@ -84,6 +89,15 @@ const LearningLoop: React.FC = () => {
           sourceCount={currentStepSources.length}
         />
       </div>
+      
+      {isTaskGenerating && (
+        <Alert className="bg-blue-50 border-blue-200">
+          <Loader2 className="h-4 w-4 text-blue-500 animate-spin mr-2" />
+          <AlertDescription className="text-blue-700">
+            Generating your learning task... The "Next Step" button will be enabled once it's ready.
+          </AlertDescription>
+        </Alert>
+      )}
       
       <LoopNavigation 
         steps={currentLoop} 
