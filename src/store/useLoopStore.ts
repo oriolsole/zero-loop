@@ -29,6 +29,7 @@ export interface LoopState {
   startNewLoop: () => Promise<void>;
   advanceToNextStep: () => Promise<void>;
   completeLoop: () => void;
+  cancelCurrentLoop: () => void;
   loadPreviousLoop: (loopId?: string) => void;
   toggleContinuousMode: () => void;
   setLoopDelay: (delay: number) => void;
@@ -140,7 +141,7 @@ export const useLoopStore = create<LoopState>()(
             get().initializeFromSupabase();
           }
         },
-
+        
         setSelectedInsight: (nodeId) => {
           set({ selectedInsightId: nodeId });
         },

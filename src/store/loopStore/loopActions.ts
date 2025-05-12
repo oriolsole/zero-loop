@@ -1,4 +1,3 @@
-
 import { LearningStep } from '../../types/intelligence';
 import { LoopState } from '../useLoopStore';
 import { domainEngines } from '../../engines/domainEngines';
@@ -489,6 +488,25 @@ export const createLoopActions = (
         }, get().loopDelay);
       }
     });
+  },
+  
+  cancelCurrentLoop: () => {
+    const { domains, activeDomainId } = get();
+    const activeDomainIndex = domains.findIndex(d => d.id === activeDomainId);
+    
+    if (activeDomainIndex === -1) return;
+    
+    // Log the cancellation for debugging
+    console.log('Canceling current learning loop');
+    
+    // Reset the running state but keep the loop data for reference
+    set({ 
+      isRunningLoop: false,
+      currentStepIndex: null
+    });
+    
+    // Show confirmation to the user
+    toast.success('Learning loop cancelled');
   },
   
   loadPreviousLoop: (loopId) => {
