@@ -1,7 +1,5 @@
-
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import Header from './Header';
 import LearningLoop from './learning-loop/LearningLoop';
 import KnowledgeMap from './KnowledgeMap';
 import InsightTimeline from './InsightTimeline';
@@ -44,7 +42,6 @@ const Dashboard = () => {
   if (!activeData) {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col">
-        <Header />
         <div className="flex-1 container mx-auto p-8 flex items-center justify-center">
           <Card className="w-full max-w-md">
             <CardHeader>
@@ -64,8 +61,6 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <Header />
-      
       <main className="flex-1 container mx-auto px-4 py-6 max-w-7xl">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2">
