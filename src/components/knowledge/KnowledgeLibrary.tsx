@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { useKnowledgeLibrary, KnowledgeItem, KnowledgeLibraryFilters } from '@/hooks/knowledge/useKnowledgeLibrary';
@@ -282,7 +281,8 @@ const KnowledgeLibrary: React.FC = () => {
                 </AlertDialog>
               </div>
               
-              <CardDescription className="flex items-center gap-1 text-xs">
+              {/* Fix: Restructured this to avoid nesting div in p */}
+              <div className="flex flex-wrap items-center gap-1 text-xs mt-1">
                 {item.domain_id && (
                   <Badge variant="secondary" className="mr-1">
                     {getDomainName(item.domain_id)}
@@ -290,11 +290,11 @@ const KnowledgeLibrary: React.FC = () => {
                 )}
                 
                 {item.created_at && (
-                  <span className="text-muted-foreground">
+                  <CardDescription className="inline-block">
                     Added {format(new Date(item.created_at), 'MMM d, yyyy')}
-                  </span>
+                  </CardDescription>
                 )}
-              </CardDescription>
+              </div>
             </CardHeader>
             
             <CardContent>
