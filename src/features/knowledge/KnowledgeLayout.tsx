@@ -12,7 +12,7 @@ interface KnowledgeLayoutProps {
   defaultTab?: KnowledgeTab;
 }
 
-export default function KnowledgeLayout({ defaultTab = 'search' }: KnowledgeLayoutProps) {
+export function KnowledgeLayout({ defaultTab = 'search' }: KnowledgeLayoutProps) {
   const [activeTab, setActiveTab] = useState<KnowledgeTab>(defaultTab);
   
   const handleTabChange = (tab: string) => {

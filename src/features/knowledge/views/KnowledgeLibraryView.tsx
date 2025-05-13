@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,7 +19,13 @@ import { useKnowledgeLibrary } from '../hooks/useKnowledgeLibrary';
 import { KnowledgeItem } from '../types';
 import { AspectRatio } from '@/components/ui/aspect-ratio';
 import { useAuth } from '@/contexts/AuthContext';
-import { getPublicFileUrl } from '@/utils/supabase/storage';
+
+// Helper function to get file URL synchronously
+const getFileDownloadUrl = (filePath?: string | null): string => {
+  if (!filePath) return '#';
+  const fileName = filePath.split('/').pop() || '';
+  return `https://dwescgkujhhizyrokuiv.supabase.co/storage/v1/object/public/knowledge_files/${fileName}`;
+};
 
 export default function KnowledgeLibraryView() {
   const { items, isLoading, error, totalCount, filters, fetchKnowledgeItems, deleteKnowledgeItem } = useKnowledgeLibrary();
@@ -112,12 +117,6 @@ export default function KnowledgeLibraryView() {
     if (fileType.includes('text') || fileType.includes('pdf') || fileType.includes('doc')) return <FileText className="h-4 w-4" />;
     
     return <File className="h-4 w-4" />;
-  };
-  
-  // Get file download URL
-  const getFileDownloadUrl = (filePath?: string | null) => {
-    if (!filePath) return '#';
-    return getPublicFileUrl('knowledge_files', filePath.split('/').pop() || '');
   };
   
   if (error) {

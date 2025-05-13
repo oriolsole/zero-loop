@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useKnowledgeLibrary, KnowledgeItem } from '@/hooks/knowledge/useKnowledgeLibrary';
 import { Button } from '@/components/ui/button';
@@ -7,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Search, Download, File, FileText, Image, Trash2, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { getPublicFileUrl } from '@/utils/supabase/storage';
 import { useAuth } from '@/contexts/AuthContext';
 
 import {
@@ -19,6 +17,13 @@ import {
   DialogFooter,
   DialogClose
 } from '@/components/ui/dialog';
+
+// Helper function to get file URL synchronously
+const getFileDownloadUrl = (filePath?: string | null): string => {
+  if (!filePath) return '#';
+  const fileName = filePath.split('/').pop() || '';
+  return `https://dwescgkujhhizyrokuiv.supabase.co/storage/v1/object/public/knowledge_files/${fileName}`;
+};
 
 const KnowledgeLibrary: React.FC = () => {
   const { items, isLoading, error, totalCount, filters, fetchKnowledgeItems, deleteKnowledgeItem } = useKnowledgeLibrary();
@@ -110,12 +115,6 @@ const KnowledgeLibrary: React.FC = () => {
     if (fileType.includes('text') || fileType.includes('pdf') || fileType.includes('doc')) return <FileText />;
     
     return <File />;
-  };
-  
-  // Get file download URL
-  const getFileDownloadUrl = (filePath?: string | null) => {
-    if (!filePath) return '#';
-    return getPublicFileUrl('knowledge_files', filePath.split('/').pop() || '');
   };
   
   if (error) {

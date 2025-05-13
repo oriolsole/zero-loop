@@ -1,179 +1,108 @@
 
 import React, { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Badge } from '@/components/ui/badge';
-import { SearchIcon, Loader2, Info, Sliders } from 'lucide-react';
-import { useKnowledgeBase } from '../hooks/useKnowledgeBase';
-import ExternalSources from '@/components/ExternalSources';
+import { Button } from '@/components/ui/button';
+import { SearchIcon, ExternalLink, Loader2 } from 'lucide-react';
+import { useKnowledgeBase } from '@/hooks/knowledge/useKnowledgeBase';
 
 export default function KnowledgeSearchView() {
-  const { queryKnowledge, isQuerying, queryError, searchResults, searchMode } = useKnowledgeBase();
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [hasSearched, setHasSearched] = useState(false);
-  const [useEmbeddings, setUseEmbeddings] = useState<boolean>(true);
-  const [matchThreshold, setMatchThreshold] = useState<number>(0.5);
+  const [query, setQuery] = useState('');
+  const { queryKnowledge, isQuerying, searchResults, searchMode } = useKnowledgeBase();
   
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!searchQuery.trim()) return;
+    if (!query.trim()) return;
     
-    try {
-      await queryKnowledge({
-        query: searchQuery,
-        limit: 10,
-        useEmbeddings,
-        matchThreshold
-      });
-      
-      setHasSearched(true);
-    } catch (error) {
-      console.error('Search error:', error);
-    }
+    await queryKnowledge({
+      query,
+      limit: 10,
+      useEmbeddings: true
+    });
   };
   
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <SearchIcon className="h-5 w-5" />
-            Search Knowledge Base
-          </CardTitle>
-          <CardDescription>
-            Search your existing knowledge to see what's already stored
-          </CardDescription>
-        </CardHeader>
+    <Card>
+      <CardContent className="pt-6 space-y-6">
+        <form onSubmit={handleSearch} className="flex gap-2">
+          <Input
+            placeholder="Search the knowledge base..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="flex-1"
+          />
+          <Button 
+            type="submit" 
+            disabled={isQuerying || !query.trim()}
+          >
+            {isQuerying ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <SearchIcon className="h-4 w-4" />
+            )}
+            <span className="ml-2 hidden sm:inline">Search</span>
+          </Button>
+        </form>
         
-        <CardContent>
-          <form onSubmit={handleSearch} className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label htmlFor="search">Search Query</Label>
-                
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="flex items-center gap-2">
-                      <Sliders className="h-4 w-4" />
-                      Search Options
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56">
-                    <DropdownMenuLabel>Search Method</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuRadioGroup 
-                      value={useEmbeddings ? "semantic" : "text"} 
-                      onValueChange={(value) => setUseEmbeddings(value === "semantic")}
-                    >
-                      <DropdownMenuRadioItem value="semantic">
-                        Semantic Search (AI)
-                      </DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="text">
-                        Text Search (Exact Match)
-                      </DropdownMenuRadioItem>
-                    </DropdownMenuRadioGroup>
-                    
-                    {useEmbeddings && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <div className="px-2 py-2">
-                          <div className="mb-1 flex justify-between">
-                            <Label htmlFor="threshold" className="text-xs">
-                              Similarity Threshold: {matchThreshold}
-                            </Label>
-                          </div>
-                          <input 
-                            id="threshold"
-                            type="range" 
-                            min="0.1" 
-                            max="0.9" 
-                            step="0.1" 
-                            value={matchThreshold}
-                            onChange={(e) => setMatchThreshold(parseFloat(e.target.value))}
-                            className="w-full"
-                          />
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>More Results</span>
-                            <span>Exact Match</span>
-                          </div>
-                        </div>
-                      </>
+        {searchResults.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-medium">Search results</h3>
+              <span className="text-xs text-muted-foreground">
+                Using {searchMode === 'semantic' ? 'semantic' : 'text'} search
+              </span>
+            </div>
+            
+            <div className="space-y-4">
+              {searchResults.map((result) => (
+                <div key={result.id} className="border rounded-md p-4 space-y-2">
+                  <div className="flex justify-between items-start gap-2">
+                    <h4 className="font-medium">{result.title}</h4>
+                    {result.link && (
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        className="h-6 w-6" 
+                        asChild
+                      >
+                        <a 
+                          href={result.link} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          title="Open source"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </Button>
                     )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              
-              <div className="flex gap-2">
-                <Input
-                  id="search"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Enter search terms"
-                  className="flex-1"
-                />
-                <Button type="submit" disabled={isQuerying || !searchQuery.trim()}>
-                  {isQuerying ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <SearchIcon className="h-4 w-4" />
-                  )}
-                  <span className="ml-2">Search</span>
-                </Button>
-              </div>
+                  </div>
+                  
+                  <div>
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {result.snippet || result.content}
+                    </p>
+                  </div>
+                  
+                  <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
+                    <span>{result.source}</span>
+                    {result.date && <span>• {result.date}</span>}
+                    {result.relevanceScore !== undefined && (
+                      <span>• {Math.round(result.relevanceScore * 100)}% match</span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-          </form>
-        </CardContent>
-      </Card>
-      
-      {hasSearched && (
-        <div className="space-y-4">
-          {queryError && (
-            <div className="bg-red-50 border border-red-200 p-4 rounded-md">
-              <p className="text-red-700">{queryError}</p>
-            </div>
-          )}
-          
-          {!queryError && searchResults.length === 0 ? (
-            <div className="bg-muted p-8 rounded-md text-center">
-              <Info className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
-              <h3 className="font-medium text-lg mb-1">No results found</h3>
-              <p className="text-muted-foreground">
-                Try different search terms, adjusting the search method, or lowering the similarity threshold
-              </p>
-            </div>
-          ) : (
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-lg font-medium">Knowledge Base Results</h3>
-                <Badge variant={searchMode === 'semantic' ? 'default' : 'secondary'}>
-                  {searchMode === 'semantic' ? 'AI Semantic Search' : 'Text Search'}
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  Found {searchResults.length} results for "{searchQuery}"
-                </span>
-              </div>
-              <ExternalSources 
-                sources={searchResults}
-                title="Knowledge Base Results"
-                description={`Found ${searchResults.length} results for "${searchQuery}"`}
-              />
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+          </div>
+        )}
+        
+        {!isQuerying && query && searchResults.length === 0 && (
+          <div className="text-center py-8">
+            <p className="text-muted-foreground">No results found for "{query}"</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
