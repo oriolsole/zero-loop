@@ -9,6 +9,7 @@ import NotFound from './pages/NotFound';
 import Settings from './pages/Settings';
 import DomainCustomization from './pages/DomainCustomization';
 import ProtectedRoute from './components/ProtectedRoute';
+import MainLayout from './components/layouts/MainLayout';
 
 import { AuthProvider } from './contexts/AuthContext';
 import { useLoopStoreInit } from './store/useLoopStoreInit';
@@ -39,28 +40,37 @@ function App() {
         <Router>
           <AppInitializer />
           <Routes>
-            <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/domain/new" element={
-              <ProtectedRoute>
-                <DomainCustomization />
-              </ProtectedRoute>
-            } />
-            <Route path="/domain/:id" element={
-              <ProtectedRoute>
-                <DomainCustomization />
-              </ProtectedRoute>
-            } />
-            <Route path="/knowledge" element={
-              <ProtectedRoute>
-                <KnowledgeManagement />
-              </ProtectedRoute>
-            } />
-            <Route path="/settings" element={
-              <ProtectedRoute>
-                <Settings />
-              </ProtectedRoute>
-            } />
+            
+            {/* Main Layout Routes */}
+            <Route element={<MainLayout />}>
+              <Route path="/" element={<Index />} />
+              
+              <Route path="/knowledge" element={
+                <ProtectedRoute>
+                  <KnowledgeManagement />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/settings" element={
+                <ProtectedRoute>
+                  <Settings />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/domain/new" element={
+                <ProtectedRoute>
+                  <DomainCustomization />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/domain/:id" element={
+                <ProtectedRoute>
+                  <DomainCustomization />
+                </ProtectedRoute>
+              } />
+            </Route>
+            
             <Route path="/404" element={<NotFound />} />
             <Route path="*" element={<Navigate to="/404" replace />} />
           </Routes>

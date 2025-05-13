@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Search, Info, Sliders } from "lucide-react";
+import { Loader2, Search, Info, Sliders, BookOpen } from "lucide-react";
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -52,7 +52,10 @@ const KnowledgeManagement: React.FC = () => {
   return (
     <div className="container mx-auto py-6 space-y-8">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Knowledge Management</h1>
+        <div className="flex items-center gap-3">
+          <BookOpen className="h-8 w-8 text-primary" />
+          <h1 className="text-3xl font-bold tracking-tight">Knowledge Management</h1>
+        </div>
         <p className="text-muted-foreground">
           Upload, search, and manage your knowledge base
         </p>
