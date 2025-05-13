@@ -11,7 +11,7 @@ import { AlertCircle } from 'lucide-react';
 import { TitleInput } from "./TitleInput";
 import { DomainSelector } from "./DomainSelector";
 import { SourceUrlInput } from "./SourceUrlInput";
-import { TextUploadTab } from "./TextUploadTab";
+import TextUploadTab from "./TextUploadTab";
 import { FileUploadArea } from "./FileUploadArea";
 import { FileUploadPreview } from "./FileUploadPreview";
 import { UploadProgress } from "./UploadProgress";
