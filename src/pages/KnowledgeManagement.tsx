@@ -2,13 +2,14 @@
 import React, { useState } from 'react';
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
 import KnowledgeUpload from '@/components/knowledge/KnowledgeUpload';
+import KnowledgeLibrary from '@/components/knowledge/KnowledgeLibrary';
 import ExternalSources from '@/components/ExternalSources';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Search, Info, Sliders, BookOpen } from "lucide-react";
+import { Loader2, Search, Info, Sliders, BookOpen, Library } from "lucide-react";
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -64,6 +65,12 @@ const KnowledgeManagement: React.FC = () => {
       <Tabs defaultValue="search" className="space-y-4">
         <TabsList>
           <TabsTrigger value="search">Search Knowledge</TabsTrigger>
+          <TabsTrigger value="library">
+            <span className="flex items-center gap-1">
+              <Library className="h-4 w-4" />
+              Knowledge Library
+            </span>
+          </TabsTrigger>
           <TabsTrigger value="upload">Upload Knowledge</TabsTrigger>
         </TabsList>
         
@@ -195,6 +202,24 @@ const KnowledgeManagement: React.FC = () => {
               )}
             </div>
           )}
+        </TabsContent>
+        
+        <TabsContent value="library">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Library className="h-5 w-5" />
+                Knowledge Library
+              </CardTitle>
+              <CardDescription>
+                Browse and manage all your uploaded knowledge items
+              </CardDescription>
+            </CardHeader>
+            
+            <CardContent>
+              <KnowledgeLibrary />
+            </CardContent>
+          </Card>
         </TabsContent>
         
         <TabsContent value="upload">
