@@ -2,33 +2,62 @@
 import React, { useState } from 'react';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
-import { DomainSelector } from './DomainSelector';
-import { SourceUrlInput } from './SourceUrlInput';
+import { FileUploadArea } from './FileUploadArea';
+import { FileUploadPreview } from './FileUploadPreview';
 import { AdvancedOptions } from './AdvancedOptions';
 import { UploadProgress } from './UploadProgress';
+import { DomainSelector } from './DomainSelector';
+import { SourceUrlInput } from './SourceUrlInput';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, ArrowRight, Settings } from 'lucide-react';
 import { useLoopStore } from '@/store/useLoopStore';
 import { toast } from '@/components/ui/sonner';
 
-interface TextUploadTabProps {
+interface FileUploadTabProps {
   onUploadSuccess?: () => void;
 }
 
-const TextUploadTab: React.FC<TextUploadTabProps> = ({ onUploadSuccess }) => {
+const FileUploadTab: React.FC<FileUploadTabProps> = ({ onUploadSuccess }) => {
   const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeBase();
   const { domains, activeDomainId } = useLoopStore();
   
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
   const [domainId, setDomainId] = useState(activeDomainId);
   const [sourceUrl, setSourceUrl] = useState('');
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState(false);
   const [chunkSize, setChunkSize] = useState(1000);
   const [overlap, setOverlap] = useState(100);
+  
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setFileName(file.name);
+    setSelectedFile(file);
+    
+    // Auto-fill title if empty
+    if (!title && file.name) {
+      const nameWithoutExtension = file.name.replace(/\.[^/.]+$/, "");
+      setTitle(nameWithoutExtension);
+    }
+    
+    // If it's a text-based file, show preview
+    if (file.type.includes('text') || file.name.endsWith('.md') || file.name.endsWith('.csv')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const fileContent = event.target?.result as string;
+        setFileContent(fileContent);
+      };
+      reader.readAsText(file);
+    } else {
+      setFileContent(null);
+    }
+  };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,8 +67,8 @@ const TextUploadTab: React.FC<TextUploadTabProps> = ({ onUploadSuccess }) => {
       return;
     }
     
-    if (!content) {
-      toast.error('Content is required');
+    if (!selectedFile) {
+      toast.error('File is required');
       return;
     }
     
@@ -49,20 +78,25 @@ const TextUploadTab: React.FC<TextUploadTabProps> = ({ onUploadSuccess }) => {
       
       const success = await uploadKnowledge({
         title,
-        content,
+        file: selectedFile,
         domainId: processedDomainId,
         sourceUrl: sourceUrl || undefined,
         chunkSize,
-        overlap
+        overlap,
+        metadata: {
+          originalFileName: fileName
+        }
       });
       
       if (success) {
         // Reset the form on success
         setTitle('');
-        setContent('');
         setSourceUrl('');
+        setFileContent(null);
+        setFileName(null);
+        setSelectedFile(null);
         
-        toast.success('Knowledge text uploaded successfully!');
+        toast.success('Knowledge file uploaded successfully!');
         
         if (onUploadSuccess) {
           onUploadSuccess();
@@ -99,14 +133,16 @@ const TextUploadTab: React.FC<TextUploadTabProps> = ({ onUploadSuccess }) => {
       <SourceUrlInput sourceUrl={sourceUrl} setSourceUrl={setSourceUrl} />
       
       <div className="space-y-2">
-        <Label htmlFor="content">Content</Label>
-        <Textarea
-          id="content"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Paste or type your knowledge content here"
-          className="min-h-[200px]"
-          required
+        <FileUploadArea 
+          selectedFile={selectedFile} 
+          fileName={fileName}
+          handleFileChange={handleFileChange}
+        />
+        
+        <FileUploadPreview
+          selectedFile={selectedFile}
+          fileContent={fileContent}
+          fileName={fileName}
         />
       </div>
       
@@ -136,14 +172,14 @@ const TextUploadTab: React.FC<TextUploadTabProps> = ({ onUploadSuccess }) => {
       
       <Button 
         type="submit" 
-        disabled={isUploading || !content || !title}
+        disabled={isUploading || !selectedFile || !title}
         className="w-full flex items-center gap-2"
       >
         {isUploading ? (
           <>Processing Upload...</>
         ) : (
           <>
-            Upload Content <ArrowRight className="h-4 w-4" />
+            Upload File <ArrowRight className="h-4 w-4" />
           </>
         )}
       </Button>
@@ -151,4 +187,4 @@ const TextUploadTab: React.FC<TextUploadTabProps> = ({ onUploadSuccess }) => {
   );
 };
 
-export default TextUploadTab;
+export default FileUploadTab;
