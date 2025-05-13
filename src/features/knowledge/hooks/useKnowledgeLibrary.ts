@@ -1,14 +1,13 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from '@/components/ui/sonner';
 import { KnowledgeItem, KnowledgeLibraryFilters } from '../types';
 
 /**
  * Hook for managing the knowledge library
  */
 export function useKnowledgeLibrary() {
-  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<KnowledgeItem[]>([]);
@@ -67,7 +66,7 @@ export function useKnowledgeLibrary() {
       if (error) {
         console.error('Error fetching knowledge items:', error);
         setError(error.message);
-        toast({ title: "Error", description: 'Failed to fetch knowledge library', variant: "destructive" });
+        toast.error('Failed to fetch knowledge library');
         return;
       }
       
@@ -83,7 +82,7 @@ export function useKnowledgeLibrary() {
       console.error('Exception when fetching knowledge items:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       setError(errorMessage);
-      toast({ title: "Error", description: 'Failed to access knowledge library', variant: "destructive" });
+      toast.error('Failed to access knowledge library');
     } finally {
       setIsLoading(false);
     }
@@ -121,7 +120,7 @@ export function useKnowledgeLibrary() {
   };
   
   /**
-   * Delete a knowledge item by ID
+   * Delete a knowledge item by ID with transaction-like behavior
    */
   const deleteKnowledgeItem = async (id: string): Promise<boolean> => {
     setIsLoading(true);
@@ -137,14 +136,16 @@ export function useKnowledgeLibrary() {
       
       if (fetchError) {
         console.error('Error fetching item details:', fetchError);
-        toast({ title: "Error", description: 'Failed to get item details for deletion', variant: "destructive" });
+        toast.error('Failed to get item details for deletion');
         return false;
       }
       
       if (!item) {
-        toast({ title: "Error", description: 'Item not found', variant: "destructive" });
+        toast.error('Item not found');
         return false;
       }
+      
+      console.log('Deleting knowledge item:', id, item);
       
       // Delete associated files if they exist
       const fileDeletePromises = [];
@@ -159,13 +160,16 @@ export function useKnowledgeLibrary() {
       
       // Wait for all file deletions to complete
       if (fileDeletePromises.length > 0) {
+        console.log(`Deleting ${fileDeletePromises.length} associated files...`);
         const fileResults = await Promise.all(fileDeletePromises);
         if (fileResults.some(result => !result)) {
-          toast({ title: "Warning", description: 'Some associated files could not be deleted', variant: "warning" });
+          console.warn('Some files could not be deleted');
+          toast.warning('Some associated files could not be deleted');
         }
       }
       
       // Delete the database record
+      console.log('Deleting database record:', id);
       const { error } = await supabase
         .from('knowledge_chunks')
         .delete()
@@ -173,20 +177,22 @@ export function useKnowledgeLibrary() {
       
       if (error) {
         console.error('Error deleting knowledge item from database:', error);
-        toast({ title: "Error", description: `Failed to delete item: ${error.message}`, variant: "destructive" });
+        toast.error(`Failed to delete item: ${error.message}`);
         return false;
       }
+      
+      console.log('Item deleted successfully:', id);
       
       // Update the local state by removing the deleted item
       setItems((prev) => prev.filter((item) => item.id !== id));
       setTotalCount((prev) => Math.max(0, prev - 1));
       
-      toast({ title: "Success", description: 'Item deleted successfully' });
+      toast.success('Item deleted successfully');
       return true;
     } catch (error) {
       console.error('Exception when deleting knowledge item:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      toast({ title: "Error", description: `Failed to delete item: ${errorMessage}`, variant: "destructive" });
+      toast.error(`Failed to delete item: ${errorMessage}`);
       return false;
     } finally {
       setIsLoading(false);

@@ -1,26 +1,34 @@
 
 import React, { useState } from 'react';
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { FileUp, File, Image as ImageIcon } from "lucide-react";
 
 interface FileUploadProps {
-  onFileChange: (file: File) => void;
-  accept?: string;
-  error?: string;
+  selectedFile: File | null;
+  setSelectedFile: (file: File | null) => void;
 }
 
-export function FileUpload({ onFileChange, accept = ".pdf,.jpg,.jpeg,.png,.gif,.txt,.md,.csv", error }: FileUploadProps) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
+export function FileUpload({ selectedFile, setSelectedFile }: FileUploadProps) {
+  const [fileContent, setFileContent] = useState<string | null>(null);
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
     setSelectedFile(file);
-    setFileName(file.name);
-    onFileChange(file);
+    
+    // If it's a text-based file, show preview
+    if (file.type.includes('text') || file.name.endsWith('.md') || file.name.endsWith('.csv')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        setFileContent(content);
+      };
+      reader.readAsText(file);
+    } else {
+      setFileContent(null);
+    }
   };
   
   // Helper to render file icon based on type
@@ -37,64 +45,51 @@ export function FileUpload({ onFileChange, accept = ".pdf,.jpg,.jpeg,.png,.gif,.
   };
   
   return (
-    <div className={`border-2 border-dashed rounded-md p-6 flex flex-col items-center justify-center text-center ${error ? "border-destructive" : ""}`}>
-      {renderFileIcon()}
-      
-      <div className="mt-4 mb-3">
-        <p className={`text-sm font-medium ${error ? "text-destructive" : ""}`}>
-          {fileName || 'Drag and drop file or click to upload'}
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Supports PDF, images, text files, Markdown, and CSV
-        </p>
-        {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+    <div className="space-y-4">
+      <div className="border-2 border-dashed rounded-md p-6 flex flex-col items-center justify-center text-center">
+        {renderFileIcon()}
+        
+        <div className="mt-4 mb-3">
+          <p className="text-sm font-medium">
+            {selectedFile?.name || 'Drag and drop file or click to upload'}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Supports PDF, images, text files, Markdown, and CSV
+          </p>
+        </div>
+        
+        <Input 
+          id="file" 
+          type="file" 
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.txt,.md,.csv"
+          onChange={handleFileChange}
+          className="cursor-pointer hidden"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => document.getElementById('file')?.click()}
+        >
+          Choose file
+        </Button>
       </div>
       
-      <Input 
-        id="file" 
-        type="file" 
-        accept={accept}
-        onChange={handleFileChange}
-        className="hidden"
-      />
-      
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => document.getElementById('file')?.click()}
-      >
-        Choose file
-      </Button>
-    </div>
-  );
-}
-
-interface FilePreviewProps {
-  file: File | null;
-  content: string | null;
-}
-
-export function FilePreview({ file, content }: FilePreviewProps) {
-  if (!file) return null;
-  
-  return (
-    <div className="space-y-4">
-      {content && (
+      {fileContent && (
         <div>
-          <label className="block text-sm font-medium text-gray-700">File Preview</label>
-          <div className="border rounded-md p-4 bg-muted/30 mt-1 max-h-[200px] overflow-y-auto">
-            <pre className="text-xs whitespace-pre-wrap">{content}</pre>
+          <p className="text-sm font-medium mb-1">File Preview</p>
+          <div className="border rounded-md p-4 bg-muted/30 max-h-[200px] overflow-y-auto">
+            <pre className="text-xs whitespace-pre-wrap">{fileContent}</pre>
           </div>
         </div>
       )}
       
-      {file && file.type.includes('image') && (
+      {selectedFile && selectedFile.type.includes('image') && (
         <div>
-          <label className="block text-sm font-medium text-gray-700">Image Preview</label>
-          <div className="border rounded-md p-4 bg-muted/30 mt-1 flex justify-center">
+          <p className="text-sm font-medium mb-1">Image Preview</p>
+          <div className="border rounded-md p-4 bg-muted/30 flex justify-center">
             <img 
-              src={URL.createObjectURL(file)} 
+              src={URL.createObjectURL(selectedFile)} 
               alt="Preview" 
               className="max-h-[200px] object-contain" 
             />

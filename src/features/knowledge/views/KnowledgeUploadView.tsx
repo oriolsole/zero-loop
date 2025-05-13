@@ -1,245 +1,190 @@
 
 import React, { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileUpload, Upload, FileText, Clipboard } from 'lucide-react';
-import { DomainSelector } from '@/components/knowledge/DomainSelector';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { toast } from '@/components/ui/sonner';
-import { UploadProgress } from '@/features/knowledge/components/UploadProgress';
-import { useKnowledgeBase } from '@/hooks/knowledge/useKnowledgeBase';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FileUp, FileText, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+import { useKnowledgeBase } from '../hooks/useKnowledgeBase';
 import { useDomains } from '@/hooks/useDomains';
+import { FormFields } from '../components/FormFields';
+import { FileUpload } from '../components/FileUpload';
+import { UploadProgress } from '../components/UploadProgress';
+import { useAuth } from '@/contexts/AuthContext';
+import { KnowledgeUploadOptions } from '../types';
 
-interface KnowledgeUploadViewProps {
-  onUploadComplete?: () => void;
-}
+const uploadFormSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  content: z.string().optional(),
+  domainId: z.string().optional(),
+  sourceUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
+  chunkSize: z.number().min(100).max(2000).default(1000),
+  overlap: z.number().min(0).max(500).default(100),
+});
 
-export default function KnowledgeUploadView({ onUploadComplete }: KnowledgeUploadViewProps) {
-  // State for the form
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [sourceUrl, setSourceUrl] = useState('');
-  const [domainId, setDomainId] = useState('no-domain');
-  const [file, setFile] = useState<File | null>(null);
-  const [activeTab, setActiveTab] = useState<string>('text');
-  
-  // Get domains
-  const { domains, isLoading: isLoadingDomains } = useDomains();
-  
-  // Knowledge base hook
+type UploadFormValues = z.infer<typeof uploadFormSchema>;
+
+export function KnowledgeUploadView() {
   const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeBase();
+  const { domains } = useDomains();
+  const { user } = useAuth();
   
-  // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!title) {
-      toast.error('Please enter a title');
-      return;
-    }
-    
-    if (activeTab === 'text' && !content) {
-      toast.error('Please enter some content');
-      return;
-    }
-    
-    if (activeTab === 'file' && !file) {
-      toast.error('Please select a file to upload');
-      return;
-    }
-    
+  const [uploadTab, setUploadTab] = useState<'text' | 'file'>('text');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  const form = useForm<UploadFormValues>({
+    resolver: zodResolver(uploadFormSchema),
+    defaultValues: {
+      title: '',
+      content: '',
+      domainId: 'no-domain',
+      sourceUrl: '',
+      chunkSize: 1000,
+      overlap: 100,
+    },
+  });
+  
+  const onSubmit = async (values: UploadFormValues) => {
     try {
-      const result = await uploadKnowledge({
-        title,
-        content: activeTab === 'text' ? content : undefined,
-        file: activeTab === 'file' ? file : undefined,
-        sourceUrl: sourceUrl || undefined,
-        domainId: domainId !== 'no-domain' ? domainId : undefined,
-      });
+      let uploadOptions: KnowledgeUploadOptions = {
+        title: values.title,
+        domainId: values.domainId === 'no-domain' ? undefined : values.domainId,
+        sourceUrl: values.sourceUrl || undefined,
+        chunkSize: values.chunkSize,
+        overlap: values.overlap,
+      };
       
-      if (result) {
-        // Reset the form
-        setTitle('');
-        setContent('');
-        setSourceUrl('');
-        setFile(null);
-        
-        toast.success('Knowledge uploaded successfully');
-        
-        // Call onUploadComplete callback if provided
-        if (onUploadComplete) {
-          onUploadComplete();
+      if (uploadTab === 'text') {
+        if (!values.content) {
+          toast.error('Content is required for text upload');
+          return;
         }
+        uploadOptions.content = values.content;
+      } else {
+        if (!selectedFile) {
+          toast.error('File is required for file upload');
+          return;
+        }
+        uploadOptions.file = selectedFile;
+        uploadOptions.metadata = {
+          originalFileName: selectedFile.name
+        };
+      }
+      
+      const success = await uploadKnowledge(uploadOptions);
+      
+      if (success) {
+        // Reset form
+        form.reset();
+        setSelectedFile(null);
+        toast.success('Knowledge uploaded successfully');
       }
     } catch (error) {
-      console.error('Error uploading knowledge:', error);
+      console.error('Error during upload:', error);
       toast.error('Failed to upload knowledge');
     }
   };
   
-  // Handle file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
-  };
-  
-  // Handle removing selected file
-  const handleRemoveFile = () => {
-    setFile(null);
-  };
-  
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-4">
-            <div>
-              <Input
-                id="title"
-                placeholder="Title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="text-xl font-medium"
-                required
-              />
-            </div>
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <FileUp className="h-5 w-5" />
+          Upload Knowledge
+        </CardTitle>
+        <CardDescription>
+          Add new knowledge files or text to your knowledge base
+        </CardDescription>
+      </CardHeader>
+      
+      <CardContent className="space-y-6">
+        {!user && (
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Authentication Required</AlertTitle>
+            <AlertDescription>
+              You need to be signed in to upload knowledge. Please log in to continue.
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        <Tabs
+          defaultValue="text"
+          value={uploadTab}
+          onValueChange={(value) => setUploadTab(value as 'text' | 'file')}
+        >
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="text" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Add Text
+            </TabsTrigger>
+            <TabsTrigger value="file" className="flex items-center gap-2">
+              <FileUp className="h-4 w-4" />
+              Upload File
+            </TabsTrigger>
+          </TabsList>
+          
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-4">
+            {uploadError && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Upload Failed</AlertTitle>
+                <AlertDescription>{uploadError}</AlertDescription>
+              </Alert>
+            )}
             
-            <div>
-              <Input
-                id="source-url"
-                placeholder="Source URL (optional)"
-                type="url"
-                value={sourceUrl}
-                onChange={(e) => setSourceUrl(e.target.value)}
-              />
-            </div>
-            
-            <DomainSelector
-              domainId={domainId}
-              setDomainId={setDomainId}
+            <FormFields 
+              form={form}
+              showAdvanced={showAdvanced}
+              setShowAdvanced={setShowAdvanced}
               domains={domains}
             />
-          </div>
-          
-          <Tabs 
-            value={activeTab} 
-            onValueChange={setActiveTab}
-            className="space-y-4"
-          >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="text" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Text Content
-              </TabsTrigger>
-              <TabsTrigger value="file" className="flex items-center gap-2">
-                <FileUpload className="h-4 w-4" />
-                Upload File
-              </TabsTrigger>
-            </TabsList>
             
-            <TabsContent value="text" className="space-y-4">
-              <Textarea
-                placeholder="Enter knowledge content..."
-                className="min-h-[200px]"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-              />
-              
-              <div className="flex justify-end">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  size="sm"
-                  className="flex items-center gap-1"
-                  onClick={async () => {
-                    try {
-                      const text = await navigator.clipboard.readText();
-                      setContent(text);
-                      toast.success('Content pasted from clipboard');
-                    } catch (error) {
-                      console.error('Failed to read clipboard:', error);
-                      toast.error('Failed to paste from clipboard');
-                    }
-                  }}
-                >
-                  <Clipboard className="h-3 w-3" />
-                  Paste from clipboard
-                </Button>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="file" className="space-y-4">
-              <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                {!file ? (
-                  <div className="space-y-4">
-                    <div className="flex justify-center">
-                      <Upload className="h-12 w-12 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        Drag and drop or click to upload
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Supported files: PDF, TXT, Images, Word documents
-                      </p>
-                    </div>
-                    <Input
-                      id="file-upload"
-                      type="file"
-                      className="hidden"
-                      onChange={handleFileChange}
-                      accept=".pdf,.txt,.jpg,.jpeg,.png,.doc,.docx"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => document.getElementById('file-upload')?.click()}
-                    >
-                      Select File
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="font-medium">{file.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {file.type || 'Unknown file type'} • {(file.size / 1024).toFixed(1)} KB
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRemoveFile}
-                    >
-                      Remove File
-                    </Button>
-                  </div>
+            <TabsContent value="text" className="space-y-4 pt-4">
+              <Controller
+                name="content"
+                control={form.control}
+                render={({ field }) => (
+                  <textarea
+                    className="w-full min-h-[200px] p-2 border rounded-md"
+                    placeholder="Enter your knowledge content here..."
+                    {...field}
+                  />
                 )}
-              </div>
+              />
             </TabsContent>
-          </Tabs>
-          
-          {uploadProgress && (
-            <div className="py-4">
-              <UploadProgress progress={uploadProgress} />
-            </div>
-          )}
-          
-          {uploadError && (
-            <p className="text-sm text-destructive">{uploadError}</p>
-          )}
-          
-          <div className="flex justify-end">
+            
+            <TabsContent value="file" className="space-y-4 pt-4">
+              <FileUpload
+                selectedFile={selectedFile}
+                setSelectedFile={(file) => {
+                  setSelectedFile(file);
+                  // Auto-fill title if empty
+                  if (!form.getValues('title') && file?.name) {
+                    const nameWithoutExtension = file.name.replace(/\.[^/.]+$/, "");
+                    form.setValue('title', nameWithoutExtension);
+                  }
+                }}
+              />
+            </TabsContent>
+            
+            {uploadProgress && <UploadProgress progress={uploadProgress} />}
+            
             <Button 
-              type="submit" 
-              disabled={isUploading || (activeTab === 'text' && !content) || (activeTab === 'file' && !file)}
+              type="submit"
+              disabled={isUploading || (uploadTab === 'file' && !selectedFile)}
+              className="w-full"
             >
               {isUploading ? 'Uploading...' : 'Upload Knowledge'}
             </Button>
-          </div>
-        </form>
+          </form>
+        </Tabs>
       </CardContent>
     </Card>
   );

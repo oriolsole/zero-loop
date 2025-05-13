@@ -29,7 +29,7 @@ const KnowledgeManagement: React.FC = () => {
     queryKnowledgeBase, 
     isQuerying, 
     queryError, 
-    recentResults,
+    searchResults,
     searchMode
   } = useKnowledgeBase();
   
@@ -223,7 +223,7 @@ const KnowledgeManagement: React.FC = () => {
                 </div>
               )}
               
-              {!queryError && recentResults.length === 0 ? (
+              {!queryError && searchResults.length === 0 ? (
                 <div className="bg-muted p-8 rounded-md text-center">
                   <Info className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
                   <h3 className="font-medium text-lg mb-1">No results found</h3>
@@ -239,13 +239,13 @@ const KnowledgeManagement: React.FC = () => {
                       {searchMode === 'semantic' ? 'AI Semantic Search' : 'Text Search'}
                     </Badge>
                     <span className="text-sm text-muted-foreground">
-                      Found {recentResults.length} results for "{searchQuery}"
+                      Found {searchResults.length} results for "{searchQuery}"
                     </span>
                   </div>
                   <ExternalSources 
-                    sources={recentResults}
+                    sources={searchResults}
                     title="Knowledge Base Results"
-                    description={`Found ${recentResults.length} results for "${searchQuery}"`}
+                    description={`Found ${searchResults.length} results for "${searchQuery}"`}
                   />
                 </div>
               )}

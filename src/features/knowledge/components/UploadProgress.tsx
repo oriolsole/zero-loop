@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Progress } from "@/components/ui/progress";
+import { Loader2 } from "lucide-react";
 import { UploadProgress as ProgressType } from '../types';
 
 interface UploadProgressProps {
@@ -8,33 +9,35 @@ interface UploadProgressProps {
 }
 
 export function UploadProgress({ progress }: UploadProgressProps) {
-  const getStatusColor = () => {
-    switch (progress.status) {
-      case 'error':
-        return 'text-destructive';
-      case 'complete':
-        return 'text-green-600';
-      default:
-        return 'text-muted-foreground';
-    }
-  };
-  
   return (
-    <div className="space-y-2 mt-4">
-      <div className="flex justify-between text-xs">
-        <span className={getStatusColor()}>
-          {progress.status.charAt(0).toUpperCase() + progress.status.slice(1)}
-        </span>
-        <span>{Math.round(progress.progress)}%</span>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>{progress.message || getStatusMessage(progress.status)}</span>
+        </div>
+        <span className="text-sm font-medium">{progress.progress}%</span>
       </div>
-      <Progress 
-        value={progress.progress} 
-        className="h-2"
-        color={progress.status === 'error' ? 'bg-destructive' : undefined}
-      />
-      {progress.message && (
-        <p className={`text-xs ${getStatusColor()}`}>{progress.message}</p>
-      )}
+      <Progress value={progress.progress} className="h-2" />
     </div>
   );
+}
+
+function getStatusMessage(status: string): string {
+  switch (status) {
+    case 'pending':
+      return 'Preparing upload...';
+    case 'processing':
+      return 'Processing content...';
+    case 'embedding':
+      return 'Generating AI embeddings...';
+    case 'saving':
+      return 'Saving to knowledge base...';
+    case 'complete':
+      return 'Upload complete!';
+    case 'error':
+      return 'Upload failed';
+    default:
+      return 'Uploading...';
+  }
 }

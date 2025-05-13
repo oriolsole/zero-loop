@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from '@/components/ui/sonner';
 import { 
   KnowledgeItem, 
   KnowledgeSearchResult, 
@@ -14,7 +14,6 @@ import {
  * Main hook for interacting with the knowledge base
  */
 export function useKnowledgeBase() {
-  const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
@@ -39,7 +38,7 @@ export function useKnowledgeBase() {
         // Check file size
         if (file.size > 10 * 1024 * 1024) { // 10MB limit
           setUploadError('File size exceeds the 10MB limit');
-          toast({ title: "Error", description: 'File size exceeds the 10MB limit', variant: "destructive" });
+          toast.error('File size exceeds the 10MB limit');
           return false;
         }
         
@@ -83,17 +82,17 @@ export function useKnowledgeBase() {
         if (error) {
           console.error('Error uploading file:', error);
           setUploadError(error.message || 'Failed to upload file');
-          toast({ title: "Error", description: 'Failed to upload file', variant: "destructive" });
+          toast.error('Failed to upload file');
           return false;
         }
         
         if (!data.success) {
           setUploadError(data.error || 'Failed to process file');
-          toast({ title: "Error", description: data.error || 'Failed to process file', variant: "destructive" });
+          toast.error(data.error || 'Failed to process file');
           return false;
         }
         
-        toast({ title: "Success", description: 'File uploaded and processed successfully' });
+        toast.success('File uploaded and processed successfully');
         return true;
       }
       // Handle text content upload
@@ -120,28 +119,28 @@ export function useKnowledgeBase() {
         if (error) {
           console.error('Error uploading knowledge:', error);
           setUploadError(error.message || 'Failed to upload knowledge');
-          toast({ title: "Error", description: 'Failed to upload knowledge', variant: "destructive" });
+          toast.error('Failed to upload knowledge');
           return false;
         }
         
         if (!data.success) {
           setUploadError(data.error || 'Failed to upload knowledge');
-          toast({ title: "Error", description: data.error || 'Failed to upload knowledge', variant: "destructive" });
+          toast.error(data.error || 'Failed to upload knowledge');
           return false;
         }
         
-        toast({ title: "Success", description: 'Knowledge uploaded successfully' });
+        toast.success('Knowledge uploaded successfully');
         return true;
       } else {
         setUploadError('Either content or file must be provided');
-        toast({ title: "Error", description: 'Either content or file must be provided', variant: "destructive" });
+        toast.error('Either content or file must be provided');
         return false;
       }
     } catch (error) {
       console.error('Exception when uploading knowledge:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       setUploadError(errorMessage);
-      toast({ title: "Error", description: 'Failed to upload knowledge', variant: "destructive" });
+      toast.error('Failed to upload knowledge');
       return false;
     } finally {
       setIsUploading(false);
@@ -152,7 +151,7 @@ export function useKnowledgeBase() {
   /**
    * Query the knowledge base
    */
-  const queryKnowledge = async (options: KnowledgeQueryOptions): Promise<KnowledgeSearchResult[]> => {
+  const queryKnowledgeBase = async (options: KnowledgeQueryOptions): Promise<KnowledgeSearchResult[]> => {
     setIsQuerying(true);
     setQueryError(null);
     
@@ -169,13 +168,13 @@ export function useKnowledgeBase() {
       if (error) {
         console.error('Error querying knowledge base:', error);
         setQueryError(error.message || 'Failed to query knowledge base');
-        toast({ title: "Error", description: 'Failed to access knowledge base', variant: "destructive" });
+        toast.error('Failed to access knowledge base');
         return [];
       }
       
       if (data.error) {
         setQueryError(data.error);
-        toast({ title: "Error", description: 'Knowledge base error: ' + data.error, variant: "destructive" });
+        toast.error('Knowledge base error: ' + data.error);
         return [];
       }
       
@@ -188,7 +187,7 @@ export function useKnowledgeBase() {
       console.error('Exception when querying knowledge base:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       setQueryError(errorMessage);
-      toast({ title: "Error", description: 'Failed to access knowledge base', variant: "destructive" });
+      toast.error('Failed to access knowledge base');
       return [];
     } finally {
       setIsQuerying(false);
@@ -203,10 +202,13 @@ export function useKnowledgeBase() {
     uploadProgress,
     
     // Query capabilities
-    queryKnowledge,
+    queryKnowledgeBase,
     isQuerying,
     queryError,
     searchResults,
     searchMode,
+    
+    // Alias for compatibility with old code
+    recentResults: searchResults,
   };
 }

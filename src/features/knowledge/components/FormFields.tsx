@@ -1,118 +1,115 @@
 
 import React from 'react';
-import { Input } from "@/components/ui/input";
+import { UseFormReturn } from 'react-hook-form';
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Domain } from '@/types/intelligence';
-import { ensureSafeDomainId, filterValidDomains } from '../lib/domainUtils';
-import { Link } from 'lucide-react';
 
-interface TitleFieldProps {
-  title: string;
-  setTitle: (title: string) => void;
-  error?: string;
-}
-
-export function TitleField({ title, setTitle, error }: TitleFieldProps) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor="title" className={error ? "text-destructive" : ""}>Title {error && <span className="text-xs font-normal">({error})</span>}</Label>
-      <Input
-        id="title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Document title"
-        required
-        className={error ? "border-destructive" : ""}
-      />
-    </div>
-  );
-}
-
-interface DomainFieldProps {
-  domainId: string;
-  setDomainId: (domainId: string) => void;
+interface FormFieldsProps {
+  form: UseFormReturn<any>;
+  showAdvanced: boolean;
+  setShowAdvanced: (value: boolean) => void;
   domains: Domain[];
-  error?: string;
 }
 
-export function DomainField({ domainId, setDomainId, domains, error }: DomainFieldProps) {
-  // Ensure domainId is never an empty string
-  const safeSelectedValue = ensureSafeDomainId(domainId);
-  
-  // Filter domains to ensure none have empty IDs
-  const validDomains = filterValidDomains(domains);
-  
+export function FormFields({ form, showAdvanced, setShowAdvanced, domains }: FormFieldsProps) {
   return (
-    <div className="space-y-2">
-      <Label htmlFor="domain" className={error ? "text-destructive" : ""}>Domain {error && <span className="text-xs font-normal">({error})</span>}</Label>
-      <Select value={safeSelectedValue} onValueChange={setDomainId}>
-        <SelectTrigger className={error ? "border-destructive" : ""}>
-          <SelectValue placeholder="Select a domain" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="no-domain">No specific domain</SelectItem>
-          {validDomains.map((domain) => (
-            <SelectItem 
-              key={domain.id} 
-              value={domain.id}
-            >
-              {domain.name || "Unnamed Domain"}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-interface SourceUrlFieldProps {
-  sourceUrl: string;
-  setSourceUrl: (url: string) => void;
-  error?: string;
-}
-
-export function SourceUrlField({ sourceUrl, setSourceUrl, error }: SourceUrlFieldProps) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor="source" className={error ? "text-destructive" : ""}>
-        Source URL (Optional) {error && <span className="text-xs font-normal">({error})</span>}
-      </Label>
-      <div className="flex items-center space-x-2">
-        <Link className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="title">Title</Label>
         <Input
-          id="source"
-          value={sourceUrl}
-          onChange={(e) => setSourceUrl(e.target.value)}
-          placeholder="https://example.com/document"
-          className={error ? "border-destructive" : ""}
+          id="title"
+          placeholder="Knowledge title"
+          {...form.register('title')}
         />
+        {form.formState.errors.title && (
+          <p className="text-sm text-red-500">{form.formState.errors.title.message as string}</p>
+        )}
       </div>
-    </div>
-  );
-}
-
-interface ContentFieldProps {
-  content: string;
-  setContent: (content: string) => void;
-  error?: string;
-}
-
-export function ContentField({ content, setContent, error }: ContentFieldProps) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor="content" className={error ? "text-destructive" : ""}>
-        Content {error && <span className="text-xs font-normal">({error})</span>}
-      </Label>
-      <Textarea
-        id="content"
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        placeholder="Paste or type your knowledge content here"
-        className={`min-h-[200px] ${error ? "border-destructive" : ""}`}
-        required
-      />
+      
+      <div className="space-y-2">
+        <Label htmlFor="domain">Domain</Label>
+        <Select 
+          onValueChange={(value) => form.setValue('domainId', value)} 
+          defaultValue={form.getValues('domainId')}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select a domain" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="no-domain">No specific domain</SelectItem>
+            {domains.map((domain) => (
+              <SelectItem key={domain.id} value={domain.id}>
+                {domain.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      
+      <div className="space-y-2">
+        <Label htmlFor="sourceUrl">Source URL (optional)</Label>
+        <Input
+          id="sourceUrl"
+          type="url"
+          placeholder="https://example.com/source"
+          {...form.register('sourceUrl')}
+        />
+        {form.formState.errors.sourceUrl && (
+          <p className="text-sm text-red-500">{form.formState.errors.sourceUrl.message as string}</p>
+        )}
+      </div>
+      
+      {showAdvanced && (
+        <div className="space-y-4 p-4 border rounded-md bg-muted/40">
+          <h3 className="font-medium">Advanced Options</h3>
+          
+          <div className="space-y-2">
+            <Label htmlFor="chunkSize">
+              Chunk Size: {form.watch('chunkSize')}
+            </Label>
+            <Input
+              id="chunkSize"
+              type="range"
+              min="100"
+              max="2000"
+              step="100"
+              {...form.register('chunkSize', { valueAsNumber: true })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Larger chunks preserve more context but may reduce search precision
+            </p>
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="overlap">
+              Chunk Overlap: {form.watch('overlap')}
+            </Label>
+            <Input
+              id="overlap"
+              type="range"
+              min="0"
+              max="500"
+              step="50"
+              {...form.register('overlap', { valueAsNumber: true })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Higher overlap helps maintain context across chunks
+            </p>
+          </div>
+        </div>
+      )}
+      
+      <Button 
+        type="button" 
+        variant="outline" 
+        size="sm"
+        onClick={() => setShowAdvanced(!showAdvanced)}
+      >
+        {showAdvanced ? 'Hide Advanced Options' : 'Show Advanced Options'}
+      </Button>
     </div>
   );
 }
