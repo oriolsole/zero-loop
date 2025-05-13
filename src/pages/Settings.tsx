@@ -1,6 +1,5 @@
 
 import React from 'react';
-import Header from '@/components/Header';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import SupabaseControl from '@/components/SupabaseControl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,8 +8,6 @@ import { Database, User, Globe, Trash, HardDrive, Shield } from 'lucide-react';
 const Settings = () => {
   return (
     <div className="min-h-screen bg-background">
-      <Header />
-      
       <main className="container mx-auto py-6 px-4 max-w-5xl">
         <h1 className="text-2xl font-bold mb-6">Settings</h1>
         
