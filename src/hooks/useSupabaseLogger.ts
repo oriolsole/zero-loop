@@ -4,9 +4,11 @@ import {
   logLoopToSupabase, 
   saveKnowledgeNodeToSupabase, 
   saveKnowledgeEdgeToSupabase, 
-  syncWithSupabase 
+  syncWithSupabase,
+  isValidDomainForSync 
 } from '../utils/supabase';
 import { isSupabaseConfigured } from '../utils/supabase-client';
+import { isValidUUID } from '../utils/supabase/helpers';
 import { LoopHistory, KnowledgeNode, KnowledgeEdge, Domain } from '../types/intelligence';
 import { toast } from '@/components/ui/sonner';
 
@@ -426,9 +428,15 @@ export function useSupabaseLogger() {
     console.log('Knowledge edge queued for sync:', edge.id);
   };
 
-  // Queue a domain for sync
+  // Queue a domain for sync with additional validation
   const queueDomain = (domain: Domain) => {
     if (!state.isRemoteEnabled) return;
+    
+    // ENHANCED VALIDATION: Check for valid UUID format before queueing
+    if (!isValidUUID(domain.id)) {
+      console.log(`Skipping invalid domain ID for sync queue: ${domain.id} (${domain.name}). Not a UUID format.`);
+      return;
+    }
     
     // Skip if this domain was recently processed
     if (!shouldProcessItem(domain.id, 'domain', processedItems)) {
@@ -636,18 +644,23 @@ export function useSupabaseLogger() {
     return () => clearInterval(intervalId);
   }, [state.isRemoteEnabled, queue]);
   
-  // Queue domains for syncing if remote logging is enabled - SIMPLIFIED to reduce re-renders
+  // Queue domains for syncing if remote logging is enabled - MODIFIED to filter invalid domains
   useEffect(() => {
     if (!state.isRemoteEnabled) return;
     
     // Only check once when enabled
     const queuedDomainIds = new Set(queue.domains.map(d => d.id));
-    const unqueuedDomainsCount = domains.filter(d => !queuedDomainIds.has(d.id)).length;
+    
+    // Filter out domains with invalid IDs before counting/queueing
+    const validDomains = domains.filter(d => isValidUUID(d.id));
+    const unqueuedDomainsCount = validDomains.filter(d => !queuedDomainIds.has(d.id)).length;
     
     if (unqueuedDomainsCount > 0) {
-      console.log(`Found ${unqueuedDomainsCount} unqueued domains`);
+      console.log(`Found ${unqueuedDomainsCount} unqueued valid domains`);
       // We don't sync all domains at once to avoid excessive rerendering
-      const domainsToSync = domains.filter(d => !queuedDomainIds.has(d.id)).slice(0, 2);
+      const domainsToSync = validDomains
+        .filter(d => !queuedDomainIds.has(d.id))
+        .slice(0, 2);
       
       if (domainsToSync.length > 0) {
         domainsToSync.forEach(domain => {

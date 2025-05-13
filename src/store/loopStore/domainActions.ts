@@ -1,3 +1,4 @@
+
 import { toast } from '@/components/ui/sonner';
 import { Domain } from '../../types/intelligence';
 import { v4 as uuidv4 } from 'uuid';
@@ -8,6 +9,7 @@ import {
   deleteDomainFromSupabase 
 } from '../../utils/supabase';
 import { isSupabaseConfigured } from '../../utils/supabase-client';
+import { isValidUUID } from '../../utils/supabase/helpers';
 
 type SetFunction = (
   partial: LoopState | Partial<LoopState> | ((state: LoopState) => LoopState | Partial<LoopState>),
@@ -21,8 +23,9 @@ export const createDomainActions = (
   get: GetFunction
 ) => ({
   addNewDomain: (domain: Domain) => {
-    // Make sure the domain has all required fields and a UUID
-    const domainId = domain.id && domain.id.includes('-') ? domain.id : uuidv4();
+    // ENHANCED: Ensure the domain ID is always a valid UUID
+    // Replace any non-UUID formatted ID with a new UUID
+    const domainId = isValidUUID(domain.id) ? domain.id : uuidv4();
     
     const completeDomain: Domain = {
       ...domain,
@@ -62,6 +65,12 @@ export const createDomainActions = (
   },
   
   updateDomain: (updatedDomain: Domain) => {
+    // ENHANCED: Ensure we don't try to update domains with invalid IDs
+    if (!isValidUUID(updatedDomain.id)) {
+      toast.error(`Cannot update domain with invalid ID: ${updatedDomain.id}`);
+      return;
+    }
+    
     set(state => {
       const domainIndex = state.domains.findIndex(d => d.id === updatedDomain.id);
       if (domainIndex === -1) return state;
@@ -119,7 +128,7 @@ export const createDomainActions = (
     });
     
     // If remote logging is enabled, delete from Supabase
-    if (get().useRemoteLogging && isSupabaseConfigured()) {
+    if (get().useRemoteLogging && isSupabaseConfigured() && isValidUUID(domainId)) {
       deleteDomainFromSupabase(domainId)
         .then(success => {
           if (success) {
