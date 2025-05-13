@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, ArrowRight, Settings } from 'lucide-react';
 import { useLoopStore } from '@/store/useLoopStore';
 import { toast } from '@/components/ui/sonner';
+import { ensureSafeDomainId } from '@/utils/domainUtils';
+import { isValidUUID } from '@/utils/supabase/helpers';
 
 interface FileUploadTabProps {
   onUploadSuccess?: () => void;
@@ -23,8 +25,17 @@ const FileUploadTab: React.FC<FileUploadTabProps> = ({ onUploadSuccess }) => {
   const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeBase();
   const { domains, activeDomainId } = useLoopStore();
   
+  // Ensure we start with a valid domainId (never empty string)
+  const [domainId, setDomainId] = useState(ensureSafeDomainId(activeDomainId));
+  
+  // Update domainId if activeDomainId changes (and it's a valid ID)
+  useEffect(() => {
+    if (activeDomainId) {
+      setDomainId(ensureSafeDomainId(activeDomainId));
+    }
+  }, [activeDomainId]);
+  
   const [title, setTitle] = useState('');
-  const [domainId, setDomainId] = useState(activeDomainId);
   const [sourceUrl, setSourceUrl] = useState('');
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -74,7 +85,13 @@ const FileUploadTab: React.FC<FileUploadTabProps> = ({ onUploadSuccess }) => {
     
     try {
       // Process domain ID - convert "no-domain" to undefined
-      const processedDomainId = domainId === "no-domain" ? undefined : domainId;
+      // For any other value, ensure it's a valid UUID or set to undefined
+      let processedDomainId: string | undefined = undefined;
+      
+      if (domainId !== "no-domain") {
+        // Only use the domain ID if it's a valid UUID
+        processedDomainId = isValidUUID(domainId) ? domainId : undefined;
+      }
       
       const success = await uploadKnowledge({
         title,
@@ -129,7 +146,12 @@ const FileUploadTab: React.FC<FileUploadTabProps> = ({ onUploadSuccess }) => {
         />
       </div>
       
-      <DomainSelector domainId={domainId} setDomainId={setDomainId} domains={domains} />
+      <DomainSelector 
+        domainId={domainId} 
+        setDomainId={(id) => setDomainId(ensureSafeDomainId(id))} 
+        domains={domains} 
+      />
+      
       <SourceUrlInput sourceUrl={sourceUrl} setSourceUrl={setSourceUrl} />
       
       <div className="space-y-2">

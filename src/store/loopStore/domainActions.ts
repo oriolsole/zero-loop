@@ -10,6 +10,7 @@ import {
 } from '../../utils/supabase';
 import { isSupabaseConfigured } from '../../utils/supabase-client';
 import { isValidUUID } from '../../utils/supabase/helpers';
+import { ensureValidDomainId } from '../../utils/domainUtils';
 
 type SetFunction = (
   partial: LoopState | Partial<LoopState> | ((state: LoopState) => LoopState | Partial<LoopState>),
@@ -23,18 +24,21 @@ export const createDomainActions = (
   get: GetFunction
 ) => ({
   addNewDomain: (domain: Domain) => {
+    // Ensure the domain has a valid ID (never empty)
+    const domainWithValidId = ensureValidDomainId(domain);
+    
     // ENHANCED: Ensure the domain ID is always a valid UUID
-    // Replace any non-UUID formatted ID with a new UUID
-    const domainId = isValidUUID(domain.id) ? domain.id : uuidv4();
+    // Replace any non-UUID formatted ID with a new UUID if needed
+    const domainId = isValidUUID(domainWithValidId.id) ? domainWithValidId.id : uuidv4();
     
     const completeDomain: Domain = {
-      ...domain,
+      ...domainWithValidId,
       id: domainId,
-      totalLoops: domain.totalLoops || 0,
-      currentLoop: domain.currentLoop || [],
-      knowledgeNodes: domain.knowledgeNodes || [],
-      knowledgeEdges: domain.knowledgeEdges || [],
-      metrics: domain.metrics || {
+      totalLoops: domainWithValidId.totalLoops || 0,
+      currentLoop: domainWithValidId.currentLoop || [],
+      knowledgeNodes: domainWithValidId.knowledgeNodes || [],
+      knowledgeEdges: domainWithValidId.knowledgeEdges || [],
+      metrics: domainWithValidId.metrics || {
         successRate: 0,
         knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
         taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],
@@ -65,13 +69,27 @@ export const createDomainActions = (
   },
   
   updateDomain: (updatedDomain: Domain) => {
-    // ENHANCED: Ensure we don't try to update domains with invalid IDs
-    // Prevent empty domain IDs by assigning a default one if empty
-    const safeId = updatedDomain.id || uuidv4();
-    const domainWithSafeId = { ...updatedDomain, id: safeId };
+    // Ensure the domain has a valid ID (never empty)
+    const domainWithValidId = ensureValidDomainId(updatedDomain);
+    
+    // Ensure we don't try to update domains with invalid IDs
+    const safeId = domainWithValidId.id;
     
     if (!isValidUUID(safeId)) {
-      toast.error(`Cannot update domain with invalid ID: ${safeId}`);
+      console.warn(`Attempting to update domain with non-UUID ID: ${safeId}`);
+      // Generate a proper UUID for this domain
+      const newId = uuidv4();
+      console.log(`Generated new UUID for domain: ${newId}`);
+      
+      // Create a copy with the new UUID
+      const domainWithProperUUID = {
+        ...domainWithValidId,
+        id: newId
+      };
+      
+      // Add as new domain instead of updating
+      get().addNewDomain(domainWithProperUUID);
+      toast.success('Domain created with new ID!');
       return;
     }
     
@@ -85,9 +103,9 @@ export const createDomainActions = (
       const existingDomain = state.domains[domainIndex];
       newDomains[domainIndex] = {
         ...existingDomain,
-        name: domainWithSafeId.name,
-        shortDesc: domainWithSafeId.shortDesc,
-        description: domainWithSafeId.description,
+        name: domainWithValidId.name,
+        shortDesc: domainWithValidId.shortDesc,
+        description: domainWithValidId.description,
       };
 
       // If remote logging is enabled, update in Supabase

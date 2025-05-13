@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Brain, Code, Calculator, Puzzle, FileText, Briefcase, Plus, Settings } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { useLoopStore } from '../store/useLoopStore';
+import { ensureSafeDomainId } from '@/utils/domainUtils';
 
 const DomainSelector: React.FC<{ 
   domains: any[],
@@ -15,6 +16,9 @@ const DomainSelector: React.FC<{
 }> = ({ domains, activeDomain, onSelectDomain }) => {
   const { isRunningLoop } = useLoopStore();
   
+  // Filter out any domains with null or empty IDs
+  const validDomains = domains.filter(domain => domain.id && domain.id.trim() !== '');
+  
   const handleDomainSelect = (domainId: string) => {
     if (isRunningLoop) {
       toast.warning("Please complete the current learning loop before switching domains");
@@ -22,7 +26,7 @@ const DomainSelector: React.FC<{
     }
     
     // Ensure domainId is never empty - use a fallback value if empty
-    const safeDomainId = domainId || "default-domain";
+    const safeDomainId = ensureSafeDomainId(domainId);
     onSelectDomain(safeDomainId);
   };
   
@@ -38,13 +42,13 @@ const DomainSelector: React.FC<{
   };
   
   // Make sure we have a safe value for comparison
-  const safeActiveDomain = activeDomain || "default-domain";
+  const safeActiveDomain = ensureSafeDomainId(activeDomain);
   
   return (
     <div className="space-y-4 fade-in-delay-1">
-      {domains.map((domain) => {
+      {validDomains.map((domain) => {
         // Ensure we have a safe domain ID that's never empty
-        const safeDomainId = domain.id || `domain-${domain.name?.replace(/\s+/g, '-').toLowerCase() || 'unknown'}`;
+        const safeDomainId = ensureSafeDomainId(domain.id, `domain-${domain.name?.replace(/\s+/g, '-').toLowerCase() || 'unknown'}-${Date.now()}`);
         
         return (
           <Card 

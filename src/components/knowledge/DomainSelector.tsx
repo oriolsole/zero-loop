@@ -2,6 +2,7 @@
 import React from 'react';
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ensureSafeDomainId, filterValidDomains } from '@/utils/domainUtils';
 
 interface Domain {
   id: string;
@@ -20,7 +21,10 @@ export const DomainSelector: React.FC<DomainSelectorProps> = ({
   domains
 }) => {
   // Ensure domainId is never an empty string
-  const safeSelectedValue = domainId || "no-domain";
+  const safeSelectedValue = ensureSafeDomainId(domainId);
+  
+  // Filter domains to ensure none have empty IDs
+  const validDomains = filterValidDomains(domains);
   
   return (
     <div className="space-y-2">
@@ -31,15 +35,15 @@ export const DomainSelector: React.FC<DomainSelectorProps> = ({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="no-domain">No specific domain</SelectItem>
-          {domains.map((domain) => {
-            // Ensure we never use an empty string as value
-            const safeValue = domain.id ? domain.id : `domain-${domain.name.replace(/\s+/g, '-').toLowerCase()}`;
+          {validDomains.map((domain) => {
+            // Generate a safe value from name if id is somehow still empty
+            const safeValue = domain.id || `domain-${domain.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}`;
             return (
               <SelectItem 
                 key={safeValue} 
                 value={safeValue}
               >
-                {domain.name}
+                {domain.name || "Unnamed Domain"}
               </SelectItem>
             );
           })}
