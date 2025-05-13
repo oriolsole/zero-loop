@@ -147,7 +147,10 @@ const KnowledgeUploadForm: React.FC = () => {
         </TabsList>
         
         <TabsContent value="text" className="space-y-4 pt-4">
-          <TextUploadTab content={content} setContent={setContent} />
+          <TextUploadTab 
+            content={content} 
+            setContent={setContent} 
+          />
         </TabsContent>
         
         <TabsContent value="file" className="space-y-4 pt-4">

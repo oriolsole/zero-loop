@@ -5,7 +5,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FileUp, FileText, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from '@/components/ui/sonner';
-
 import FileUploadTab from './FileUploadTab';
 import TextUploadTab from './TextUploadTab';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,8 +13,8 @@ interface KnowledgeUploadProps {
   onUploadComplete?: () => void;
 }
 
-const KnowledgeUpload: React.FC<KnowledgeUploadProps> = ({ onUploadComplete }) => {
-  const [uploadTab, setUploadTab] = useState<string>('file');
+const KnowledgeUpload = ({ onUploadComplete }: KnowledgeUploadProps) => {
+  const [uploadTab, setUploadTab] = useState('file');
   const { user } = useAuth();
   
   const handleUploadSuccess = () => {
@@ -24,7 +23,7 @@ const KnowledgeUpload: React.FC<KnowledgeUploadProps> = ({ onUploadComplete }) =
       onUploadComplete();
     }
   };
-
+  
   return (
     <Card className="w-full">
       <CardHeader>
@@ -48,8 +47,12 @@ const KnowledgeUpload: React.FC<KnowledgeUploadProps> = ({ onUploadComplete }) =
           </Alert>
         )}
         
-        <Tabs defaultValue="file" value={uploadTab} onValueChange={setUploadTab}>
-          <TabsList>
+        <Tabs
+          defaultValue="file"
+          value={uploadTab}
+          onValueChange={setUploadTab}
+        >
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="file" className="flex items-center gap-2">
               <FileUp className="h-4 w-4" />
               Upload File

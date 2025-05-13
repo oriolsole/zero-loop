@@ -16,19 +16,41 @@ import { toast } from '@/components/ui/sonner';
 
 interface TextUploadTabProps {
   onUploadSuccess?: () => void;
+  content?: string;
+  setContent?: React.Dispatch<React.SetStateAction<string>>;
 }
 
-const TextUploadTab: React.FC<TextUploadTabProps> = ({ onUploadSuccess }) => {
+const TextUploadTab: React.FC<TextUploadTabProps> = ({ 
+  onUploadSuccess,
+  content: externalContent,
+  setContent: setExternalContent 
+}) => {
   const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeBase();
   const { domains, activeDomainId } = useLoopStore();
   
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState(externalContent || '');
   const [domainId, setDomainId] = useState(activeDomainId);
   const [sourceUrl, setSourceUrl] = useState('');
   const [advanced, setAdvanced] = useState(false);
   const [chunkSize, setChunkSize] = useState(1000);
   const [overlap, setOverlap] = useState(100);
+  
+  // Update local content when external content changes
+  React.useEffect(() => {
+    if (externalContent !== undefined) {
+      setContent(externalContent);
+    }
+  }, [externalContent]);
+
+  // Update external content when local content changes
+  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = e.target.value;
+    setContent(newContent);
+    if (setExternalContent) {
+      setExternalContent(newContent);
+    }
+  };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,6 +89,11 @@ const TextUploadTab: React.FC<TextUploadTabProps> = ({ onUploadSuccess }) => {
         if (onUploadSuccess) {
           onUploadSuccess();
         }
+        
+        // Update external content state if provided
+        if (setExternalContent) {
+          setExternalContent('');
+        }
       }
     } catch (error) {
       console.error('Error uploading knowledge:', error);
@@ -103,7 +130,7 @@ const TextUploadTab: React.FC<TextUploadTabProps> = ({ onUploadSuccess }) => {
         <Textarea
           id="content"
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={handleContentChange}
           placeholder="Paste or type your knowledge content here"
           className="min-h-[200px]"
           required
