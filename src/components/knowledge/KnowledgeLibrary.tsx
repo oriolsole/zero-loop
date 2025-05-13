@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trash2, FileText, FileImage, FilePdf, File, Search, Filter, ArrowDownAZ, Clock, SlidersHorizontal } from "lucide-react";
+import { Trash2, FileText, File, Search, Filter, ArrowDownAZ, Clock, SlidersHorizontal } from "lucide-react";
 
 const KnowledgeLibrary: React.FC = () => {
   const { domains } = useLoopStore();
@@ -77,9 +77,9 @@ const KnowledgeLibrary: React.FC = () => {
     if (!item.original_file_type) return <FileText className="h-5 w-5 text-muted-foreground" />;
     
     if (item.original_file_type.includes('pdf')) {
-      return <FilePdf className="h-5 w-5 text-red-500" />;
+      return <File className="h-5 w-5 text-red-500" />;
     } else if (item.original_file_type.includes('image')) {
-      return <FileImage className="h-5 w-5 text-blue-500" />;
+      return <FileText className="h-5 w-5 text-blue-500" />;
     } else if (item.original_file_type.includes('text') || item.original_file_type.includes('markdown')) {
       return <FileText className="h-5 w-5 text-gray-500" />;
     } else {
