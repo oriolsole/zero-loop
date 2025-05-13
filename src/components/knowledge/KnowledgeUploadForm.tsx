@@ -23,9 +23,12 @@ const KnowledgeUploadForm: React.FC = () => {
   const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeBase();
   const { domains, activeDomainId } = useLoopStore();
   
+  // Ensure we start with a valid domainId (never empty string)
+  const initialDomainId = activeDomainId || "no-domain";
+  
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [domainId, setDomainId] = useState(activeDomainId || "no-domain");
+  const [domainId, setDomainId] = useState(initialDomainId);
   const [sourceUrl, setSourceUrl] = useState('');
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -81,8 +84,9 @@ const KnowledgeUploadForm: React.FC = () => {
     
     try {
       let success;
-      // Process domain ID - convert "no-domain" to undefined to avoid foreign key constraint errors
-      // Also validate that domainId is a valid UUID if provided
+      
+      // Process domain ID - only use a valid UUID or undefined
+      // "no-domain" explicitly means no domain association
       const processedDomainId = domainId === "no-domain" ? undefined : 
                                (isValidUUID(domainId) ? domainId : undefined);
       
