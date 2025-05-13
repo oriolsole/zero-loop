@@ -65,6 +65,8 @@ export const deleteFile = async (bucketName: string, filePath: string): Promise<
       ? filePath.substring(filePath.lastIndexOf('/') + 1)
       : filePath;
     
+    console.log(`Attempting to delete file: ${fileName} from bucket: ${bucketName}`);
+    
     const { error } = await supabase
       .storage
       .from(bucketName)
@@ -75,9 +77,33 @@ export const deleteFile = async (bucketName: string, filePath: string): Promise<
       return false;
     }
     
+    console.log(`Successfully deleted file: ${fileName} from bucket: ${bucketName}`);
     return true;
   } catch (error) {
     console.error('Exception deleting file:', error);
+    return false;
+  }
+};
+
+/**
+ * Check if the bucket exists and has proper permissions
+ */
+export const checkStorageBucketAccess = async (bucketName: string): Promise<boolean> => {
+  try {
+    // Try to list files in the bucket as a basic permissions check
+    const { data, error } = await supabase
+      .storage
+      .from(bucketName)
+      .list('', { limit: 1 });
+    
+    if (error) {
+      console.error(`Error accessing bucket ${bucketName}:`, error);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error(`Exception checking access to bucket ${bucketName}:`, error);
     return false;
   }
 };

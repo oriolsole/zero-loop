@@ -1,8 +1,13 @@
 
 import Dashboard from "@/components/Dashboard";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Index = () => {
-  return <Dashboard />;
+  const { user } = useAuth();
+
+  return (
+    <Dashboard />
+  );
 };
 
 export default Index;

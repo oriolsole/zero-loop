@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
 import KnowledgeUpload from '@/components/knowledge/KnowledgeUpload';
 import KnowledgeLibrary from '@/components/knowledge/KnowledgeLibrary';
@@ -20,7 +20,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { ensureStorageBucketsExist } from '@/utils/supabase/storage';
+import { ensureStorageBucketsExist, checkStorageBucketAccess } from '@/utils/supabase/storage';
+import { toast } from '@/components/ui/sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 const KnowledgeManagement: React.FC = () => {
   const { 
@@ -31,30 +33,65 @@ const KnowledgeManagement: React.FC = () => {
     searchMode
   } = useKnowledgeBase();
   
+  const { user } = useAuth();
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
   const [useEmbeddings, setUseEmbeddings] = useState<boolean>(true);
   const [matchThreshold, setMatchThreshold] = useState<number>(0.5);
+  const [activeTab, setActiveTab] = useState('search');
+  const [storageInitialized, setStorageInitialized] = useState(false);
   
-  // Ensure storage buckets exist on component mount
+  // Initialize storage and check access permissions
+  const initializeStorage = useCallback(async () => {
+    try {
+      // Ensure the storage bucket exists
+      const bucketsExist = await ensureStorageBucketsExist();
+      
+      if (!bucketsExist) {
+        console.error('Failed to ensure storage buckets exist');
+      }
+      
+      // Check access permissions
+      const hasAccess = await checkStorageBucketAccess('knowledge_files');
+      
+      if (!hasAccess && user) {
+        toast.warning('Limited access to knowledge storage. Some features may be restricted.');
+      }
+      
+      setStorageInitialized(true);
+    } catch (error) {
+      console.error('Storage initialization error:', error);
+      toast.error('Failed to initialize knowledge storage');
+    }
+  }, [user]);
+  
+  // Initialize storage on component mount and when user changes
   useEffect(() => {
-    ensureStorageBucketsExist()
-      .catch(err => console.error('Failed to initialize storage buckets:', err));
-  }, []);
+    initializeStorage();
+  }, [initializeStorage, user]);
   
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!searchQuery.trim()) return;
     
-    await queryKnowledgeBase({
-      query: searchQuery,
-      limit: 10,
-      useEmbeddings,
-      matchThreshold
-    });
-    
-    setHasSearched(true);
+    try {
+      await queryKnowledgeBase({
+        query: searchQuery,
+        limit: 10,
+        useEmbeddings,
+        matchThreshold
+      });
+      
+      setHasSearched(true);
+    } catch (error) {
+      console.error('Search error:', error);
+    }
+  };
+  
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
   };
   
   return (
@@ -69,7 +106,12 @@ const KnowledgeManagement: React.FC = () => {
         </p>
       </div>
       
-      <Tabs defaultValue="search" className="space-y-4">
+      <Tabs 
+        defaultValue="search" 
+        className="space-y-4"
+        value={activeTab}
+        onValueChange={handleTabChange}
+      >
         <TabsList>
           <TabsTrigger value="search">Search Knowledge</TabsTrigger>
           <TabsTrigger value="library">
@@ -230,7 +272,14 @@ const KnowledgeManagement: React.FC = () => {
         </TabsContent>
         
         <TabsContent value="upload">
-          <KnowledgeUpload />
+          <KnowledgeUpload 
+            onUploadComplete={() => {
+              toast.success('Knowledge upload complete');
+              // Switch to library tab to show the newly uploaded item
+              setActiveTab('library');
+              handleTabChange('library');
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>

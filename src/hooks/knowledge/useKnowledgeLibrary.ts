@@ -117,9 +117,11 @@ export function useKnowledgeLibrary() {
     try {
       if (!filePath) return true; // No file to delete
       
-      // Extract the path from the full URL if needed
+      // Extract the filename from the path if needed
       const pathParts = filePath.split('/');
       const fileName = pathParts[pathParts.length - 1];
+      
+      console.log('Deleting file from storage:', fileName);
       
       // Remove the file from the storage bucket
       const { error } = await supabase.storage
@@ -131,6 +133,7 @@ export function useKnowledgeLibrary() {
         return false;
       }
       
+      console.log('File deleted successfully:', fileName);
       return true;
     } catch (error) {
       console.error('Exception when deleting file:', error);
@@ -139,10 +142,11 @@ export function useKnowledgeLibrary() {
   };
   
   /**
-   * Delete a knowledge item by ID
+   * Delete a knowledge item by ID with transaction-like behavior
    */
   const deleteKnowledgeItem = async (id: string): Promise<boolean> => {
     setIsLoading(true);
+    setError(null);
     
     try {
       // First get the item to check if it has associated files
@@ -154,40 +158,52 @@ export function useKnowledgeLibrary() {
       
       if (fetchError) {
         console.error('Error fetching item details:', fetchError);
-        toast.error('Failed to get item details');
+        toast.error('Failed to get item details for deletion');
         return false;
       }
       
+      if (!item) {
+        toast.error('Item not found');
+        return false;
+      }
+      
+      console.log('Deleting knowledge item:', id, item);
+      
       // Delete associated files if they exist
-      const filePromises = [];
+      const fileDeletePromises = [];
       
       if (item?.file_path) {
-        filePromises.push(deleteFileFromStorage(item.file_path));
+        fileDeletePromises.push(deleteFileFromStorage(item.file_path));
       }
       
       if (item?.thumbnail_path && item.thumbnail_path !== item?.file_path) {
-        filePromises.push(deleteFileFromStorage(item.thumbnail_path));
+        fileDeletePromises.push(deleteFileFromStorage(item.thumbnail_path));
       }
       
       // Wait for all file deletions to complete
-      if (filePromises.length > 0) {
-        const fileResults = await Promise.all(filePromises);
+      if (fileDeletePromises.length > 0) {
+        console.log(`Deleting ${fileDeletePromises.length} associated files...`);
+        const fileResults = await Promise.all(fileDeletePromises);
         if (fileResults.some(result => !result)) {
           console.warn('Some files could not be deleted');
+          toast.warning('Some associated files could not be deleted');
         }
       }
       
       // Delete the database record
+      console.log('Deleting database record:', id);
       const { error } = await supabase
         .from('knowledge_chunks')
         .delete()
         .eq('id', id);
       
       if (error) {
-        console.error('Error deleting knowledge item:', error);
-        toast.error('Failed to delete item');
+        console.error('Error deleting knowledge item from database:', error);
+        toast.error(`Failed to delete item: ${error.message}`);
         return false;
       }
+      
+      console.log('Item deleted successfully:', id);
       
       // Update the local state by removing the deleted item
       setItems((prev) => prev.filter((item) => item.id !== id));
@@ -197,7 +213,8 @@ export function useKnowledgeLibrary() {
       return true;
     } catch (error) {
       console.error('Exception when deleting knowledge item:', error);
-      toast.error('Failed to delete item');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to delete item: ${errorMessage}`);
       return false;
     } finally {
       setIsLoading(false);
