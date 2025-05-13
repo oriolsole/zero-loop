@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Loader, Database, Upload, AlertCircle, CheckCircle, Info, Trash2, RefreshCw, Tool } from 'lucide-react';
+import { Loader, Database, Upload, AlertCircle, CheckCircle, Info, Trash2, RefreshCw, Wrench } from 'lucide-react';
 import { useLoopStore } from "../store/useLoopStore";
 import { useSupabaseLogger } from "../hooks/useSupabaseLogger";
 import { isSupabaseConfigured } from "../utils/supabase-client";
@@ -341,7 +340,7 @@ const SupabaseControl = () => {
                     </>
                   ) : (
                     <>
-                      <Tool className="w-4 h-4 mr-2" />
+                      <Wrench className="w-4 h-4 mr-2" />
                       Fix Invalid Domains ({invalidDomains.length})
                     </>
                   )}
