@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
 import KnowledgeUpload from '@/components/knowledge/KnowledgeUpload';
 import KnowledgeLibrary from '@/components/knowledge/KnowledgeLibrary';
@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { ensureStorageBucketsExist } from '@/utils/supabase/storage';
 
 const KnowledgeManagement: React.FC = () => {
   const { 
@@ -34,6 +35,12 @@ const KnowledgeManagement: React.FC = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [useEmbeddings, setUseEmbeddings] = useState<boolean>(true);
   const [matchThreshold, setMatchThreshold] = useState<number>(0.5);
+  
+  // Ensure storage buckets exist on component mount
+  useEffect(() => {
+    ensureStorageBucketsExist()
+      .catch(err => console.error('Failed to initialize storage buckets:', err));
+  }, []);
   
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { useKnowledgeLibrary, KnowledgeItem, KnowledgeLibraryFilters } from '@/hooks/knowledge/useKnowledgeLibrary';
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trash2, FileText, File, Search, Filter, ArrowDownAZ, Clock, SlidersHorizontal } from "lucide-react";
+import { Trash2, FileText, File, Search, Filter, ArrowDownAZ, Clock, SlidersHorizontal, Loader2 } from "lucide-react";
 
 const KnowledgeLibrary: React.FC = () => {
   const { domains } = useLoopStore();
@@ -28,6 +29,14 @@ const KnowledgeLibrary: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const [itemsPerPage] = useState(12);
   const [showFilters, setShowFilters] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  
+  // Handle delete confirmation
+  const handleDeleteItem = async (id: string) => {
+    setDeletingItemId(id);
+    const success = await deleteKnowledgeItem(id);
+    setDeletingItemId(null);
+  };
   
   // Apply filters
   const handleApplyFilters = () => {
@@ -257,22 +266,27 @@ const KnowledgeLibrary: React.FC = () => {
                       variant="ghost"
                       size="icon"
                       className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      disabled={deletingItemId === item.id}
                     >
-                      <Trash2 className="h-4 w-4 text-red-500" />
+                      {deletingItemId === item.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-red-500" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      )}
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>Delete knowledge item?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This action cannot be undone. This will permanently remove this item from your knowledge base.
+                        This action cannot be undone. This will permanently remove this item and any associated files from your knowledge base.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
                       <AlertDialogAction 
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        onClick={() => deleteKnowledgeItem(item.id)}
+                        onClick={() => handleDeleteItem(item.id)}
                       >
                         Delete
                       </AlertDialogAction>
