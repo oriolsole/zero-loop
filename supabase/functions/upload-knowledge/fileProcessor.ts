@@ -3,6 +3,7 @@ import { corsHeaders } from "./cors.ts";
 import { generateEmbeddings } from "./embeddings.ts";
 import { chunkText } from "./textChunker.ts";
 import { extractTextFromImage } from "./imageProcessor.ts";
+import { isValidUUID } from "./utils.ts";
 
 /**
  * Process file upload (PDF, images, etc)
@@ -130,9 +131,11 @@ export async function handleFileContent(body: any, supabase: any) {
     }
   };
   
-  // Only add domain_id if it's provided and valid
-  if (domain_id) {
+  // Only add domain_id if it's provided and a valid UUID
+  if (domain_id && isValidUUID(domain_id)) {
     baseInsertObject.domain_id = domain_id;
+  } else if (domain_id) {
+    console.warn(`Invalid domain ID format: ${domain_id}. Setting to null.`);
   }
   
   // For each chunk, store in the database

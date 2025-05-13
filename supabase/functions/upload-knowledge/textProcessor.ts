@@ -2,6 +2,7 @@
 import { corsHeaders } from "./cors.ts";
 import { generateEmbeddings } from "./embeddings.ts";
 import { chunkText } from "./textChunker.ts";
+import { isValidUUID } from "./utils.ts";
 
 /**
  * Process text content upload
@@ -66,9 +67,11 @@ export async function handleTextContent(body: any, supabase: any) {
     metadata: {}  // Will be extended for each chunk
   };
   
-  // Only add domain_id if it's provided and valid
-  if (domain_id) {
+  // Only add domain_id if it's provided and a valid UUID
+  if (domain_id && isValidUUID(domain_id)) {
     baseInsertObject.domain_id = domain_id;
+  } else if (domain_id) {
+    console.warn(`Invalid domain ID format: ${domain_id}. Setting to null.`);
   }
   
   // Insert chunks with embeddings into the database

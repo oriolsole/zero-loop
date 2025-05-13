@@ -17,6 +17,7 @@ import { FileUploadPreview } from "./FileUploadPreview";
 import { UploadProgress } from "./UploadProgress";
 import { AdvancedOptions } from "./AdvancedOptions";
 import { SubmitButton } from "./SubmitButton";
+import { isValidUUID } from "@/utils/supabase/helpers";
 
 const KnowledgeUploadForm: React.FC = () => {
   const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeBase();
@@ -81,7 +82,9 @@ const KnowledgeUploadForm: React.FC = () => {
     try {
       let success;
       // Process domain ID - convert "no-domain" to undefined to avoid foreign key constraint errors
-      const processedDomainId = domainId === "no-domain" ? undefined : domainId;
+      // Also validate that domainId is a valid UUID if provided
+      const processedDomainId = domainId === "no-domain" ? undefined : 
+                               (isValidUUID(domainId) ? domainId : undefined);
       
       if (activeTab === 'text') {
         success = await uploadKnowledge({
