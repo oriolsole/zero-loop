@@ -3,11 +3,7 @@ import React from 'react';
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ensureSafeDomainId, filterValidDomains } from '@/utils/domainUtils';
-
-interface Domain {
-  id: string;
-  name: string;
-}
+import { Domain } from '@/types/intelligence';
 
 interface DomainSelectorProps {
   domainId: string;
