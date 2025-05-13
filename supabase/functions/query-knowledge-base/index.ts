@@ -17,27 +17,44 @@ serve(async (req) => {
       throw new Error('Query parameter is required');
     }
 
-    const results = await processQuery({
-      query,
-      limit,
-      useEmbeddings,
-      matchThreshold
-    });
+    try {
+      const results = await processQuery({
+        query,
+        limit,
+        useEmbeddings,
+        matchThreshold
+      });
 
-    return new Response(
-      JSON.stringify({ results }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+      return new Response(
+        JSON.stringify({ results }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch (processingError) {
+      console.error('Error processing the query:', processingError);
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Error processing knowledge query',
+          details: processingError.message,
+          results: [] // Return empty results instead of failing completely
+        }),
+        { 
+          status: 200, // Use 200 even for processing errors to avoid 500
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
   } catch (error) {
-    console.error('Error querying knowledge base:', error);
+    console.error('Error parsing request:', error);
     
     return new Response(
       JSON.stringify({ 
         error: 'Failed to query knowledge base',
-        details: error.message 
+        details: error.message,
+        results: [] // Return empty results
       }),
       { 
-        status: 500, 
+        status: 400, // 400 for malformed requests
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
