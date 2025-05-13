@@ -66,13 +66,17 @@ export const createDomainActions = (
   
   updateDomain: (updatedDomain: Domain) => {
     // ENHANCED: Ensure we don't try to update domains with invalid IDs
-    if (!isValidUUID(updatedDomain.id)) {
-      toast.error(`Cannot update domain with invalid ID: ${updatedDomain.id}`);
+    // Prevent empty domain IDs by assigning a default one if empty
+    const safeId = updatedDomain.id || uuidv4();
+    const domainWithSafeId = { ...updatedDomain, id: safeId };
+    
+    if (!isValidUUID(safeId)) {
+      toast.error(`Cannot update domain with invalid ID: ${safeId}`);
       return;
     }
     
     set(state => {
-      const domainIndex = state.domains.findIndex(d => d.id === updatedDomain.id);
+      const domainIndex = state.domains.findIndex(d => d.id === safeId);
       if (domainIndex === -1) return state;
       
       const newDomains = [...state.domains];
@@ -81,9 +85,9 @@ export const createDomainActions = (
       const existingDomain = state.domains[domainIndex];
       newDomains[domainIndex] = {
         ...existingDomain,
-        name: updatedDomain.name,
-        shortDesc: updatedDomain.shortDesc,
-        description: updatedDomain.description,
+        name: domainWithSafeId.name,
+        shortDesc: domainWithSafeId.shortDesc,
+        description: domainWithSafeId.description,
       };
 
       // If remote logging is enabled, update in Supabase
@@ -91,7 +95,7 @@ export const createDomainActions = (
         updateDomainInSupabase(newDomains[domainIndex])
           .then(success => {
             if (success) {
-              console.log('Domain updated in Supabase:', updatedDomain.id);
+              console.log('Domain updated in Supabase:', safeId);
             }
           })
           .catch(error => {

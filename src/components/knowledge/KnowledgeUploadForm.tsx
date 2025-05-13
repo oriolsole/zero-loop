@@ -25,7 +25,7 @@ const KnowledgeUploadForm: React.FC = () => {
   
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [domainId, setDomainId] = useState(activeDomainId);
+  const [domainId, setDomainId] = useState(activeDomainId || "no-domain");
   const [sourceUrl, setSourceUrl] = useState('');
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);

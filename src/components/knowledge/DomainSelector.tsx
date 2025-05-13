@@ -29,7 +29,10 @@ export const DomainSelector: React.FC<DomainSelectorProps> = ({
         <SelectContent>
           <SelectItem value="no-domain">No specific domain</SelectItem>
           {domains.map((domain) => (
-            <SelectItem key={domain.id} value={domain.id || "undefined-domain"}>
+            <SelectItem 
+              key={domain.id} 
+              value={domain.id || "undefined-domain"}
+            >
               {domain.name}
             </SelectItem>
           ))}

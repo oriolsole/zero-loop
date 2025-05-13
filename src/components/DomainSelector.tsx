@@ -20,7 +20,8 @@ const DomainSelector: React.FC<{
       toast.warning("Please complete the current learning loop before switching domains");
       return;
     }
-    onSelectDomain(domainId);
+    // Ensure domainId is never empty
+    onSelectDomain(domainId || "default-domain");
   };
   
   const getDomainIcon = (type: string) => {
@@ -38,13 +39,13 @@ const DomainSelector: React.FC<{
     <div className="space-y-4 fade-in-delay-1">
       {domains.map((domain) => (
         <Card 
-          key={domain.id}
-          className={`domain-card cursor-pointer hover:border-primary transition-colors duration-200 ${domain.id === activeDomain ? 'border-primary' : ''}`}
-          onClick={() => handleDomainSelect(domain.id)}
+          key={domain.id || "domain-" + Math.random()} // Ensure key is never empty
+          className={`domain-card cursor-pointer hover:border-primary transition-colors duration-200 ${(domain.id || "default-domain") === activeDomain ? 'border-primary' : ''}`}
+          onClick={() => handleDomainSelect(domain.id || "default-domain")} // Ensure domainId is never empty
         >
           <div className="flex items-start gap-3 p-3">
-            <div className={`p-2 rounded-md ${domain.id === activeDomain ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'}`}>
-              {getDomainIcon(domain.id)}
+            <div className={`p-2 rounded-md ${(domain.id || "default-domain") === activeDomain ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'}`}>
+              {getDomainIcon(domain.id || "default")}
             </div>
             <div className="flex-1">
               <CardTitle className="text-base">{domain.name}</CardTitle>
@@ -52,15 +53,15 @@ const DomainSelector: React.FC<{
               
               <div className="mt-2 flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                  <Badge variant={domain.id === activeDomain ? 'default' : 'secondary'} className="text-xs">
+                  <Badge variant={(domain.id || "default-domain") === activeDomain ? 'default' : 'secondary'} className="text-xs">
                     Loops: {domain.totalLoops}
                   </Badge>
                   <Badge variant="outline" className="text-xs">
-                    Success: {domain.metrics.successRate}%
+                    Success: {domain.metrics?.successRate || 0}%
                   </Badge>
                 </div>
                 
-                <Link to={`/domain/${domain.id}`} onClick={(e) => e.stopPropagation()}>
+                <Link to={`/domain/${domain.id || "default-domain"}`} onClick={(e) => e.stopPropagation()}>
                   <Button variant="ghost" size="sm" className="p-1 h-auto">
                     <Settings className="w-4 h-4" />
                   </Button>
