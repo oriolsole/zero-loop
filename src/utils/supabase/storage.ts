@@ -1,109 +1,74 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/components/ui/sonner';
 
 /**
- * Ensures the required storage buckets exist
- * Should be called during app initialization
+ * Get the public URL for a file in a storage bucket
  */
-export const ensureStorageBucketsExist = async (): Promise<boolean> => {
+export async function getPublicFileUrl(bucket: string, fileName: string): Promise<string> {
+  try {
+    const { data } = await supabase
+      .storage
+      .from(bucket)
+      .getPublicUrl(fileName);
+    
+    return data.publicUrl;
+  } catch (error) {
+    console.error('Error getting public URL:', error);
+    return '';
+  }
+}
+
+/**
+ * Ensure storage buckets exist
+ */
+export async function ensureStorageBucketsExist(): Promise<boolean> {
   try {
     // Check if knowledge_files bucket exists
-    const { data: buckets, error } = await supabase
-      .storage
-      .listBuckets();
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const knowledgeBucketExists = buckets?.some(bucket => bucket.name === 'knowledge_files');
     
-    if (error) {
-      console.error('Error checking storage buckets:', error);
-      return false;
-    }
-    
-    const knowledgeBucketExists = buckets.some(bucket => bucket.name === 'knowledge_files');
-    
+    // Create bucket if it doesn't exist
     if (!knowledgeBucketExists) {
-      // Create the bucket
-      const { error: createError } = await supabase
-        .storage
-        .createBucket('knowledge_files', {
-          public: true,
-        });
+      const { error } = await supabase.storage.createBucket('knowledge_files', {
+        public: false,
+        fileSizeLimit: 10485760, // 10MB
+        allowedMimeTypes: [
+          'application/pdf',
+          'image/png',
+          'image/jpeg',
+          'image/gif',
+          'text/plain',
+          'text/markdown',
+          'text/csv'
+        ]
+      });
       
-      if (createError) {
-        console.error('Error creating knowledge_files bucket:', createError);
+      if (error) {
+        console.error('Error creating storage bucket:', error);
         return false;
       }
-      
-      console.log('Created knowledge_files storage bucket');
     }
     
     return true;
   } catch (error) {
-    console.error('Exception checking/creating storage buckets:', error);
+    console.error('Error ensuring storage buckets exist:', error);
     return false;
   }
-};
+}
 
 /**
- * Get a public URL for a file in storage
+ * Check if the current user has access to a storage bucket
  */
-export const getPublicFileUrl = (bucketName: string, fileName: string): string => {
-  const { data } = supabase
-    .storage
-    .from(bucketName)
-    .getPublicUrl(fileName);
-  
-  return data.publicUrl;
-};
-
-/**
- * Delete a file from storage
- */
-export const deleteFile = async (bucketName: string, filePath: string): Promise<boolean> => {
+export async function checkStorageBucketAccess(bucket: string): Promise<boolean> {
   try {
-    // Extract the filename from the path if needed
-    const fileName = filePath.includes('/') 
-      ? filePath.substring(filePath.lastIndexOf('/') + 1)
-      : filePath;
-    
-    console.log(`Attempting to delete file: ${fileName} from bucket: ${bucketName}`);
-    
-    const { error } = await supabase
-      .storage
-      .from(bucketName)
-      .remove([fileName]);
-    
-    if (error) {
-      console.error(`Error deleting file ${fileName} from ${bucketName}:`, error);
-      return false;
-    }
-    
-    console.log(`Successfully deleted file: ${fileName} from bucket: ${bucketName}`);
-    return true;
-  } catch (error) {
-    console.error('Exception deleting file:', error);
-    return false;
-  }
-};
-
-/**
- * Check if the bucket exists and has proper permissions
- */
-export const checkStorageBucketAccess = async (bucketName: string): Promise<boolean> => {
-  try {
-    // Try to list files in the bucket as a basic permissions check
+    // Try to list files to check access
     const { data, error } = await supabase
       .storage
-      .from(bucketName)
+      .from(bucket)
       .list('', { limit: 1 });
     
-    if (error) {
-      console.error(`Error accessing bucket ${bucketName}:`, error);
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    console.error(`Exception checking access to bucket ${bucketName}:`, error);
+    return !error && !!data;
+  } catch {
     return false;
   }
-};
+}
