@@ -58,13 +58,20 @@ export async function handleTextContent(body: any, supabase: any) {
   
   console.log(`Generated ${embeddings.length} embeddings`);
   
+  // Enhanced metadata for web content
+  const enhancedMetadata = {
+    ...metadata,
+    source_type: source_url ? 'web' : 'text',
+    processed_at: new Date().toISOString()
+  };
+  
   // Prepare the base insert object (without domain_id if not provided)
   const baseInsertObject: Record<string, any> = {
     title,
     content: '',  // Will be overridden for each chunk
     embedding: [],  // Will be overridden for each chunk
     source_url,
-    metadata: {}  // Will be extended for each chunk
+    metadata: enhancedMetadata
   };
   
   // Only add domain_id if it's provided and a valid UUID
@@ -81,7 +88,7 @@ export async function handleTextContent(body: any, supabase: any) {
       content: chunk,
       embedding: embeddings[i],
       metadata: {
-        ...metadata,
+        ...enhancedMetadata,
         chunk_index: i,
         total_chunks: chunks.length
       }

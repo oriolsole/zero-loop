@@ -4,6 +4,7 @@ import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
 import KnowledgeUpload from '@/components/knowledge/KnowledgeUpload';
 import KnowledgeLibrary from '@/components/knowledge/KnowledgeLibrary';
 import ExternalSources from '@/components/ExternalSources';
+import SaveSearchResult from '@/components/knowledge/SaveSearchResult';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { ensureStorageBucketsExist } from '@/utils/supabase/storage';
+import { ExternalSource } from '@/types/intelligence';
 
 const KnowledgeManagement: React.FC = () => {
   const { 
@@ -28,13 +30,16 @@ const KnowledgeManagement: React.FC = () => {
     isQuerying, 
     queryError, 
     recentResults,
-    searchMode
+    searchMode,
+    uploadKnowledge,
   } = useKnowledgeBase();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
   const [useEmbeddings, setUseEmbeddings] = useState<boolean>(true);
   const [matchThreshold, setMatchThreshold] = useState<number>(0.5);
+  const [selectedResult, setSelectedResult] = useState<ExternalSource | null>(null);
+  const [showSavePanel, setShowSavePanel] = useState(false);
   
   // Ensure storage buckets exist on component mount
   useEffect(() => {
@@ -55,6 +60,16 @@ const KnowledgeManagement: React.FC = () => {
     });
     
     setHasSearched(true);
+  };
+  
+  const handleSaveResult = (result: ExternalSource) => {
+    setSelectedResult(result);
+    setShowSavePanel(true);
+  };
+  
+  const handleCloseSavePanel = () => {
+    setSelectedResult(null);
+    setShowSavePanel(false);
   };
   
   return (
@@ -204,10 +219,22 @@ const KnowledgeManagement: React.FC = () => {
                     sources={recentResults}
                     title="Knowledge Base Results"
                     description={`Found ${recentResults.length} results for "${searchQuery}"`}
+                    showSaveButton={true}
+                    onSaveResult={handleSaveResult}
                   />
                 </div>
               )}
             </div>
+          )}
+          
+          {/* Save result slide-over panel */}
+          {showSavePanel && selectedResult && (
+            <SaveSearchResult
+              result={selectedResult}
+              onClose={handleCloseSavePanel}
+              isOpen={showSavePanel}
+              searchQuery={searchQuery}
+            />
           )}
         </TabsContent>
         

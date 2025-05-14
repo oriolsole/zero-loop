@@ -1,10 +1,11 @@
 
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ExternalLink, Globe, Link } from "lucide-react";
+import { ExternalLink, Globe, Link, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
 import { ExternalSource } from '@/types/intelligence';
 
 interface ExternalSourcesProps {
@@ -12,13 +13,17 @@ interface ExternalSourcesProps {
   title?: string;
   description?: string;
   maxHeight?: string | number;
+  showSaveButton?: boolean;
+  onSaveResult?: (source: ExternalSource) => void;
 }
 
 const ExternalSources: React.FC<ExternalSourcesProps> = ({ 
   sources, 
   title = "External Sources", 
   description = "Information retrieved from external knowledge sources",
-  maxHeight = "300px"
+  maxHeight = "300px",
+  showSaveButton = false,
+  onSaveResult,
 }) => {
   if (!sources || sources.length === 0) {
     return null;
@@ -49,7 +54,7 @@ const ExternalSources: React.FC<ExternalSourcesProps> = ({
               
               <p className="text-sm text-muted-foreground">{source.snippet}</p>
               
-              <div className="flex gap-2 items-center">
+              <div className="flex justify-between items-center">
                 <a 
                   href={source.link} 
                   target="_blank" 
@@ -66,6 +71,20 @@ const ExternalSources: React.FC<ExternalSourcesProps> = ({
                   </span>
                 )}
               </div>
+              
+              {showSaveButton && onSaveResult && (
+                <div className="mt-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-xs"
+                    onClick={() => onSaveResult(source)}
+                  >
+                    <Save className="h-3 w-3 mr-1" />
+                    Save to Knowledge
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </CardContent>
