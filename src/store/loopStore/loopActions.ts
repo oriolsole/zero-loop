@@ -1,3 +1,4 @@
+
 import { LearningStep, LoopHistory } from '../../types/intelligence';
 import { LoopState } from '../useLoopStore';
 import { domainEngines } from '../../engines/domainEngines';
@@ -126,9 +127,21 @@ export const createLoopActions = (
     const domain = domains[activeDomainIndex];
     const currentLoop = [...domain.currentLoop];
     const nextStepIndex = currentStepIndex + 1;
-    let nextStep: LearningStep;
+    
+    // FIXED: Validate current step has been completed successfully before advancing
+    const currentStep = currentLoop[currentStepIndex];
+    if (currentStep.status !== 'success') {
+      console.log("Cannot advance: current step is not successful", {
+        stepType: currentStep.type,
+        stepStatus: currentStep.status
+      });
+      toast.error("Cannot advance: current step needs to be completed successfully first");
+      return;
+    }
     
     // Determine next step type based on current step
+    let nextStep: LearningStep;
+    
     switch (currentLoop[currentStepIndex].type) {
       case 'task':
         nextStep = {
@@ -171,8 +184,12 @@ export const createLoopActions = (
         };
         break;
       default:
+        console.log("No more steps available in this loop");
+        toast.info("This loop is complete. Start a new one to continue learning.");
         return; // No more steps
     }
+    
+    console.log(`Advancing to next step: ${nextStep.type}`);
     
     // Add the next step to the loop with pending status
     currentLoop.push(nextStep);
@@ -318,6 +335,8 @@ export const createLoopActions = (
       
       set({ domains: newDomains });
       
+      console.log(`Step ${nextStep.type} completed with status: ${status}`);
+      
       // If this was the mutation step, mark the loop as complete
       if (nextStep.type === 'mutation') {
         get().completeLoop();
@@ -332,6 +351,9 @@ export const createLoopActions = (
       }
     } catch (error) {
       // Handle error in step execution
+      console.error(`Error executing ${nextStep.type} step:`, error);
+      toast.error(`Error in ${nextStep.type} step: ${error}`);
+      
       const updatedStep: LearningStep = {
         ...nextStep,
         status: 'failure',

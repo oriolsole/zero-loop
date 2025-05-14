@@ -113,8 +113,17 @@ const LearningLoop: React.FC = () => {
   const completedSteps = currentLoop.filter(step => step.status === 'success');
   const pendingSteps = currentLoop.filter(step => step.status === 'pending');
   
-  // Check if all steps are complete
-  const allStepsComplete = completedSteps.length === currentLoop.length;
+  // FIXED: Instead of checking if all steps are complete, we check if we can add more steps
+  // based on the loop progression. A loop can always progress unless it has finished all 
+  // 5 steps (task, solution, verification, reflection, mutation)
+  const hasCompletedAllStepTypes = 
+    currentLoop.some(step => step.type === 'task') &&
+    currentLoop.some(step => step.type === 'solution') &&
+    currentLoop.some(step => step.type === 'verification') &&
+    currentLoop.some(step => step.type === 'reflection') &&
+    currentLoop.some(step => step.type === 'mutation');
+    
+  const allStepsComplete = hasCompletedAllStepTypes && completedSteps.length === currentLoop.length;
   
   // Check if there's a step currently in progress (not pending or success, which means it's failure or warning)
   const hasInProgressStep = currentLoop.some(step => step.status !== 'success' && step.status !== 'pending');
@@ -122,24 +131,49 @@ const LearningLoop: React.FC = () => {
   // Check if the last step is pending (which means we're waiting for it to complete)
   const isLastStepPending = currentLoop[currentLoop.length - 1].status === 'pending';
   
-  // We can advance if there are more steps to complete and no step is currently pending processing
-  // MODIFIED: Make sure first step is success before allowing advancement
+  // FIXED: Adjusted canAdvance logic to consider the step types as well
+  // We can advance if there is a successful step and we haven't finished all step types
   const firstStepIsSuccess = currentLoop.length > 0 && currentLoop[0].status === 'success';
-  const canAdvance = !allStepsComplete && !isLastStepPending && !hasInProgressStep && firstStepIsSuccess;
+  const canAdvance = !isLastStepPending && !hasInProgressStep && firstStepIsSuccess && !hasCompletedAllStepTypes;
+  
+  // Get the current step type
+  const currentStepType = currentLoop[currentLoop.length - 1].type;
+  const nextStepType = getNextStepType(currentStepType);
   
   // Log debug information
-  console.log("Loop status:", {
-    firstStepIsSuccess,
-    canAdvance,
-    allStepsComplete,
-    isLastStepPending,
-    hasInProgressStep,
-    stepsCount: currentLoop.length,
-    firstStepStatus: currentLoop[0]?.status
-  });
+  useEffect(() => {
+    console.log("Loop status:", {
+      firstStepIsSuccess,
+      canAdvance,
+      allStepsComplete,
+      isLastStepPending,
+      hasInProgressStep,
+      hasCompletedAllStepTypes,
+      currentStepType,
+      nextStepType,
+      stepsCount: currentLoop.length,
+      firstStepStatus: currentLoop[0]?.status
+    });
+  }, [currentLoop, firstStepIsSuccess, canAdvance, allStepsComplete, isLastStepPending, hasInProgressStep, hasCompletedAllStepTypes, currentStepType, nextStepType]);
   
   // Determine what button/state to show
   const isLoopFinished = allStepsComplete && !hasInProgressStep && !isLastStepPending;
+
+  // Helper function to determine next step type
+  function getNextStepType(currentType: string): string {
+    switch (currentType) {
+      case 'task':
+        return 'solution';
+      case 'solution':
+        return 'verification';
+      case 'verification':
+        return 'reflection';
+      case 'reflection':
+        return 'mutation';
+      default:
+        return 'complete';
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -232,7 +266,7 @@ const LearningLoop: React.FC = () => {
                           ) : (
                             <>
                               <SkipForward className="h-4 w-4" />
-                              Next Step
+                              Next Step ({nextStepType})
                             </>
                           )}
                         </Button>
@@ -245,12 +279,14 @@ const LearningLoop: React.FC = () => {
                             ? "Please wait for the current step to complete" 
                             : !firstStepIsSuccess
                               ? "First step is not completed successfully"
-                              : hasInProgressStep 
-                                ? "A step is currently in progress" 
-                                : "All steps are complete"}
+                              : hasCompletedAllStepTypes 
+                                ? "All step types have been completed" 
+                                : hasInProgressStep 
+                                  ? "A step is currently in progress" 
+                                  : "All steps are complete"}
                         </p>
                       ) : (
-                        <p>Click to advance to the next step in the learning process</p>
+                        <p>Click to advance to the next step ({nextStepType}) in the learning process</p>
                       )}
                     </TooltipContent>
                   </Tooltip>
@@ -334,12 +370,26 @@ const LearningLoop: React.FC = () => {
             </span>
           </div>
           <div className="flex gap-1 text-sm">
+            <span className="font-medium">Current Step:</span> 
+            <span>{currentStepType}</span>
+          </div>
+          <div className="flex gap-1 text-sm">
+            <span className="font-medium">Next Step:</span> 
+            <span>{nextStepType}</span>
+          </div>
+          <div className="flex gap-1 text-sm">
             <span className="font-medium">Continuous Mode:</span> 
             <span>{isContinuousMode ? "Enabled" : "Disabled"}</span>
           </div>
           <div className="flex gap-1 text-sm">
             <span className="font-medium">Steps Complete:</span> 
             <span>{completedSteps.length}/{currentLoop.length}</span>
+          </div>
+          <div className="flex gap-1 text-sm">
+            <span className="font-medium">Needs All Steps:</span> 
+            <span className={hasCompletedAllStepTypes ? "text-green-600" : "text-red-500"}>
+              {hasCompletedAllStepTypes ? "Yes" : "No"}
+            </span>
           </div>
         </div>
       </Card>

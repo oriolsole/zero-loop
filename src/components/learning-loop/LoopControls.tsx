@@ -13,27 +13,33 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { X, Loader2, ArrowRight } from 'lucide-react';
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { X, Loader2, ArrowRight, SkipForward } from 'lucide-react';
 import { useLoopStore } from '@/store/useLoopStore';
 
 interface LoopControlsProps {
   isLastStep: boolean;
   onAdvance: () => Promise<void>;
   currentStep: LearningStep | null;
+  canAdvance: boolean;
+  isLoading: boolean;
+  nextStepType?: string;
 }
 
 const LoopControls: React.FC<LoopControlsProps> = ({
   isLastStep,
   onAdvance,
-  currentStep
+  currentStep,
+  canAdvance,
+  isLoading,
+  nextStepType = "Next"
 }) => {
   const { cancelCurrentLoop } = useLoopStore();
-  
-  // Determine if the current step is in a loading/pending state
-  const isLoading = currentStep?.status === 'pending';
-  
-  // Determine if button should be enabled - we'll allow advancing if the step is loaded (not pending)
-  const canAdvance = currentStep && !isLoading;
   
   return (
     <div className="flex justify-between mt-4">
@@ -64,26 +70,45 @@ const LoopControls: React.FC<LoopControlsProps> = ({
         </AlertDialogContent>
       </AlertDialog>
       
-      <Button 
-        onClick={onAdvance}
-        disabled={!canAdvance}
-        variant={isLastStep ? "default" : "outline"}
-        className="flex items-center gap-2"
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Generating task...
-          </>
-        ) : isLastStep ? (
-          "Complete Loop & Generate Insights"
-        ) : (
-          <>
-            Next Step
-            <ArrowRight className="h-4 w-4" />
-          </>
-        )}
-      </Button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button 
+                onClick={onAdvance}
+                disabled={!canAdvance || isLoading}
+                variant={isLastStep ? "default" : "outline"}
+                className="flex items-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : isLastStep ? (
+                  "Complete Loop & Generate Insights"
+                ) : (
+                  <>
+                    <SkipForward className="h-4 w-4" />
+                    Next Step {nextStepType ? `(${nextStepType})` : ''}
+                  </>
+                )}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {!canAdvance ? (
+              <p>
+                {isLoading
+                  ? "Please wait for the current step to complete"
+                  : "Current step must be completed successfully before advancing"}
+              </p>
+            ) : (
+              <p>Click to advance to the next step in the learning process</p>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 };
