@@ -5,17 +5,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { KnowledgeNode } from '../../types/intelligence';
+import { highlightSearchMatch } from '../../utils/searchUtils';
 
 interface ListViewProps {
   filteredNodes: KnowledgeNode[];
   selectedInsightId: string | null;
   setSelectedInsight: (id: string | null) => void;
+  searchTerm?: string;
 }
 
 export const ListView: React.FC<ListViewProps> = ({
   filteredNodes,
   selectedInsightId,
-  setSelectedInsight
+  setSelectedInsight,
+  searchTerm = ''
 }) => {
   return (
     <ScrollArea className="h-[600px] border rounded-lg">
@@ -38,8 +41,25 @@ export const ListView: React.FC<ListViewProps> = ({
                 <Badge variant="secondary" className="text-xs">Loop #{node.discoveredInLoop}</Badge>
               </div>
               
-              <h4 className="font-medium text-base mt-2 mb-1">{node.title}</h4>
-              <p className="text-sm text-muted-foreground">{node.description}</p>
+              <h4 className="font-medium text-base mt-2 mb-1">
+                {searchTerm ? (
+                  <span dangerouslySetInnerHTML={{ 
+                    __html: highlightSearchMatch(node.title || '', searchTerm) 
+                  }} />
+                ) : (
+                  node.title
+                )}
+              </h4>
+              
+              <p className="text-sm text-muted-foreground">
+                {searchTerm ? (
+                  <span dangerouslySetInnerHTML={{ 
+                    __html: highlightSearchMatch(node.description || '', searchTerm) 
+                  }} />
+                ) : (
+                  node.description
+                )}
+              </p>
               
               <div className="flex justify-between items-center mt-4">
                 {node.connections && (

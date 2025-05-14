@@ -2,6 +2,7 @@
 import React from 'react';
 import { Badge } from "@/components/ui/badge";
 import { KnowledgeNode } from '../../types/intelligence';
+import { highlightSearchMatch } from '../../utils/searchUtils';
 
 interface NodeCardProps {
   node: KnowledgeNode;
@@ -9,6 +10,7 @@ interface NodeCardProps {
   hoveredNode: string | null;
   setHoveredNode: (id: string | null) => void;
   setSelectedInsight: (id: string | null) => void;
+  searchTerm?: string;
 }
 
 export const NodeCard: React.FC<NodeCardProps> = ({
@@ -16,7 +18,8 @@ export const NodeCard: React.FC<NodeCardProps> = ({
   selectedInsightId,
   hoveredNode,
   setHoveredNode,
-  setSelectedInsight
+  setSelectedInsight,
+  searchTerm = ''
 }) => {
   const getNodeTypeColor = (type: string) => {
     switch (type) {
@@ -54,8 +57,24 @@ export const NodeCard: React.FC<NodeCardProps> = ({
         <Badge variant="outline" className="capitalize">{node.type}</Badge>
         <Badge variant="secondary" className="text-xs">Loop #{node.discoveredInLoop}</Badge>
       </div>
-      <h4 className="font-medium text-sm mb-1">{node.title}</h4>
-      <p className="text-xs text-muted-foreground">{node.description}</p>
+      <h4 className="font-medium text-sm mb-1">
+        {searchTerm ? (
+          <span dangerouslySetInnerHTML={{ 
+            __html: highlightSearchMatch(node.title || '', searchTerm) 
+          }} />
+        ) : (
+          node.title
+        )}
+      </h4>
+      <p className="text-xs text-muted-foreground">
+        {searchTerm ? (
+          <span dangerouslySetInnerHTML={{ 
+            __html: highlightSearchMatch(node.description || '', searchTerm) 
+          }} />
+        ) : (
+          node.description
+        )}
+      </p>
     </div>
   );
 };

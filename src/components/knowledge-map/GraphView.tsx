@@ -14,6 +14,7 @@ interface GraphViewProps {
   selectedInsightId: string | null;
   setSelectedInsight: (id: string | null) => void;
   recalculateGraphLayout: () => void;
+  searchTerm?: string;
 }
 
 export const GraphView: React.FC<GraphViewProps> = ({
@@ -22,7 +23,8 @@ export const GraphView: React.FC<GraphViewProps> = ({
   knowledgeNodes,
   selectedInsightId,
   setSelectedInsight,
-  recalculateGraphLayout
+  recalculateGraphLayout,
+  searchTerm = ''
 }) => {
   const [zoom, setZoom] = React.useState(100);
   const [hoveredNode, setHoveredNode] = React.useState<string | null>(null);
@@ -71,6 +73,7 @@ export const GraphView: React.FC<GraphViewProps> = ({
             hoveredNode={hoveredNode}
             setHoveredNode={setHoveredNode}
             setSelectedInsight={setSelectedInsight}
+            searchTerm={searchTerm}
           />
         ))}
       </div>
