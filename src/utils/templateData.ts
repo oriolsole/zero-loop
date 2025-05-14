@@ -1,4 +1,3 @@
-
 import { v4 as uuidv4 } from 'uuid';
 import { Domain, LearningStep, KnowledgeNode, KnowledgeEdge } from '../types/intelligence';
 
@@ -107,43 +106,43 @@ export const createEmptyDomain = (
 export const getEmptyLearningSteps = (): LearningStep[] => {
   return [
     {
+      id: uuidv4(),
       type: 'task',
       title: 'New Task',
       description: 'Define a new problem or task',
       status: 'pending',
       content: '',
       metrics: {
-        // Fix: Convert 'Low' string to a number (using 1 as a low complexity value)
         complexity: 1,
-        timeMs: 0 // Fix: Changed from '0.0s' string to a number
+        timeMs: 0
       }
     },
     {
+      id: uuidv4(),
       type: 'solution',
       title: 'Solution Approach',
       description: 'Formulate a solution to the task',
       status: 'pending',
       content: '',
       metrics: {
-        // Fix: Change approach string to be handled by metadata
         approach: 'Pending',
-        // Fix: Remove confidence as a percentage string
         insightCount: 0
       }
     },
     {
+      id: uuidv4(),
       type: 'verification',
       title: 'Verification',
       description: 'Verify the solution is correct',
       status: 'pending',
       content: '',
       metrics: {
-        // Fix: Changed passedTests from string '0/0' to number
         passedTests: 0,
-        timeMs: 0 // Fix: Changed from string to number
+        timeMs: 0
       }
     },
     {
+      id: uuidv4(),
       type: 'reflection',
       title: 'Reflection',
       description: 'Analyze the process and extract insights',
@@ -151,20 +150,19 @@ export const getEmptyLearningSteps = (): LearningStep[] => {
       content: '',
       metrics: {
         newInsights: 0,
-        // Fix: Replace similarProblems with insightCount that exists in the type
         insightCount: 0
       }
     },
     {
+      id: uuidv4(),
       type: 'mutation',
       title: 'Task Mutation',
       description: 'Adapt the task for future learning',
       status: 'pending',
       content: '',
       metrics: {
-        // Fix: Changed from string percentage to number
         complexity: 1,
-        novelty: 1 // Fix: Changed from string 'Low' to number
+        novelty: 1
       }
     }
   ];
