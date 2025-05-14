@@ -33,6 +33,7 @@ export function useKnowledgeUpload() {
         }
         
         setUploadProgress({
+          fileName: file.name, // Add fileName property
           status: 'processing',
           progress: 10,
           message: 'Reading file...'
@@ -47,6 +48,7 @@ export function useKnowledgeUpload() {
         });
         
         setUploadProgress({
+          fileName: file.name, // Add fileName property
           status: 'processing',
           progress: 30,
           message: 'Extracting content...'
@@ -88,6 +90,7 @@ export function useKnowledgeUpload() {
       // Handle text content upload
       else if (options.content) {
         setUploadProgress({
+          fileName: options.title, // Use title as fileName for text uploads
           status: 'processing',
           progress: 30,
           message: 'Processing text content...'

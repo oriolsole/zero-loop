@@ -37,7 +37,7 @@ export interface ExternalSource {
  * Progress information for file uploads
  */
 export interface FileUploadProgress {
-  fileName: string;
+  fileName?: string; // Changed to optional
   progress: number;
   status: 'uploading' | 'processing' | 'complete' | 'error';
   error?: string;
