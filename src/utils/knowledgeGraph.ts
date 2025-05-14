@@ -1,3 +1,4 @@
+
 import { KnowledgeNode, KnowledgeEdge, QualityMetrics } from '../types/intelligence';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -78,28 +79,35 @@ export function createKnowledgeNode(
     confidence = Math.max(confidence - 0.2, 0.3);
   }
 
-  // Calculate quality metrics
+  // Create a qualityMetrics object with appropriate types
   const qualityMetrics: QualityMetrics = {
-    impact: calculateImpactScore(insight),
-    novelty: 5 + (Math.random() * 5), // Default starting score between 5-10
+    accuracy: 0.8,
+    relevance: 0.7,
+    novelty: 0.6,
+    coherence: 0.75,
+    overall: 0.7,
     validation_status: 'unverified'
   };
 
   return {
     id: uuidv4(), // Use proper UUID instead of string ID
+    content: insight,
+    type: nodeType,
     title,
     description: insight,
-    type: nodeType,
-    discoveredInLoop: loopNumber,
+    discoveredInLoop: String(loopNumber),
     position: {
       x: Math.random() * 80, // Position as percentage of container
       y: Math.random() * 80
     },
-    size: Math.floor(Math.random() * 10) + 10, // Random size between 10-20
+    size: {
+      width: Math.floor(Math.random() * 10) + 10, 
+      height: Math.floor(Math.random() * 10) + 10
+    },
     confidence,
     domain: domainId,
+    domainId,
     timestamp: Date.now(),
-    // New fields for Phase 4.2
     sourceInsights: sourceInsights || [],
     loopReference: loopId,
     qualityMetrics

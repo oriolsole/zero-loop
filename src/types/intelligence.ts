@@ -13,6 +13,8 @@ export interface ExternalSource {
   fileFormat?: string;
   description?: string;
   publisher?: string;
+  fileType?: string;
+  fileUrl?: string;
 }
 
 export interface QueryKnowledgeRequest {
@@ -66,6 +68,11 @@ export interface LearningStep {
     relevance?: number;
     novelty?: number;
     overall?: number;
+    loopNumber?: number | string;
+    timeMs?: number;
+    correct?: boolean;
+    insightCount?: number;
+    complexity?: number;
   };
 }
 
@@ -77,11 +84,12 @@ export interface LoopHistory {
   status: 'active' | 'completed' | 'error';
   metadata?: Record<string, any>;
   // Additional properties needed by components
-  timestamp?: string;
+  timestamp?: number;
   insights?: any[];
   steps?: LearningStep[];
   success?: boolean;
   score?: number;
+  totalTime?: number;
 }
 
 export interface KnowledgeNode {
@@ -98,9 +106,14 @@ export interface KnowledgeNode {
   title?: string;
   description?: string;
   position?: { x: number; y: number };
-  size?: { width: number; height: number };
-  discoveredInLoop?: string;
+  size?: { width: number; height: number } | number;
+  discoveredInLoop?: string | number;
   connections?: number;
+  domain?: string;
+  timestamp?: number;
+  sourceInsights?: string[];
+  loopReference?: string;
+  qualityMetrics?: any;
 }
 
 export interface KnowledgeEdge {
@@ -116,6 +129,9 @@ export interface KnowledgeEdge {
   source?: string;
   target?: string;
   label?: string;
+  similarityScore?: number;
+  validated?: boolean;
+  creationMethod?: string;
 }
 
 export interface QualityMetrics {
@@ -128,15 +144,17 @@ export interface QualityMetrics {
   knowledgeGrowth?: { name: string; nodes: number }[];
   taskDifficulty?: { name: string; difficulty: number; success: number }[];
   skills?: { name: string; level: number }[];
+  impact?: number;
+  validation_status?: string;
 }
 
 export interface DomainEngine {
-  generateTask: (domainId: string, previousSteps?: LearningStep[]) => Promise<string>;
-  generateSolution?: (task: string, domainId: string) => Promise<string>;
-  solveTask?: (task: string, domainId: string) => Promise<string>;
-  verifySolution?: (task: string, solution: string, domainId: string) => Promise<{ isCorrect: boolean; explanation: string }>;
-  verifyResult?: (task: string, solution: string, domainId: string) => Promise<{ isCorrect: boolean; explanation: string }>;
-  reflect: (task: string, solution: string, verification: string, domainId: string) => Promise<string>;
-  mutateTask: (task: string, solution: string, verification: string, reflection: string, domainId: string) => Promise<string>;
+  generateTask: (domainId?: string, previousSteps?: LearningStep[]) => Promise<string>;
+  generateSolution?: (task: string, domainId?: string) => Promise<string>;
+  solveTask?: (task: string, domainId?: string) => Promise<string>;
+  verifySolution?: (task: string, solution: string, domainId?: string) => Promise<{ isCorrect: boolean; explanation: string }>;
+  verifyResult?: (task: string, solution: string, domainId?: string) => Promise<{ isCorrect: boolean; explanation: string }>;
+  reflect: (task: string, solution: string, verification: string, domainId?: string) => Promise<string>;
+  mutateTask: (task: string, solution: string, verification: string, reflection: string, domainId?: string) => Promise<string>;
   enrichTask?: (task: string) => Promise<string>;
 }

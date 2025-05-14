@@ -30,14 +30,21 @@ export const createSyncActions = (
       
       // If the sources include files, include that in the context
       const fileContexts = verificationResult.sources
-        .filter(source => source.fileType || source.fileUrl)
+        .filter(source => source.contentType === 'image' || 
+                          source.contentType === 'pdf' || 
+                          source.contentType === 'video' || 
+                          source.fileFormat === 'pdf' || 
+                          source.fileFormat === 'jpg' || 
+                          source.fileFormat === 'png')
         .map(source => {
-          if (source.fileType?.includes('image')) {
-            return `[Image file available at ${source.fileUrl || source.link}]`;
-          } else if (source.fileType?.includes('pdf')) {
-            return `[PDF file available at ${source.fileUrl || source.link}]`;
+          if (source.contentType?.includes('image') || source.fileFormat === 'jpg' || source.fileFormat === 'png') {
+            return `[Image file available at ${source.thumbnailUrl || source.link}]`;
+          } else if (source.contentType?.includes('pdf') || source.fileFormat === 'pdf') {
+            return `[PDF file available at ${source.link}]`;
+          } else if (source.contentType?.includes('video')) {
+            return `[Video file available at ${source.link}]`;
           } else {
-            return `[File: ${source.fileType || 'unknown'} at ${source.fileUrl || source.link}]`;
+            return `[File: ${source.contentType || source.fileFormat || 'unknown'} at ${source.link}]`;
           }
         });
         

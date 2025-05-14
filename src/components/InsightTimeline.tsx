@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,13 +28,17 @@ const InsightTimeline: React.FC = () => {
   // Get insights from all loops in the current domain, sorted by timestamp (newest first)
   const allDomainInsights = loopHistory
     .filter(loop => loop.domainId === activeDomainId && loop.insights && loop.insights.length > 0)
-    .sort((a, b) => b.timestamp - a.timestamp)
+    .sort((a, b) => {
+      const timestampA = typeof a.timestamp === 'number' ? a.timestamp : 0;
+      const timestampB = typeof b.timestamp === 'number' ? b.timestamp : 0;
+      return timestampB - timestampA;
+    })
     .flatMap(loop => {
       return (loop.insights || []).map(insight => ({
         ...insight,
         loopId: loop.id,
         timestamp: loop.timestamp,
-        loopNumber: loop.steps[0]?.metrics?.loopNumber || '?'
+        loopNumber: loop.steps && loop.steps[0]?.metrics?.loopNumber || '?'
       }));
     });
     
@@ -114,11 +117,13 @@ const InsightTimeline: React.FC = () => {
                       Insight from Loop #{renderLoopNumber(insight.loopNumber)}
                     </CardTitle>
                     <div className="text-xs text-muted-foreground flex items-center mt-1">
-                      <span>{formatDistanceToNow(new Date(insight.timestamp), { addSuffix: true })}</span>
+                      <span>{typeof insight.timestamp === 'number' 
+                        ? formatDistanceToNow(new Date(insight.timestamp), { addSuffix: true })
+                        : 'Unknown time'}</span>
                     </div>
                   </div>
                   <Badge variant="outline">
-                    Confidence: {Math.round(insight.confidence * 100)}%
+                    Confidence: {Math.round((insight.confidence || 0) * 100)}%
                   </Badge>
                 </div>
               </CardHeader>

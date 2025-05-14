@@ -16,7 +16,11 @@ const LoopHistory = () => {
   // Filter history by active domain
   const domainHistory = loopHistory
     .filter(loop => loop.domainId === activeDomainId)
-    .sort((a, b) => b.timestamp - a.timestamp);
+    .sort((a, b) => {
+      const timestampA = typeof a.timestamp === 'number' ? a.timestamp : 0;
+      const timestampB = typeof b.timestamp === 'number' ? b.timestamp : 0;
+      return timestampB - timestampA;
+    });
   
   const handleLoadLoop = (loopId: string) => {
     loadPreviousLoop(loopId);
@@ -29,6 +33,17 @@ const LoopHistory = () => {
     if (typeof value === 'string' || typeof value === 'number') return value.toString();
     if (Array.isArray(value)) return `${value.length} items`;
     return JSON.stringify(value);
+  };
+
+  // Helper function to safely get loop number
+  const getLoopNumber = (loop: LoopHistoryType): string => {
+    if (loop.steps && loop.steps[0]?.metrics?.loopNumber !== undefined) {
+      const loopNumber = loop.steps[0].metrics.loopNumber;
+      return typeof loopNumber === 'string' || typeof loopNumber === 'number' 
+        ? loopNumber.toString() 
+        : '?';
+    }
+    return '?';
   };
   
   if (domainHistory.length === 0) {
@@ -66,9 +81,7 @@ const LoopHistory = () => {
                     ) : (
                       <XCircle className="text-destructive w-4 h-4" />
                     )}
-                    Loop #{typeof loop.steps[0]?.metrics?.loopNumber === 'string' || typeof loop.steps[0]?.metrics?.loopNumber === 'number' 
-                      ? loop.steps[0].metrics.loopNumber 
-                      : '?'}
+                    Loop #{getLoopNumber(loop)}
                   </CardTitle>
                   <Badge variant={loop.success ? "default" : "destructive"}>
                     {loop.success ? "Success" : "Failure"}
@@ -77,7 +90,9 @@ const LoopHistory = () => {
                 <CardDescription className="flex justify-between items-center">
                   <span className="text-xs flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {formatDistanceToNow(new Date(loop.timestamp), { addSuffix: true })}
+                    {typeof loop.timestamp === 'number' 
+                      ? formatDistanceToNow(new Date(loop.timestamp), { addSuffix: true })
+                      : 'Unknown time'}
                   </span>
                   <span className="text-xs">
                     Score: {loop.score}
@@ -86,12 +101,12 @@ const LoopHistory = () => {
               </CardHeader>
               <CardContent className="p-4 pt-1">
                 <div className="text-xs text-muted-foreground line-clamp-2">
-                  Task: {loop.steps[0]?.content}
+                  Task: {loop.steps && loop.steps[0]?.content}
                 </div>
               </CardContent>
               <CardFooter className="p-4 pt-0 flex justify-between">
                 <div className="flex gap-2">
-                  {loop.steps.map((step, index) => (
+                  {loop.steps && loop.steps.map((step, index) => (
                     <div 
                       key={index} 
                       className={`w-2 h-2 rounded-full ${

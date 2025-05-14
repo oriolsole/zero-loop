@@ -1,9 +1,9 @@
-
-import { LearningStep } from '../../types/intelligence';
+import { LearningStep, LoopHistory } from '../../types/intelligence';
 import { LoopState } from '../useLoopStore';
 import { domainEngines } from '../../engines/domainEngines';
 import { extractInsightsFromReflection } from '../../utils/knowledgeGraph';
 import { toast } from '@/components/ui/sonner';
+import { v4 as uuidv4 } from 'uuid';
 
 type SetFunction = (
   partial: LoopState | Partial<LoopState> | ((state: LoopState) => LoopState | Partial<LoopState>),
@@ -24,6 +24,7 @@ export const createLoopActions = (
     
     // Create initial step with pending status
     const initialStep: LearningStep = {
+      id: uuidv4(), // Add unique ID for the step
       type: 'task',
       title: 'Task Generation',
       description: 'Generating a new task...',
@@ -44,7 +45,7 @@ export const createLoopActions = (
     // Generate the task using domain engine
     try {
       const engine = domainEngines[activeDomainId] || domainEngines[Object.keys(domainEngines)[0]];
-      const taskContent = await engine.generateTask();
+      const taskContent = await engine.generateTask(activeDomainId);
       
       // Handle both string and complex object responses
       // Fix TypeScript errors by properly checking the type
@@ -122,6 +123,7 @@ export const createLoopActions = (
     switch (currentLoop[currentStepIndex].type) {
       case 'task':
         nextStep = {
+          id: uuidv4(), // Add unique ID
           type: 'solution',
           title: 'Solution Generation',
           description: 'Solving the task...',
@@ -131,6 +133,7 @@ export const createLoopActions = (
         break;
       case 'solution':
         nextStep = {
+          id: uuidv4(), // Add unique ID
           type: 'verification',
           title: 'Verification',
           description: 'Verifying the solution...',
@@ -140,6 +143,7 @@ export const createLoopActions = (
         break;
       case 'verification':
         nextStep = {
+          id: uuidv4(), // Add unique ID
           type: 'reflection',
           title: 'Reflection',
           description: 'Analyzing the results...',
@@ -149,6 +153,7 @@ export const createLoopActions = (
         break;
       case 'reflection':
         nextStep = {
+          id: uuidv4(), // Add unique ID
           type: 'mutation',
           title: 'Task Mutation',
           description: 'Adapting for next loop...',
@@ -182,7 +187,7 @@ export const createLoopActions = (
       
       switch (nextStep.type) {
         case 'solution':
-          result = await engine.solveTask(currentLoop[0].content);
+          result = await engine.solveTask(currentLoop[0].content, activeDomainId);
           metrics = { timeMs: Math.floor(Math.random() * 1000) + 200 };
           break;
         case 'verification': {
@@ -194,7 +199,8 @@ export const createLoopActions = (
   
           result = await engine.verifySolution(
             currentLoop[0].content, 
-            solutionContent
+            solutionContent,
+            activeDomainId
           );
           
           // Default metrics if not provided in the result
@@ -208,7 +214,7 @@ export const createLoopActions = (
           };
           break;
         }
-        case 'reflection':
+        case 'reflection': {
           const verificationData = currentLoop[2];
           const verificationContent = typeof verificationData === 'object' && verificationData !== null
             ? verificationData.content
@@ -217,7 +223,8 @@ export const createLoopActions = (
           result = await engine.reflect(
             currentLoop[0].content,
             currentLoop[1].content || String(currentLoop[1]),
-            verificationContent
+            verificationContent,
+            activeDomainId
           );
           
           metrics = { insightCount: typeof result === 'object' && result !== null
@@ -239,7 +246,7 @@ export const createLoopActions = (
               // Add knowledge nodes from insights
               insights.forEach(insight => {
                 const newNode = createKnowledgeNode(insight, domain.totalLoops + 1, domain.id);
-                domain.knowledgeNodes = [...domain.knowledgeNodes, newNode];
+                domain.knowledgeNodes = [...(domain.knowledgeNodes || []), newNode];
               });
               
               newDomains[activeDomainIndex] = domain;
@@ -247,10 +254,14 @@ export const createLoopActions = (
             }
           }
           break;
+        }
         case 'mutation':
           result = await engine.mutateTask(
             currentLoop[0].content,
-            currentLoop.slice(1, 4).map(s => typeof s === 'object' && s !== null ? s.content : String(s))
+            currentLoop[1].content || '',
+            currentLoop[2].content || '',
+            currentLoop[3].content || '',
+            activeDomainId
           );
           metrics = { complexity: Math.floor(Math.random() * 10) + 1 };
           break;
@@ -285,11 +296,11 @@ export const createLoopActions = (
       if (nextStep.type === 'verification') {
         // Update success rate in domain metrics
         const successRate = status === 'success' 
-          ? Math.min(currentDomain.metrics.successRate + 2, 100)
-          : Math.max(currentDomain.metrics.successRate - 5, 0);
+          ? Math.min((currentDomain.metrics?.successRate || 0) + 2, 100)
+          : Math.max((currentDomain.metrics?.successRate || 0) - 5, 0);
           
         currentDomain.metrics = {
-          ...currentDomain.metrics,
+          ...(currentDomain.metrics || {}),
           successRate
         };
       }
@@ -335,7 +346,7 @@ export const createLoopActions = (
     
     const updatedDomains = [...domains];
     const domain = { ...updatedDomains[activeDomainIndex] };
-    const reflectionStep = domain.currentLoop.find(step => step.type === 'reflection');
+    const reflectionStep = domain.currentLoop?.find(step => step.type === 'reflection');
     const reflectionText = reflectionStep?.content || '';
     
     // Extract insights from reflection
@@ -349,29 +360,31 @@ export const createLoopActions = (
       if (insights.length > 0) {
         insights.forEach(insight => {
           const newNode = createKnowledgeNode(insight, domain.totalLoops + 1, domain.id);
-          domain.knowledgeNodes = [...domain.knowledgeNodes, newNode];
+          domain.knowledgeNodes = [...(domain.knowledgeNodes || []), newNode];
           newNodes.push(newNode);
           
           // Create edges between the new node and existing nodes
-          const nodeEdges = createEdgesBetweenNodes(newNode, domain.knowledgeNodes);
+          const nodeEdges = createEdgesBetweenNodes(newNode, domain.knowledgeNodes || []);
           domain.knowledgeEdges = [...(domain.knowledgeEdges || []), ...nodeEdges];
           newEdges = [...newEdges, ...nodeEdges];
         });
         
         // Recalculate node positions for better layout
-        domain.knowledgeNodes = calculateGraphLayout(domain.knowledgeNodes, domain.knowledgeEdges || []);
+        domain.knowledgeNodes = calculateGraphLayout(domain.knowledgeNodes || [], domain.knowledgeEdges || []);
       }
       
       // Generate a loop history record with proper UUID
-      const { v4: uuidv4 } = require('uuid');
-      const completedLoop = {
-        id: uuidv4(),
+      const loopId = uuidv4();
+      const completedLoop: LoopHistory = {
+        id: loopId,
         domainId: domain.id,
-        steps: [...domain.currentLoop],
+        steps: [...(domain.currentLoop || [])],
         timestamp: Date.now(),
         totalTime: Math.floor(Math.random() * 5000) + 3000,
-        success: domain.currentLoop.some(step => step.type === 'verification' && step.status === 'success'),
-        score: domain.metrics.successRate,
+        success: domain.currentLoop?.some(step => step.type === 'verification' && step.status === 'success') || false,
+        score: (domain.metrics?.successRate || 0),
+        startTime: new Date().toISOString(),
+        status: 'completed',
         insights: insights.map((text, index) => ({
           text,
           confidence: newNodes[index]?.confidence || 0.7,
@@ -426,19 +439,19 @@ export const createLoopActions = (
       }
       
       // Increment total loops
-      domain.totalLoops += 1;
+      domain.totalLoops = (domain.totalLoops || 0) + 1;
       
       // Update metrics
       // Add a new node to knowledge growth
-      const latestKnowledge = [...domain.metrics.knowledgeGrowth];
-      const lastEntry = latestKnowledge[latestKnowledge.length - 1];
-      latestKnowledge.push({
+      const knowledgeGrowth = domain.metrics?.knowledgeGrowth || [];
+      const lastEntry = knowledgeGrowth[knowledgeGrowth.length - 1] || { nodes: 0 };
+      knowledgeGrowth.push({
         name: `Loop ${domain.totalLoops}`,
         nodes: lastEntry.nodes + insights.length
       });
       
       // Update task difficulty
-      const taskDifficulty = [...domain.metrics.taskDifficulty];
+      const taskDifficulty = [...(domain.metrics?.taskDifficulty || [])];
       const difficulty = Math.floor(Math.random() * 10) + 1;
       const success = Math.random() > 0.3 ? difficulty - 1 : difficulty - 3;
       taskDifficulty.push({
@@ -451,7 +464,7 @@ export const createLoopActions = (
       }
       
       // Update skills
-      const skills = [...domain.metrics.skills];
+      const skills = [...(domain.metrics?.skills || [])];
       skills.forEach((skill, i) => {
         // Randomly increase some skills
         if (Math.random() > 0.7) {
@@ -463,8 +476,8 @@ export const createLoopActions = (
       });
       
       domain.metrics = {
-        ...domain.metrics,
-        knowledgeGrowth: latestKnowledge,
+        ...(domain.metrics || {}),
+        knowledgeGrowth,
         taskDifficulty,
         skills
       };

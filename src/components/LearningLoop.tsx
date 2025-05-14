@@ -11,7 +11,7 @@ import ExternalSources from './ExternalSources';
 import { domainEngines } from '../engines/domainEngines';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from 'lucide-react';
-import { LearningStep } from '@/types/intelligence';
+import { LearningStep, ExternalSource } from '@/types/intelligence';
 
 const LearningLoop: React.FC = () => {
   const { 
@@ -26,7 +26,7 @@ const LearningLoop: React.FC = () => {
   
   const activeDomain = domains.find(d => d.id === activeDomainId);
   const currentLoop: LearningStep[] = activeDomain?.currentLoop || [];
-  const currentStep = currentStepIndex !== null ? currentLoop[currentStepIndex] : null;
+  const currentStep = currentStepIndex !== null && currentLoop.length > currentStepIndex ? currentLoop[currentStepIndex] : null;
   
   // Check if this domain uses web knowledge capabilities
   const isDomainWebKnowledge = activeDomainId === 'web-knowledge';
@@ -36,7 +36,7 @@ const LearningLoop: React.FC = () => {
   const isAIReasoning = activeDomainId === 'ai-reasoning';
   
   // Determine sources to show from the current step's metadata
-  const currentStepSources = currentStep?.metadata?.sources || [];
+  const currentStepSources: ExternalSource[] = currentStep?.metadata?.sources || [];
   
   // Check if the first step is still being generated
   const isTaskGenerating = currentLoop.length > 0 && currentLoop[0].status === 'pending';

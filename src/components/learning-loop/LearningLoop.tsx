@@ -296,7 +296,7 @@ const LearningLoop: React.FC = () => {
       <Separator />
       
       <div className="space-y-4">
-        {currentLoop.map((step, index) => (
+        {Array.isArray(currentLoop) && currentLoop.map((step, index) => (
           <LearningStep key={index} step={step} index={index} />
         ))}
       </div>
