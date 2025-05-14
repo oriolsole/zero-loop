@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useForm } from "react-hook-form";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Domain } from '../types/intelligence';
+import { Domain, QualityMetrics } from '../types/intelligence';
 import { Brain, Code, Calculator, Puzzle, FileText, Briefcase, Save, Copy, Trash, Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { v4 as uuidv4 } from 'uuid';
@@ -54,7 +55,7 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
     initialKnowledge: '',
     taskLogic: 'function generateTask() {\n  return "Create a task related to this domain.";\n}',
     colorTheme: 'purple',
-    icon: domain?.id || 'brain'
+    icon: domain?.icon || 'brain'
   };
   
   const form = useForm<DomainFormValues>({
@@ -85,6 +86,11 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
         knowledgeNodes: domain?.knowledgeNodes || [],
         knowledgeEdges: domain?.knowledgeEdges || [],
         metrics: domain?.metrics || {
+          accuracy: 0,
+          relevance: 0,
+          novelty: 0,
+          coherence: 0,
+          overall: 0,
           successRate: 0,
           knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
           taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],

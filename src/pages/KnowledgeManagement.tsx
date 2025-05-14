@@ -67,12 +67,12 @@ const KnowledgeManagement: React.FC = () => {
       // Add source type to distinguish between knowledge base and web results
       const knowledgeResults = recentResults.map(result => ({
         ...result,
-        sourceType: 'knowledge'
+        sourceType: 'knowledge' as const
       }));
       
       const googleResults = webResults.map(result => ({
         ...result,
-        sourceType: 'web'
+        sourceType: 'web' as const
       }));
       
       // Combine all results

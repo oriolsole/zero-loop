@@ -83,7 +83,7 @@ export const aiReasoningEngine: DomainEngine = {
     }
   },
 
-  mutateTask: async (task: string, previousSteps: string[]) => {
+  mutateTask: async (task: string, solution: string, verification: string, reflection: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('ai-reasoning', {
         body: { 

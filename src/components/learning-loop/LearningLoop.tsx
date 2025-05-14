@@ -30,6 +30,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { LearningStep as LearningStepType } from '@/types/intelligence';
 
 const LearningLoop: React.FC = () => {
   const { 
@@ -89,7 +90,8 @@ const LearningLoop: React.FC = () => {
     );
   }
 
-  const currentLoop = activeDomain.currentLoop;
+  const currentLoop: LearningStepType[] = activeDomain.currentLoop || [];
+  
   // No loop steps means we need to show the empty state
   if (currentLoop.length === 0) {
     return (

@@ -1,3 +1,4 @@
+
 // Define the external source interface
 export interface ExternalSource {
   title: string;
@@ -26,7 +27,7 @@ export interface QueryKnowledgeResponse {
   error?: string;
 }
 
-// Missing interfaces causing build errors
+// Domain interface
 export interface Domain {
   id: string;
   name: string;
@@ -38,8 +39,8 @@ export interface Domain {
   createdAt?: string;
   updatedAt?: string;
   metadata?: Record<string, any>;
-  // Additional properties needed by components
-  currentLoop?: string;
+  // Current loop stores an array of learning steps
+  currentLoop?: LearningStep[];
   metrics?: QualityMetrics;
   knowledgeNodes?: KnowledgeNode[];
   knowledgeEdges?: KnowledgeEdge[];
@@ -47,6 +48,7 @@ export interface Domain {
   shortDesc?: string;
 }
 
+// Learning step interface
 export interface LearningStep {
   id: string;
   type: 'task' | 'solution' | 'verification' | 'reflection' | 'mutation';
@@ -59,6 +61,12 @@ export interface LearningStep {
   sources?: ExternalSource[];
   title?: string;
   description?: string;
+  metrics?: {
+    accuracy?: number;
+    relevance?: number;
+    novelty?: number;
+    overall?: number;
+  };
 }
 
 export interface LoopHistory {
@@ -116,12 +124,18 @@ export interface QualityMetrics {
   novelty?: number;
   coherence?: number;
   overall?: number;
+  successRate?: number;
+  knowledgeGrowth?: { name: string; nodes: number }[];
+  taskDifficulty?: { name: string; difficulty: number; success: number }[];
+  skills?: { name: string; level: number }[];
 }
 
 export interface DomainEngine {
   generateTask: (domainId: string, previousSteps?: LearningStep[]) => Promise<string>;
-  generateSolution: (task: string, domainId: string) => Promise<string>;
-  verifyResult: (task: string, solution: string, domainId: string) => Promise<{ isCorrect: boolean; explanation: string }>;
+  generateSolution?: (task: string, domainId: string) => Promise<string>;
+  solveTask?: (task: string, domainId: string) => Promise<string>;
+  verifySolution?: (task: string, solution: string, domainId: string) => Promise<{ isCorrect: boolean; explanation: string }>;
+  verifyResult?: (task: string, solution: string, domainId: string) => Promise<{ isCorrect: boolean; explanation: string }>;
   reflect: (task: string, solution: string, verification: string, domainId: string) => Promise<string>;
   mutateTask: (task: string, solution: string, verification: string, reflection: string, domainId: string) => Promise<string>;
   enrichTask?: (task: string) => Promise<string>;

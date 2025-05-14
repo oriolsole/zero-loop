@@ -11,6 +11,7 @@ import ExternalSources from './ExternalSources';
 import { domainEngines } from '../engines/domainEngines';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from 'lucide-react';
+import { LearningStep } from '@/types/intelligence';
 
 const LearningLoop: React.FC = () => {
   const { 
@@ -24,7 +25,7 @@ const LearningLoop: React.FC = () => {
   const [showingSources, setShowingSources] = useState(false);
   
   const activeDomain = domains.find(d => d.id === activeDomainId);
-  const currentLoop = activeDomain?.currentLoop || [];
+  const currentLoop: LearningStep[] = activeDomain?.currentLoop || [];
   const currentStep = currentStepIndex !== null ? currentLoop[currentStepIndex] : null;
   
   // Check if this domain uses web knowledge capabilities
