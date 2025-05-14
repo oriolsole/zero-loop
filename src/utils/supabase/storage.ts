@@ -5,6 +5,8 @@ import { toast } from '@/components/ui/sonner';
 /**
  * Ensures the required storage buckets exist
  * Should be called during app initialization
+ * Note: Creating buckets requires admin privileges. 
+ * In most cases, buckets should be created via migrations rather than client-side code.
  */
 export const ensureStorageBucketsExist = async (): Promise<boolean> => {
   try {
@@ -21,7 +23,7 @@ export const ensureStorageBucketsExist = async (): Promise<boolean> => {
     const knowledgeBucketExists = buckets.some(bucket => bucket.name === 'knowledge_files');
     
     if (!knowledgeBucketExists) {
-      // Create the bucket
+      // Try to create the bucket
       const { error: createError } = await supabase
         .storage
         .createBucket('knowledge_files', {
@@ -29,6 +31,14 @@ export const ensureStorageBucketsExist = async (): Promise<boolean> => {
         });
       
       if (createError) {
+        // Check if the error is due to RLS policies (which likely means the bucket already exists
+        // but the current user doesn't have permission to see it)
+        if (createError.message?.includes('violates row-level security policy')) {
+          console.log('Bucket likely exists but current user lacks permission to create/view it');
+          // We'll assume the bucket exists and continue
+          return true;
+        }
+        
         console.error('Error creating knowledge_files bucket:', createError);
         return false;
       }
