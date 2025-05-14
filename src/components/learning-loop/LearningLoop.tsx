@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useLoopStore } from '../../store/useLoopStore';
 import LearningStep from './LearningStep';
 import EmptyLoopState from './EmptyLoopState';
+import LoopControls from './LoopControls';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Play, FastForward, Pause, SkipForward, X, CheckCircle, RotateCw } from 'lucide-react';
@@ -11,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "@/components/ui/sonner";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +34,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { LearningStep as LearningStepType } from '@/types/intelligence';
 
 const LearningLoop: React.FC = () => {
+  // IMPORTANT: Declare ALL hooks at the top level, before any conditional returns
   const { 
     domains, 
     activeDomainId,
@@ -47,16 +49,74 @@ const LearningLoop: React.FC = () => {
     cancelCurrentLoop
   } = useLoopStore();
 
-  // Debug state to track step details
+  // Debug state to track step details - always declare this even if not used
   const [debugInfo, setDebugInfo] = useState<{currentLoop: any, canAdvance: boolean}>({
     currentLoop: null,
     canAdvance: false
   });
 
+  // Get the active domain
   const activeDomain = domains.find(domain => domain.id === activeDomainId);
-
   const isDomainWebKnowledge = activeDomain?.id === 'web-knowledge';
   const isAIReasoning = activeDomain?.name === 'AI Reasoning';
+  
+  // Initialize currentLoop outside conditionals to prevent issues
+  const currentLoop: LearningStepType[] = activeDomain?.currentLoop || [];
+  
+  const completedSteps = currentLoop.filter(step => step.status === 'success');
+  const pendingSteps = currentLoop.filter(step => step.status === 'pending');
+  
+  const hasCompletedAllStepTypes = 
+    currentLoop.some(step => step.type === 'task') &&
+    currentLoop.some(step => step.type === 'solution') &&
+    currentLoop.some(step => step.type === 'verification') &&
+    currentLoop.some(step => step.type === 'reflection') &&
+    currentLoop.some(step => step.type === 'mutation');
+  
+  const allStepsComplete = hasCompletedAllStepTypes && completedSteps.length === currentLoop.length;
+  const hasInProgressStep = currentLoop.some(step => step.status !== 'success' && step.status !== 'pending');
+  const isLastStepPending = currentLoop.length > 0 ? currentLoop[currentLoop.length - 1].status === 'pending' : false;
+  
+  const firstStepIsSuccess = currentLoop.length > 0 && currentLoop[0].status === 'success';
+  const canAdvance = !isLastStepPending && !hasInProgressStep && firstStepIsSuccess && !hasCompletedAllStepTypes;
+  
+  const currentStepType = currentLoop.length > 0 ? currentLoop[currentLoop.length - 1].type : null;
+  const nextStepType = currentStepType ? getNextStepType(currentStepType) : null;
+  
+  const isLoopFinished = allStepsComplete && !hasInProgressStep && !isLastStepPending;
+
+  useEffect(() => {
+    if (currentLoop.length > 0) {
+      console.log("Loop status:", {
+        firstStepIsSuccess,
+        canAdvance,
+        allStepsComplete,
+        isLastStepPending,
+        hasInProgressStep,
+        hasCompletedAllStepTypes,
+        currentStepType,
+        nextStepType,
+        stepsCount: currentLoop.length,
+        firstStepStatus: currentLoop[0]?.status
+      });
+    }
+  }, [currentLoop, firstStepIsSuccess, canAdvance, allStepsComplete, isLastStepPending, hasInProgressStep, hasCompletedAllStepTypes, currentStepType, nextStepType]);
+
+  // Helper function to determine next step type
+  function getNextStepType(currentType: string): string {
+    switch (currentType) {
+      case 'task':
+        return 'solution';
+      case 'solution':
+        return 'verification';
+      case 'verification':
+        return 'reflection';
+      case 'reflection':
+        return 'mutation';
+      default:
+        return 'complete';
+    }
+  }
 
   const handleStartLoop = async () => {
     try {
@@ -86,7 +146,7 @@ const LearningLoop: React.FC = () => {
     }
   };
 
-  // If active domain doesn't exist or has no steps yet
+  // If active domain doesn't exist or has no steps yet, render the empty state
   if (!activeDomain || !activeDomain.currentLoop || activeDomain.currentLoop.length === 0) {
     return (
       <EmptyLoopState 
@@ -96,8 +156,6 @@ const LearningLoop: React.FC = () => {
       />
     );
   }
-
-  const currentLoop: LearningStepType[] = activeDomain.currentLoop || [];
   
   // No loop steps means we need to show the empty state
   if (currentLoop.length === 0) {
@@ -108,71 +166,6 @@ const LearningLoop: React.FC = () => {
         isAIReasoning={isAIReasoning}
       />
     );
-  }
-  
-  const completedSteps = currentLoop.filter(step => step.status === 'success');
-  const pendingSteps = currentLoop.filter(step => step.status === 'pending');
-  
-  // FIXED: Instead of checking if all steps are complete, we check if we can add more steps
-  // based on the loop progression. A loop can always progress unless it has finished all 
-  // 5 steps (task, solution, verification, reflection, mutation)
-  const hasCompletedAllStepTypes = 
-    currentLoop.some(step => step.type === 'task') &&
-    currentLoop.some(step => step.type === 'solution') &&
-    currentLoop.some(step => step.type === 'verification') &&
-    currentLoop.some(step => step.type === 'reflection') &&
-    currentLoop.some(step => step.type === 'mutation');
-    
-  const allStepsComplete = hasCompletedAllStepTypes && completedSteps.length === currentLoop.length;
-  
-  // Check if there's a step currently in progress (not pending or success, which means it's failure or warning)
-  const hasInProgressStep = currentLoop.some(step => step.status !== 'success' && step.status !== 'pending');
-  
-  // Check if the last step is pending (which means we're waiting for it to complete)
-  const isLastStepPending = currentLoop[currentLoop.length - 1].status === 'pending';
-  
-  // FIXED: Adjusted canAdvance logic to consider the step types as well
-  // We can advance if there is a successful step and we haven't finished all step types
-  const firstStepIsSuccess = currentLoop.length > 0 && currentLoop[0].status === 'success';
-  const canAdvance = !isLastStepPending && !hasInProgressStep && firstStepIsSuccess && !hasCompletedAllStepTypes;
-  
-  // Get the current step type
-  const currentStepType = currentLoop[currentLoop.length - 1].type;
-  const nextStepType = getNextStepType(currentStepType);
-  
-  // Log debug information
-  useEffect(() => {
-    console.log("Loop status:", {
-      firstStepIsSuccess,
-      canAdvance,
-      allStepsComplete,
-      isLastStepPending,
-      hasInProgressStep,
-      hasCompletedAllStepTypes,
-      currentStepType,
-      nextStepType,
-      stepsCount: currentLoop.length,
-      firstStepStatus: currentLoop[0]?.status
-    });
-  }, [currentLoop, firstStepIsSuccess, canAdvance, allStepsComplete, isLastStepPending, hasInProgressStep, hasCompletedAllStepTypes, currentStepType, nextStepType]);
-  
-  // Determine what button/state to show
-  const isLoopFinished = allStepsComplete && !hasInProgressStep && !isLastStepPending;
-
-  // Helper function to determine next step type
-  function getNextStepType(currentType: string): string {
-    switch (currentType) {
-      case 'task':
-        return 'solution';
-      case 'solution':
-        return 'verification';
-      case 'verification':
-        return 'reflection';
-      case 'reflection':
-        return 'mutation';
-      default:
-        return 'complete';
-    }
   }
 
   return (
@@ -266,7 +259,7 @@ const LearningLoop: React.FC = () => {
                           ) : (
                             <>
                               <SkipForward className="h-4 w-4" />
-                              Next Step ({nextStepType})
+                              Next Step {nextStepType && `(${nextStepType})`}
                             </>
                           )}
                         </Button>
