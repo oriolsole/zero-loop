@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLoopStore } from '../../store/useLoopStore';
 import LearningStep from './LearningStep';
 import EmptyLoopState from './EmptyLoopState';
@@ -47,6 +47,12 @@ const LearningLoop: React.FC = () => {
     cancelCurrentLoop
   } = useLoopStore();
 
+  // Debug state to track step details
+  const [debugInfo, setDebugInfo] = useState<{currentLoop: any, canAdvance: boolean}>({
+    currentLoop: null,
+    canAdvance: false
+  });
+
   const activeDomain = domains.find(domain => domain.id === activeDomainId);
 
   const isDomainWebKnowledge = activeDomain?.id === 'web-knowledge';
@@ -73,6 +79,7 @@ const LearningLoop: React.FC = () => {
   const handleToggleContinuous = () => {
     try {
       toggleContinuousMode();
+      toast.success(isContinuousMode ? 'Continuous mode disabled' : 'Continuous mode enabled');
     } catch (error) {
       console.error('Failed to toggle continuous mode:', error);
       toast.error('Failed to toggle continuous mode. Please try again.');
@@ -116,7 +123,20 @@ const LearningLoop: React.FC = () => {
   const isLastStepPending = currentLoop[currentLoop.length - 1].status === 'pending';
   
   // We can advance if there are more steps to complete and no step is currently pending processing
-  const canAdvance = !allStepsComplete && !isLastStepPending && !hasInProgressStep;
+  // MODIFIED: Make sure first step is success before allowing advancement
+  const firstStepIsSuccess = currentLoop.length > 0 && currentLoop[0].status === 'success';
+  const canAdvance = !allStepsComplete && !isLastStepPending && !hasInProgressStep && firstStepIsSuccess;
+  
+  // Log debug information
+  console.log("Loop status:", {
+    firstStepIsSuccess,
+    canAdvance,
+    allStepsComplete,
+    isLastStepPending,
+    hasInProgressStep,
+    stepsCount: currentLoop.length,
+    firstStepStatus: currentLoop[0]?.status
+  });
   
   // Determine what button/state to show
   const isLoopFinished = allStepsComplete && !hasInProgressStep && !isLastStepPending;
@@ -197,7 +217,7 @@ const LearningLoop: React.FC = () => {
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div>
+                      <span>
                         <Button 
                           onClick={handleNextStep} 
                           disabled={!canAdvance}
@@ -216,17 +236,21 @@ const LearningLoop: React.FC = () => {
                             </>
                           )}
                         </Button>
-                      </div>
+                      </span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      {!canAdvance && !isLoopFinished && (
+                      {!canAdvance && !isLoopFinished ? (
                         <p>
                           {isLastStepPending 
                             ? "Please wait for the current step to complete" 
-                            : hasInProgressStep 
-                              ? "A step is currently in progress" 
-                              : "All steps are complete"}
+                            : !firstStepIsSuccess
+                              ? "First step is not completed successfully"
+                              : hasInProgressStep 
+                                ? "A step is currently in progress" 
+                                : "All steps are complete"}
                         </p>
+                      ) : (
+                        <p>Click to advance to the next step in the learning process</p>
                       )}
                     </TooltipContent>
                   </Tooltip>
@@ -292,6 +316,33 @@ const LearningLoop: React.FC = () => {
           </div>
         </Card>
       )}
+
+      {/* Status Debug Info Card */}
+      <Card className="p-4 bg-yellow-50 border-yellow-100">
+        <h3 className="font-medium mb-2">Loop Status</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex gap-1 text-sm">
+            <span className="font-medium">First Step Status:</span> 
+            <span className={firstStepIsSuccess ? "text-green-600" : "text-red-500"}>
+              {currentLoop[0]?.status || "unknown"}
+            </span>
+          </div>
+          <div className="flex gap-1 text-sm">
+            <span className="font-medium">Can Advance:</span> 
+            <span className={canAdvance ? "text-green-600" : "text-red-500"}>
+              {canAdvance ? "Yes" : "No"}
+            </span>
+          </div>
+          <div className="flex gap-1 text-sm">
+            <span className="font-medium">Continuous Mode:</span> 
+            <span>{isContinuousMode ? "Enabled" : "Disabled"}</span>
+          </div>
+          <div className="flex gap-1 text-sm">
+            <span className="font-medium">Steps Complete:</span> 
+            <span>{completedSteps.length}/{currentLoop.length}</span>
+          </div>
+        </div>
+      </Card>
       
       <Separator />
       

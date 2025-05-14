@@ -4,7 +4,7 @@ import { LearningStep as LearningStepType } from '@/types/intelligence';
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle, AlertTriangle, XCircle, Globe, Database } from 'lucide-react';
+import { Loader2, CheckCircle, AlertTriangle, XCircle, Globe, Database, Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExternalSources from '@/components/ExternalSources';
 
@@ -15,6 +15,7 @@ interface LearningStepProps {
 
 const LearningStep: React.FC<LearningStepProps> = ({ step, index }) => {
   const [showSources, setShowSources] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   
   // Check if step has external sources in its metadata
   const hasSources = step.metadata?.sources && step.metadata.sources.length > 0;
@@ -72,10 +73,46 @@ const LearningStep: React.FC<LearningStepProps> = ({ step, index }) => {
         </div>
 
         <div className="flex items-center gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setShowDetails(!showDetails)}>
+                  <Info className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>View step details and debug info</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
           <span className="text-xs text-muted-foreground mr-1">Status:</span>
-          {renderStatusIndicator()}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{renderStatusIndicator()}</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="capitalize">Status: {step.status}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
+
+      {showDetails && (
+        <div className="mb-3 p-2 bg-muted/30 rounded-md text-xs">
+          <div className="grid grid-cols-2 gap-2">
+            <div><span className="font-medium">ID:</span> {step.id}</div>
+            <div><span className="font-medium">Type:</span> {step.type}</div>
+            <div><span className="font-medium">Status:</span> {step.status}</div>
+            <div><span className="font-medium">Index:</span> {index}</div>
+            {step.metrics && Object.entries(step.metrics).map(([key, value]) => (
+              <div key={key}><span className="font-medium">{key}:</span> {String(value)}</div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="prose prose-sm max-w-none dark:prose-invert">
         {step.status === 'pending' ? (

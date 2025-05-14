@@ -44,6 +44,7 @@ export const createLoopActions = (
     
     // Generate the task using domain engine
     try {
+      console.log("Starting task generation for domain:", activeDomainId);
       const engine = domainEngines[activeDomainId] || domainEngines[Object.keys(domainEngines)[0]];
       const taskContent = await engine.generateTask(activeDomainId);
       
@@ -61,6 +62,8 @@ export const createLoopActions = (
           metadata = taskObj.metadata;
         }
       }
+      
+      console.log("Task generated successfully, updating step status to success");
       
       const updatedStep: LearningStep = {
         ...initialStep,
@@ -91,9 +94,11 @@ export const createLoopActions = (
       
       // Log success message
       console.log("Task generated successfully:", content.substring(0, 50) + "...");
+      toast.success("Task generated successfully");
     } catch (error) {
       // Handle error in task generation
       console.error("Error generating task:", error);
+      toast.error("Error generating task");
       
       const updatedStep: LearningStep = {
         ...initialStep,

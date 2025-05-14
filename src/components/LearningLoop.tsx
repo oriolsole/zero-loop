@@ -1,10 +1,10 @@
 
 import React from 'react';
-import LearningLoop from './learning-loop/LearningLoop';
+import LearningLoopImpl from './learning-loop/LearningLoop';
 
 // This component now serves as a wrapper for the more feature-rich implementation
 const LearningLoopWrapper: React.FC = () => {
-  return <LearningLoop />;
+  return <LearningLoopImpl />;
 };
 
 export default LearningLoopWrapper;
