@@ -151,7 +151,7 @@ export function useKnowledgeBase() {
   /**
    * Query the knowledge base
    */
-  const queryKnowledgeBase = async (options: KnowledgeQueryOptions): Promise<KnowledgeSearchResult[]> => {
+  const queryKnowledge = async (options: KnowledgeQueryOptions): Promise<KnowledgeSearchResult[]> => {
     setIsQuerying(true);
     setQueryError(null);
     
@@ -202,13 +202,14 @@ export function useKnowledgeBase() {
     uploadProgress,
     
     // Query capabilities
-    queryKnowledgeBase,
+    queryKnowledge,
     isQuerying,
     queryError,
     searchResults,
     searchMode,
     
     // Alias for compatibility with old code
+    queryKnowledgeBase: queryKnowledge,
     recentResults: searchResults,
   };
 }

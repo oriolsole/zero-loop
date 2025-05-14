@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ExternalSource } from '@/types/intelligence';
@@ -30,7 +31,7 @@ export function useExternalKnowledge() {
   const [recentSources, setRecentSources] = useState<ExternalSource[]>([]);
   
   // Get knowledge base methods - use the correct method name from the updated hook
-  const { queryKnowledge } = useKnowledgeBase();
+  const { queryKnowledgeBase } = useKnowledgeBase();
   
   /**
    * Search the web for information related to a query
@@ -90,7 +91,7 @@ export function useExternalKnowledge() {
       // Search knowledge base if enabled
       if (options.useKnowledgeBase !== false) {
         try {
-          const kbResults = await queryKnowledge({
+          const kbResults = await queryKnowledgeBase({
             query,
             limit: options.limit || 5
           });
