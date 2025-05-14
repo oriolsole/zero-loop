@@ -27,7 +27,7 @@ export function useKnowledgeQuery() {
           limit: options.limit || 5,
           useEmbeddings: options.useEmbeddings !== false,
           matchThreshold: options.matchThreshold || 0.5,
-          includeNodes: options.includeNodes || false // New parameter
+          includeNodes: options.includeNodes || false // Pass the includeNodes parameter
         }
       });
       

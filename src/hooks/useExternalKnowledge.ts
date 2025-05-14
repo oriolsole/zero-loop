@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { ExternalSource } from '@/types/intelligence';
+import { ExternalSource } from '@/hooks/knowledge/types';
 import { toast } from '@/components/ui/sonner';
 import { useKnowledgeBase } from './useKnowledgeBase';
 

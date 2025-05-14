@@ -7,7 +7,7 @@ export interface KnowledgeQueryOptions {
   limit?: number;
   useEmbeddings?: boolean;
   matchThreshold?: number;
-  includeNodes?: boolean;  // New parameter to include knowledge nodes
+  includeNodes?: boolean;  // Parameter to include knowledge nodes
 }
 
 /**
@@ -28,7 +28,7 @@ export interface ExternalSource {
   filePath?: string | null;
   fileUrl?: string | null;
   metadata?: any;
-  sourceType?: 'knowledge' | 'web' | 'node';  // Added 'node' as a source type
+  sourceType?: 'knowledge' | 'web' | 'node';  // Updated to include 'node' type
   nodeType?: string;  // Added for knowledge nodes
   confidence?: number;  // Added for knowledge nodes
 }
@@ -41,6 +41,7 @@ export interface FileUploadProgress {
   progress: number;
   status: 'uploading' | 'processing' | 'complete' | 'error';
   error?: string;
+  message?: string; // Added the missing message property
   id?: string;
 }
 
@@ -54,4 +55,6 @@ export interface KnowledgeUploadOptions {
   sourceUrl?: string;
   domainId?: string;
   metadata?: Record<string, any>;
+  chunkSize?: number; // Added missing property
+  overlap?: number;   // Added missing property
 }

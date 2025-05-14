@@ -1,4 +1,3 @@
-
 // Define the external source interface
 export interface ExternalSource {
   title: string;
@@ -6,7 +5,7 @@ export interface ExternalSource {
   snippet: string;
   source: string;
   date?: string;
-  sourceType?: 'knowledge' | 'web';
+  sourceType?: 'knowledge' | 'web' | 'node';  // Updated to include 'node' type
   // New fields for enhanced search results
   contentType?: string;
   thumbnailUrl?: string;
@@ -15,6 +14,9 @@ export interface ExternalSource {
   publisher?: string;
   fileType?: string;
   fileUrl?: string;
+  // New fields for knowledge nodes
+  nodeType?: string;
+  confidence?: number;
 }
 
 export interface QueryKnowledgeRequest {
@@ -22,6 +24,7 @@ export interface QueryKnowledgeRequest {
   limit?: number;
   useEmbeddings?: boolean; 
   matchThreshold?: number;
+  includeNodes?: boolean;  // Added for node search
 }
 
 export interface QueryKnowledgeResponse {
