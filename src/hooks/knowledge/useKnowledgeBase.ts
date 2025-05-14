@@ -1,21 +1,37 @@
 
-// This file re-exports the useKnowledgeBase hook from the new modular structure
-import { useKnowledgeBase as useFeatureKnowledgeBase } from '@/features/knowledge/hooks/useKnowledgeBase';
+import { useKnowledgeUpload } from './useKnowledgeUpload';
+import { useKnowledgeQuery } from './useKnowledgeQuery';
+import { useKnowledgeEnrich } from './useKnowledgeEnrich';
+import { ExternalSource, FileUploadProgress, KnowledgeQueryOptions, KnowledgeUploadOptions } from './types';
 
+/**
+ * Main hook for accessing and managing the knowledge base
+ * Combines upload, query, and enrichment capabilities
+ */
 export function useKnowledgeBase() {
-  const knowledgeBase = useFeatureKnowledgeBase();
+  const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeUpload();
+  const { queryKnowledgeBase, isQuerying, queryError, recentResults, searchMode } = useKnowledgeQuery();
+  const { enrichWithKnowledge, verifyWithKnowledge } = useKnowledgeEnrich();
   
   return {
-    ...knowledgeBase,
-    // Ensure all methods from the feature-based implementation are exposed
-    queryKnowledge: knowledgeBase.queryKnowledge,
-    queryKnowledgeBase: knowledgeBase.queryKnowledgeBase,
+    // Upload capabilities
+    uploadKnowledge,
+    isUploading,
+    uploadError,
+    uploadProgress,
+    
+    // Query capabilities
+    queryKnowledgeBase,
+    isQuerying,
+    queryError,
+    recentResults,
+    searchMode,
+    
+    // Enrichment capabilities
+    enrichWithKnowledge,
+    verifyWithKnowledge
   };
 }
 
-export type { 
-  ExternalSource, 
-  FileUploadProgress, 
-  KnowledgeQueryOptions, 
-  KnowledgeUploadOptions 
-} from '@/features/knowledge/types';
+// Re-export types
+export type { ExternalSource, FileUploadProgress, KnowledgeQueryOptions, KnowledgeUploadOptions };

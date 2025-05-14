@@ -11,7 +11,7 @@ import { AlertCircle } from 'lucide-react';
 import { TitleInput } from "./TitleInput";
 import { DomainSelector } from "./DomainSelector";
 import { SourceUrlInput } from "./SourceUrlInput";
-import TextUploadTab from "./TextUploadTab";
+import { TextUploadTab } from "./TextUploadTab";
 import { FileUploadArea } from "./FileUploadArea";
 import { FileUploadPreview } from "./FileUploadPreview";
 import { UploadProgress } from "./UploadProgress";
@@ -23,12 +23,9 @@ const KnowledgeUploadForm: React.FC = () => {
   const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeBase();
   const { domains, activeDomainId } = useLoopStore();
   
-  // Ensure we start with a valid domainId (never empty string)
-  const initialDomainId = activeDomainId || "no-domain";
-  
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [domainId, setDomainId] = useState(initialDomainId);
+  const [domainId, setDomainId] = useState(activeDomainId);
   const [sourceUrl, setSourceUrl] = useState('');
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -84,9 +81,8 @@ const KnowledgeUploadForm: React.FC = () => {
     
     try {
       let success;
-      
-      // Process domain ID - only use a valid UUID or undefined
-      // "no-domain" explicitly means no domain association
+      // Process domain ID - convert "no-domain" to undefined to avoid foreign key constraint errors
+      // Also validate that domainId is a valid UUID if provided
       const processedDomainId = domainId === "no-domain" ? undefined : 
                                (isValidUUID(domainId) ? domainId : undefined);
       
@@ -151,10 +147,7 @@ const KnowledgeUploadForm: React.FC = () => {
         </TabsList>
         
         <TabsContent value="text" className="space-y-4 pt-4">
-          <TextUploadTab 
-            content={content} 
-            setContent={setContent} 
-          />
+          <TextUploadTab content={content} setContent={setContent} />
         </TabsContent>
         
         <TabsContent value="file" className="space-y-4 pt-4">

@@ -1,14 +1,13 @@
 
-import { Domain } from '../../types/intelligence';
-import { LoopState } from '../useLoopStore';
-import { EngineDetectionModel } from '../../models/engineDetection';
-import { v4 as uuidv4 } from 'uuid';
 import { toast } from '@/components/ui/sonner';
+import { Domain } from '../../types/intelligence';
+import { v4 as uuidv4 } from 'uuid';
+import { LoopState } from '../useLoopStore';
 import { 
   saveDomainToSupabase, 
-  deleteDomainFromSupabase, 
-  updateDomainInSupabase 
-} from '../../utils/supabase/domainOperations';
+  updateDomainInSupabase, 
+  deleteDomainFromSupabase 
+} from '../../utils/supabase';
 import { isSupabaseConfigured } from '../../utils/supabase-client';
 import { isValidUUID } from '../../utils/supabase/helpers';
 
@@ -24,80 +23,86 @@ export const createDomainActions = (
   get: GetFunction
 ) => ({
   addNewDomain: (domain: Domain) => {
-    // Clone the current domains
-    const currentDomains = [...get().domains];
+    // ENHANCED: Ensure the domain ID is always a valid UUID
+    // Replace any non-UUID formatted ID with a new UUID
+    const domainId = isValidUUID(domain.id) ? domain.id : uuidv4();
     
-    // Ensure the domain has an engine type assigned
-    const domainWithEngine = EngineDetectionModel.assignEngineType(domain);
+    const completeDomain: Domain = {
+      ...domain,
+      id: domainId,
+      totalLoops: domain.totalLoops || 0,
+      currentLoop: domain.currentLoop || [],
+      knowledgeNodes: domain.knowledgeNodes || [],
+      knowledgeEdges: domain.knowledgeEdges || [],
+      metrics: domain.metrics || {
+        successRate: 0,
+        knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
+        taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],
+        skills: [{ name: 'Learning', level: 1 }]
+      }
+    };
     
     // Add the new domain
-    currentDomains.push(domainWithEngine);
+    set(state => ({
+      domains: [...state.domains, completeDomain],
+      activeDomainId: domainId // Switch to the new domain
+    }));
     
-    // Update state with new domains and set the added domain as active
-    set({
-      domains: currentDomains,
-      activeDomainId: domain.id,
-      isInitialized: true
-    });
-    
-    // Sync to Supabase if remote logging is enabled
-    if (get().useRemoteLogging) {
-      saveDomainToSupabase(domainWithEngine)
+    // If remote logging is enabled, save to Supabase
+    if (get().useRemoteLogging && isSupabaseConfigured()) {
+      saveDomainToSupabase(completeDomain)
         .then(success => {
-          if (!success) {
-            console.error('Failed to save domain to Supabase');
+          if (success) {
+            console.log('Domain saved to Supabase:', domainId);
           }
         })
-        .catch(err => {
-          console.error('Error saving domain to Supabase:', err);
+        .catch(error => {
+          console.error('Error saving domain to Supabase:', error);
         });
     }
     
-    console.log(`New domain added: ${domain.name} with ID: ${domain.id} and engine type: ${domainWithEngine.engineType}`);
-    toast.success(`Domain "${domain.name}" created`);
+    toast.success('New domain created!');
   },
   
-  updateDomain: (domain: Domain) => {
-    const { domains, activeDomainId, useRemoteLogging } = get();
-    
-    // Find the domain to update
-    const index = domains.findIndex(d => d.id === domain.id);
-    
-    if (index === -1) {
-      console.error(`Domain with ID: ${domain.id} not found`);
-      toast.error('Failed to update domain: Domain not found');
+  updateDomain: (updatedDomain: Domain) => {
+    // ENHANCED: Ensure we don't try to update domains with invalid IDs
+    if (!isValidUUID(updatedDomain.id)) {
+      toast.error(`Cannot update domain with invalid ID: ${updatedDomain.id}`);
       return;
     }
     
-    // Ensure the domain has an engine type assigned if it doesn't have one
-    const domainWithEngine = EngineDetectionModel.assignEngineType(domain);
-    
-    // Create a new domains array with the updated domain
-    const updatedDomains = [...domains];
-    updatedDomains[index] = domainWithEngine;
-    
-    // Update state with modified domains
-    set({
-      domains: updatedDomains,
-      // If the active domain was updated, update it
-      activeDomainId: activeDomainId === domain.id ? domain.id : activeDomainId
+    set(state => {
+      const domainIndex = state.domains.findIndex(d => d.id === updatedDomain.id);
+      if (domainIndex === -1) return state;
+      
+      const newDomains = [...state.domains];
+      
+      // Keep the existing complex data while updating the basic info
+      const existingDomain = state.domains[domainIndex];
+      newDomains[domainIndex] = {
+        ...existingDomain,
+        name: updatedDomain.name,
+        shortDesc: updatedDomain.shortDesc,
+        description: updatedDomain.description,
+      };
+
+      // If remote logging is enabled, update in Supabase
+      if (state.useRemoteLogging && isSupabaseConfigured()) {
+        updateDomainInSupabase(newDomains[domainIndex])
+          .then(success => {
+            if (success) {
+              console.log('Domain updated in Supabase:', updatedDomain.id);
+            }
+          })
+          .catch(error => {
+            console.error('Error updating domain in Supabase:', error);
+          });
+      }
+      
+      return { domains: newDomains };
     });
     
-    // Sync to Supabase if remote logging is enabled
-    if (useRemoteLogging) {
-      updateDomainInSupabase(domainWithEngine)
-        .then(success => {
-          if (!success) {
-            console.error('Failed to update domain in Supabase');
-          }
-        })
-        .catch(err => {
-          console.error('Error updating domain in Supabase:', err);
-        });
-    }
-    
-    console.log(`Domain updated: ${domain.name} with ID: ${domain.id} and engine type: ${domainWithEngine.engineType}`);
-    toast.success(`Domain "${domain.name}" updated`);
+    toast.success('Domain updated!');
   },
   
   deleteDomain: (domainId: string) => {

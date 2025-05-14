@@ -1,383 +1,363 @@
+
 import React, { useState } from 'react';
-import { useKnowledgeLibrary, KnowledgeItem } from '@/hooks/knowledge/useKnowledgeLibrary';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Search, Download, File, FileText, Image, Trash2, Info } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { useAuth } from '@/contexts/AuthContext';
-
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose
-} from '@/components/ui/dialog';
-
-// Helper function to get file URL synchronously
-const getFileDownloadUrl = (filePath?: string | null): string => {
-  if (!filePath) return '#';
-  const fileName = filePath.split('/').pop() || '';
-  return `https://dwescgkujhhizyrokuiv.supabase.co/storage/v1/object/public/knowledge_files/${fileName}`;
-};
+import { format } from 'date-fns';
+import { useKnowledgeLibrary, KnowledgeItem, KnowledgeLibraryFilters } from '@/hooks/knowledge/useKnowledgeLibrary';
+import { useLoopStore } from '@/store/useLoopStore';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Trash2, FileText, File, Search, Filter, ArrowDownAZ, Clock, SlidersHorizontal, Loader2 } from "lucide-react";
 
 const KnowledgeLibrary: React.FC = () => {
-  const { items, isLoading, error, totalCount, filters, fetchKnowledgeItems, deleteKnowledgeItem } = useKnowledgeLibrary();
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [fileTypeFilter, setFileTypeFilter] = useState<string>('');
-  const [sortConfig, setSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' }>({
-    field: 'created_at',
-    direction: 'desc'
-  });
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
-  const [itemToDelete, setItemToDelete] = useState<KnowledgeItem | null>(null);
-  const [itemOpened, setItemOpened] = useState<KnowledgeItem | null>(null);
-  const [deleteInProgress, setDeleteInProgress] = useState<Record<string, boolean>>({});
+  const { domains } = useLoopStore();
+  const { 
+    items, 
+    isLoading, 
+    error, 
+    totalCount,
+    filters,
+    fetchKnowledgeItems, 
+    deleteKnowledgeItem,
+  } = useKnowledgeLibrary();
   
-  const { user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [itemsPerPage] = useState(12);
+  const [showFilters, setShowFilters] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   
-  // Handle search form submission
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchKnowledgeItems(20, 0, {
-      ...filters,
-      searchQuery: searchQuery
-    });
+  // Handle delete confirmation
+  const handleDeleteItem = async (id: string) => {
+    setDeletingItemId(id);
+    const success = await deleteKnowledgeItem(id);
+    setDeletingItemId(null);
   };
   
-  // Handle file type filter change
-  const handleFileTypeChange = (value: string) => {
-    setFileTypeFilter(value);
-    fetchKnowledgeItems(20, 0, {
+  // Apply filters
+  const handleApplyFilters = () => {
+    const newFilters: KnowledgeLibraryFilters = {
       ...filters,
-      fileType: value || undefined
-    });
+      searchQuery: searchQuery || undefined,
+    };
+    
+    fetchKnowledgeItems(itemsPerPage, 0, newFilters);
+    setCurrentPage(0);
+  };
+  
+  // Handle domain filter change
+  const handleDomainChange = (domainId: string) => {
+    const newFilters: KnowledgeLibraryFilters = {
+      ...filters,
+      domainId: domainId === 'all' ? undefined : domainId,
+    };
+    
+    fetchKnowledgeItems(itemsPerPage, 0, newFilters);
+    setCurrentPage(0);
   };
   
   // Handle sort change
   const handleSortChange = (value: string) => {
-    const [field, direction] = value.split(':');
-    setSortConfig({ field, direction: direction as 'asc' | 'desc' });
-    fetchKnowledgeItems(20, 0, {
-      ...filters,
-      sortBy: field as 'created_at' | 'title',
-      sortDirection: direction as 'asc' | 'desc'
-    });
-  };
-  
-  // Open the delete confirmation dialog
-  const openDeleteDialog = (item: KnowledgeItem) => {
-    setItemToDelete(item);
-    setDeleteDialogOpen(true);
-  };
-  
-  // Handle delete item confirmation
-  const handleDeleteItem = async () => {
-    if (!itemToDelete) return;
+    const [sortBy, sortDirection] = value.split('-') as ['created_at' | 'title', 'asc' | 'desc'];
     
-    try {
-      setDeleteInProgress(prev => ({ ...prev, [itemToDelete.id]: true }));
-      const success = await deleteKnowledgeItem(itemToDelete.id);
-      
-      if (success) {
-        setDeleteDialogOpen(false);
-        setItemToDelete(null);
-      }
-    } finally {
-      setDeleteInProgress(prev => ({ ...prev, [itemToDelete.id]: false }));
+    const newFilters: KnowledgeLibraryFilters = {
+      ...filters,
+      sortBy,
+      sortDirection,
+    };
+    
+    fetchKnowledgeItems(itemsPerPage, 0, newFilters);
+    setCurrentPage(0);
+  };
+  
+  // Handle pagination
+  const handlePageChange = (newPage: number) => {
+    fetchKnowledgeItems(itemsPerPage, newPage);
+    setCurrentPage(newPage);
+  };
+
+  // Get file type icon
+  const getFileIcon = (item: KnowledgeItem) => {
+    if (!item.original_file_type) return <FileText className="h-5 w-5 text-muted-foreground" />;
+    
+    if (item.original_file_type.includes('pdf')) {
+      return <File className="h-5 w-5 text-red-500" />;
+    } else if (item.original_file_type.includes('image')) {
+      return <FileText className="h-5 w-5 text-blue-500" />;
+    } else if (item.original_file_type.includes('text') || item.original_file_type.includes('markdown')) {
+      return <FileText className="h-5 w-5 text-gray-500" />;
+    } else {
+      return <File className="h-5 w-5 text-muted-foreground" />;
     }
   };
   
-  // Handle view item details
-  const handleViewItem = (item: KnowledgeItem) => {
-    setItemOpened(item);
-  };
-  
-  // Format file size for display
+  // Format file size to display
   const formatFileSize = (bytes?: number | null) => {
     if (!bytes) return 'N/A';
     
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
   };
   
-  // Get appropriate icon for file type
-  const getFileIcon = (fileType?: string | null) => {
-    if (!fileType) return <File />;
+  // Get domain name from ID
+  const getDomainName = (domainId?: string | null) => {
+    if (!domainId) return 'No Domain';
     
-    if (fileType.includes('image')) return <Image />;
-    if (fileType.includes('text') || fileType.includes('pdf') || fileType.includes('doc')) return <FileText />;
-    
-    return <File />;
+    const domain = domains.find(d => d.id === domainId);
+    return domain ? domain.name : 'Unknown Domain';
   };
-  
-  if (error) {
+
+  // Render content based on loading state
+  if (isLoading && items.length === 0) {
     return (
-      <Alert variant="destructive">
-        <AlertTitle>Error loading library</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Card key={i} className="w-full">
+            <CardHeader className="pb-2">
+              <Skeleton className="h-5 w-[200px]" />
+              <Skeleton className="h-4 w-[150px]" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-16 w-full" />
+            </CardContent>
+            <CardFooter className="flex justify-between pt-2">
+              <Skeleton className="h-4 w-[100px]" />
+              <Skeleton className="h-8 w-[80px]" />
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
     );
   }
-
+  
   return (
     <div className="space-y-4">
-      {/* Search and filter form */}
-      <form onSubmit={handleSearch} className="flex flex-col gap-4 md:flex-row">
-        <div className="flex flex-1 gap-2">
-          <Input
-            placeholder="Search by title or content..."
+      {/* Filters and search */}
+      <div className="flex flex-col sm:flex-row gap-2 items-center">
+        <div className="flex items-center gap-2">
+          <Input 
+            placeholder="Search knowledge items..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full"
+            className="w-full sm:w-[300px]"
           />
-          <Button type="submit" size="icon">
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          <Button 
+            variant="outline" 
+            size="icon"
+            onClick={handleApplyFilters}
+          >
+            <Search className="h-4 w-4" />
           </Button>
         </div>
         
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:w-2/3 lg:w-1/2">
-          <Select value={fileTypeFilter} onValueChange={handleFileTypeChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="Filter by type..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">All file types</SelectItem>
-              <SelectItem value="text/plain">Text</SelectItem>
-              <SelectItem value="application/pdf">PDF</SelectItem>
-              <SelectItem value="image/">Images</SelectItem>
-            </SelectContent>
-          </Select>
-          
-          <Select 
-            value={`${sortConfig.field}:${sortConfig.direction}`}
-            onValueChange={handleSortChange}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Sort by..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="created_at:desc">Newest first</SelectItem>
-              <SelectItem value="created_at:asc">Oldest first</SelectItem>
-              <SelectItem value="title:asc">Title A-Z</SelectItem>
-              <SelectItem value="title:desc">Title Z-A</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </form>
-      
-      {/* Results count */}
-      <div className="text-sm text-muted-foreground">
-        {isLoading ? (
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Loading items...</span>
-          </div>
-        ) : (
-          <span>Found {totalCount} items</span>
-        )}
+        <Button 
+          variant="outline" 
+          size="sm"
+          className="ml-auto"
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          <SlidersHorizontal className="h-4 w-4 mr-2" />
+          Filters
+        </Button>
+        
+        <Select defaultValue="created_at-desc" onValueChange={handleSortChange}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at-desc">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Newest first
+              </div>
+            </SelectItem>
+            <SelectItem value="created_at-asc">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Oldest first
+              </div>
+            </SelectItem>
+            <SelectItem value="title-asc">
+              <div className="flex items-center gap-2">
+                <ArrowDownAZ className="h-4 w-4" />
+                Title (A-Z)
+              </div>
+            </SelectItem>
+            <SelectItem value="title-desc">
+              <div className="flex items-center gap-2">
+                <ArrowDownAZ className="h-4 w-4" />
+                Title (Z-A)
+              </div>
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       
-      {/* Knowledge items */}
-      {items.length === 0 && !isLoading ? (
-        <div className="flex flex-col items-center justify-center py-12">
-          <Info className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium">No knowledge items found</h3>
-          <p className="text-muted-foreground mt-1">
-            Try uploading new content or changing your search filters
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => (
-            <div 
-              key={item.id} 
-              className="flex flex-col border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+      {/* Additional filters */}
+      {showFilters && (
+        <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/20 rounded-md">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Domain:</span>
+            <Select 
+              defaultValue={filters.domainId || 'all'} 
+              onValueChange={handleDomainChange}
             >
-              <div className="p-4 flex-1">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    {getFileIcon(item.original_file_type)}
-                    <span className="text-xs text-muted-foreground">
-                      {item.original_file_type || 'Unknown type'}
-                    </span>
-                  </div>
-                  <Badge variant="outline">{formatFileSize(item.file_size)}</Badge>
-                </div>
-                
-                <h3 className="font-medium line-clamp-1 mb-1">{item.title}</h3>
-                
-                <p className="text-sm text-muted-foreground line-clamp-3 mb-2">
-                  {item.content}
-                </p>
-                
-                <div className="text-xs text-muted-foreground">
-                  Added {new Date(item.created_at).toLocaleDateString()}
-                </div>
-              </div>
-              
-              <div className="p-3 bg-muted/40 flex justify-between items-center">
-                <Button 
-                  size="sm" 
-                  variant="outline"
-                  onClick={() => handleViewItem(item)}
-                >
-                  View Details
-                </Button>
-                
-                <div className="flex items-center gap-2">
-                  {item.file_path && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      asChild
-                      className="h-8 w-8"
-                    >
-                      <a 
-                        href={getFileDownloadUrl(item.file_path)}
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        title="Download file"
-                      >
-                        <Download className="h-4 w-4" />
-                      </a>
-                    </Button>
-                  )}
-                  
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 text-destructive hover:text-destructive"
-                    onClick={() => openDeleteDialog(item)}
-                    disabled={deleteInProgress[item.id]}
-                  >
-                    {deleteInProgress[item.id] ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All domains" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All domains</SelectItem>
+                {domains.map((domain) => (
+                  <SelectItem key={domain.id} value={domain.id}>
+                    {domain.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
       
-      {/* Delete confirmation dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Knowledge Item</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete "{itemToDelete?.title}"? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setDeleteDialogOpen(false)}
-              disabled={deleteInProgress[itemToDelete?.id || '']}
-            >
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive" 
-              onClick={handleDeleteItem}
-              disabled={deleteInProgress[itemToDelete?.id || '']}
-            >
-              {deleteInProgress[itemToDelete?.id || ''] ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                'Delete'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Error message */}
+      {error && (
+        <div className="p-4 border border-red-200 bg-red-50 text-red-700 rounded-md">
+          {error}
+        </div>
+      )}
       
-      {/* Item details dialog */}
-      <Dialog open={!!itemOpened} onOpenChange={(open) => !open && setItemOpened(null)}>
-        {itemOpened && (
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>{itemOpened.title}</DialogTitle>
-            </DialogHeader>
+      {/* Empty state */}
+      {!isLoading && items.length === 0 && (
+        <div className="py-8 text-center">
+          <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+          <h3 className="text-lg font-medium">No knowledge items found</h3>
+          <p className="text-muted-foreground mt-1">
+            Try uploading some content or adjusting your filters
+          </p>
+          
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => fetchKnowledgeItems()}
+          >
+            Refresh
+          </Button>
+        </div>
+      )}
+      
+      {/* Items grid */}
+      <div className="grid grid-cols-1 gap-4">
+        {items.map((item) => (
+          <Card key={item.id} className="group">
+            <CardHeader className="pb-2">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  {getFileIcon(item)}
+                  <CardTitle className="text-base">{item.title}</CardTitle>
+                </div>
+                
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      disabled={deletingItemId === item.id}
+                    >
+                      {deletingItemId === item.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-red-500" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete knowledge item?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. This will permanently remove this item and any associated files from your knowledge base.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction 
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => handleDeleteItem(item.id)}
+                      >
+                        Delete
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+              
+              {/* Fix: Restructured this to avoid nesting div in p */}
+              <div className="flex flex-wrap items-center gap-1 text-xs mt-1">
+                {item.domain_id && (
+                  <Badge variant="secondary" className="mr-1">
+                    {getDomainName(item.domain_id)}
+                  </Badge>
+                )}
+                
+                {item.created_at && (
+                  <CardDescription className="inline-block">
+                    Added {format(new Date(item.created_at), 'MMM d, yyyy')}
+                  </CardDescription>
+                )}
+              </div>
+            </CardHeader>
             
-            <div className="space-y-4">
+            <CardContent>
+              <ScrollArea className="h-24 w-full rounded-md border p-2">
+                <div className="text-sm text-muted-foreground">
+                  {item.content}
+                </div>
+              </ScrollArea>
+            </CardContent>
+            
+            <CardFooter className="pt-2 flex justify-between text-xs text-muted-foreground">
               <div className="flex items-center gap-2">
-                {getFileIcon(itemOpened.original_file_type)}
-                <span className="text-sm">
-                  {itemOpened.original_file_type || 'Unknown type'} • {formatFileSize(itemOpened.file_size)}
-                </span>
+                {item.source_url && (
+                  <span>Source: {item.source_url}</span>
+                )}
+                
+                {item.original_file_type && (
+                  <Badge variant="outline" className="mr-1">
+                    {item.original_file_type}
+                  </Badge>
+                )}
+                
+                {item.file_size && (
+                  <span>{formatFileSize(item.file_size)}</span>
+                )}
               </div>
-              
-              {itemOpened.source_url && (
-                <div>
-                  <h4 className="text-sm font-medium mb-1">Source URL:</h4>
-                  <a 
-                    href={itemOpened.source_url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-sm text-blue-500 hover:underline"
-                  >
-                    {itemOpened.source_url}
-                  </a>
-                </div>
-              )}
-              
-              <div>
-                <h4 className="text-sm font-medium mb-1">Content:</h4>
-                <div className="max-h-96 overflow-y-auto border rounded p-3 bg-muted/40">
-                  <p className="text-sm whitespace-pre-wrap">{itemOpened.content}</p>
-                </div>
-              </div>
-              
-              {itemOpened.file_path && (
-                <Button 
-                  variant="outline"
-                  asChild
-                >
-                  <a 
-                    href={getFileDownloadUrl(itemOpened.file_path)}
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download File
-                  </a>
-                </Button>
-              )}
-            </div>
-            
-            <DialogFooter>
-              <Button 
-                variant="destructive"
-                onClick={() => {
-                  setItemOpened(null);
-                  openDeleteDialog(itemOpened);
-                }}
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
+      
+      {/* Pagination */}
+      {totalCount > itemsPerPage && (
+        <div className="flex justify-center my-6">
+          <div className="join">
+            {Array.from({ length: Math.ceil(totalCount / itemsPerPage) }).map((_, i) => (
+              <Button
+                key={i}
+                variant={i === currentPage ? "default" : "outline"}
+                size="sm"
+                className="mx-1"
+                onClick={() => handlePageChange(i)}
               >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete Item
+                {i + 1}
               </Button>
-              <DialogClose asChild>
-                <Button variant="outline">Close</Button>
-              </DialogClose>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

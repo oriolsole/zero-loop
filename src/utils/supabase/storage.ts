@@ -1,74 +1,83 @@
 
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/components/ui/sonner';
 
 /**
- * Get the public URL for a file in a storage bucket
+ * Ensures the required storage buckets exist
+ * Should be called during app initialization
  */
-export async function getPublicFileUrl(bucket: string, fileName: string): Promise<string> {
-  try {
-    const { data } = await supabase
-      .storage
-      .from(bucket)
-      .getPublicUrl(fileName);
-    
-    return data.publicUrl;
-  } catch (error) {
-    console.error('Error getting public URL:', error);
-    return '';
-  }
-}
-
-/**
- * Ensure storage buckets exist
- */
-export async function ensureStorageBucketsExist(): Promise<boolean> {
+export const ensureStorageBucketsExist = async (): Promise<boolean> => {
   try {
     // Check if knowledge_files bucket exists
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const knowledgeBucketExists = buckets?.some(bucket => bucket.name === 'knowledge_files');
+    const { data: buckets, error } = await supabase
+      .storage
+      .listBuckets();
     
-    // Create bucket if it doesn't exist
+    if (error) {
+      console.error('Error checking storage buckets:', error);
+      return false;
+    }
+    
+    const knowledgeBucketExists = buckets.some(bucket => bucket.name === 'knowledge_files');
+    
     if (!knowledgeBucketExists) {
-      const { error } = await supabase.storage.createBucket('knowledge_files', {
-        public: false,
-        fileSizeLimit: 10485760, // 10MB
-        allowedMimeTypes: [
-          'application/pdf',
-          'image/png',
-          'image/jpeg',
-          'image/gif',
-          'text/plain',
-          'text/markdown',
-          'text/csv'
-        ]
-      });
+      // Create the bucket
+      const { error: createError } = await supabase
+        .storage
+        .createBucket('knowledge_files', {
+          public: true,
+        });
       
-      if (error) {
-        console.error('Error creating storage bucket:', error);
+      if (createError) {
+        console.error('Error creating knowledge_files bucket:', createError);
         return false;
       }
+      
+      console.log('Created knowledge_files storage bucket');
     }
     
     return true;
   } catch (error) {
-    console.error('Error ensuring storage buckets exist:', error);
+    console.error('Exception checking/creating storage buckets:', error);
     return false;
   }
-}
+};
 
 /**
- * Check if the current user has access to a storage bucket
+ * Get a public URL for a file in storage
  */
-export async function checkStorageBucketAccess(bucket: string): Promise<boolean> {
+export const getPublicFileUrl = (bucketName: string, fileName: string): string => {
+  const { data } = supabase
+    .storage
+    .from(bucketName)
+    .getPublicUrl(fileName);
+  
+  return data.publicUrl;
+};
+
+/**
+ * Delete a file from storage
+ */
+export const deleteFile = async (bucketName: string, filePath: string): Promise<boolean> => {
   try {
-    // Try to list files to check access
-    const { data, error } = await supabase
-      .storage
-      .from(bucket)
-      .list('', { limit: 1 });
+    // Extract the filename from the path if needed
+    const fileName = filePath.includes('/') 
+      ? filePath.substring(filePath.lastIndexOf('/') + 1)
+      : filePath;
     
-    return !error && !!data;
-  } catch {
+    const { error } = await supabase
+      .storage
+      .from(bucketName)
+      .remove([fileName]);
+    
+    if (error) {
+      console.error(`Error deleting file ${fileName} from ${bucketName}:`, error);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Exception deleting file:', error);
     return false;
   }
-}
+};

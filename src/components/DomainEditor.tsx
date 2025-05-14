@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useForm } from "react-hook-form";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,8 +12,6 @@ import { Domain } from '../types/intelligence';
 import { Brain, Code, Calculator, Puzzle, FileText, Briefcase, Save, Copy, Trash, Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { v4 as uuidv4 } from 'uuid';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { domainEngines } from '../engines/domainEngines';
 
 interface DomainEditorProps {
   domain?: Domain;
@@ -35,7 +32,6 @@ interface DomainFormValues {
   taskLogic: string;
   colorTheme: string;
   icon: string;
-  engineType: string;
 }
 
 const DomainEditor: React.FC<DomainEditorProps> = ({ 
@@ -58,8 +54,7 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
     initialKnowledge: '',
     taskLogic: 'function generateTask() {\n  return "Create a task related to this domain.";\n}',
     colorTheme: 'purple',
-    icon: domain?.id || 'brain',
-    engineType: domain?.engineType || 'logic', // Default to logic engine
+    icon: domain?.id || 'brain'
   };
   
   const form = useForm<DomainFormValues>({
@@ -74,12 +69,6 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
     { value: 'fileText', label: 'Document', icon: <FileText className="w-4 h-4" /> },
     { value: 'briefcase', label: 'Business', icon: <Briefcase className="w-4 h-4" /> },
   ];
-
-  // Available domain engines
-  const availableEngines = Object.keys(domainEngines).map(key => ({
-    value: key,
-    label: key.charAt(0).toUpperCase() + key.slice(1).replace('-', ' ')
-  }));
   
   const handleSubmit = (values: DomainFormValues) => {
     try {
@@ -95,7 +84,6 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
         currentLoop: domain?.currentLoop || [],
         knowledgeNodes: domain?.knowledgeNodes || [],
         knowledgeEdges: domain?.knowledgeEdges || [],
-        engineType: values.engineType, // Include the engine type
         metrics: domain?.metrics || {
           successRate: 0,
           knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
@@ -230,38 +218,6 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
                           {...field} 
                         />
                       </FormControl>
-                    </FormItem>
-                  )}
-                />
-                
-                {/* Add Engine Type selection */}
-                <FormField
-                  control={form.control}
-                  name="engineType"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Engine Type</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select an engine type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {availableEngines.map((engine) => (
-                            <SelectItem key={engine.value} value={engine.value}>
-                              {engine.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        The system will automatically select the appropriate engine,
-                        but you can manually override it here if needed.
-                      </FormDescription>
                     </FormItem>
                   )}
                 />

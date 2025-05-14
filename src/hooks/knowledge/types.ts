@@ -1,5 +1,5 @@
 
-import { ExternalSource as BaseExternalSource } from '@/types/intelligence';
+import { ExternalSource } from '@/types/intelligence';
 
 export type FileUploadProgress = {
   status: 'pending' | 'processing' | 'embedding' | 'saving' | 'complete' | 'error';
@@ -25,4 +25,4 @@ export interface KnowledgeQueryOptions {
   matchThreshold?: number;
 }
 
-export type ExternalSource = BaseExternalSource;
+export type { ExternalSource };
