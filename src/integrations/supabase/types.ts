@@ -13,6 +13,7 @@ export type Database = {
         Row: {
           created_at: string | null
           description: string | null
+          engine_type: string | null
           id: string
           metadata: Json | null
           name: string
@@ -24,6 +25,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           description?: string | null
+          engine_type?: string | null
           id?: string
           metadata?: Json | null
           name: string
@@ -35,6 +37,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           description?: string | null
+          engine_type?: string | null
           id?: string
           metadata?: Json | null
           name?: string

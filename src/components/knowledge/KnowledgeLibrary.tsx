@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { useKnowledgeLibrary, KnowledgeItem, KnowledgeLibraryFilters } from '@/hooks/knowledge/useKnowledgeLibrary';
@@ -43,17 +42,6 @@ const KnowledgeLibrary: React.FC = () => {
     const newFilters: KnowledgeLibraryFilters = {
       ...filters,
       searchQuery: searchQuery || undefined,
-    };
-    
-    fetchKnowledgeItems(itemsPerPage, 0, newFilters);
-    setCurrentPage(0);
-  };
-  
-  // Handle domain filter change
-  const handleDomainChange = (domainId: string) => {
-    const newFilters: KnowledgeLibraryFilters = {
-      ...filters,
-      domainId: domainId === 'all' ? undefined : domainId,
     };
     
     fetchKnowledgeItems(itemsPerPage, 0, newFilters);
@@ -198,27 +186,11 @@ const KnowledgeLibrary: React.FC = () => {
         </Select>
       </div>
       
-      {/* Additional filters */}
+      {/* Additional filters - Removed domain filter but kept the filters container */}
       {showFilters && (
         <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/20 rounded-md">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">Domain:</span>
-            <Select 
-              defaultValue={filters.domainId || 'all'} 
-              onValueChange={handleDomainChange}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="All domains" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All domains</SelectItem>
-                {domains.map((domain) => (
-                  <SelectItem key={domain.id} value={domain.id}>
-                    {domain.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="text-sm text-muted-foreground">
+            Additional filters will appear here
           </div>
         </div>
       )}
@@ -295,7 +267,7 @@ const KnowledgeLibrary: React.FC = () => {
                 </AlertDialog>
               </div>
               
-              {/* Fix: Restructured this to avoid nesting div in p */}
+              {/* Keep domain badge display for information */}
               <div className="flex flex-wrap items-center gap-1 text-xs mt-1">
                 {item.domain_id && (
                   <Badge variant="secondary" className="mr-1">
