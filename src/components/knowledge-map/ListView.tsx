@@ -42,11 +42,13 @@ export const ListView: React.FC<ListViewProps> = ({
               <p className="text-sm text-muted-foreground">{node.description}</p>
               
               <div className="flex justify-between items-center mt-4">
-                {node.connections && node.connections.length > 0 && (
+                {node.connections && (
                   <div className="text-xs text-muted-foreground">
                     <span>Connected to: </span>
                     <Badge variant="outline" className="text-xs mr-1">
-                      {node.connections.length} node(s)
+                      {typeof node.connections === 'number' 
+                        ? node.connections 
+                        : node.connections.length} node(s)
                     </Badge>
                   </div>
                 )}

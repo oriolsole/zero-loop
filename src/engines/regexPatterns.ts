@@ -70,17 +70,17 @@ export const regexPatternsEngine: DomainEngine = {
     const matchingTask = regexTasks.find(t => t.task === task);
     
     if (!matchingTask) {
-      return "Cannot verify: unknown task.";
+      return { isCorrect: false, explanation: "Cannot verify: unknown task." };
     }
     
     try {
       // Simplified check - in a real system, we would test against examples
       if (solution.includes('/') && solution.length > 3) {
-        return matchingTask.verification;
+        return { isCorrect: true, explanation: matchingTask.verification };
       }
-      return "Incorrect. The solution doesn't appear to be a valid regex pattern.";
+      return { isCorrect: false, explanation: "Incorrect. The solution doesn't appear to be a valid regex pattern." };
     } catch (error) {
-      return `Error in regex validation: Invalid pattern`;
+      return { isCorrect: false, explanation: `Error in regex validation: Invalid pattern` };
     }
   },
   
@@ -95,9 +95,9 @@ export const regexPatternsEngine: DomainEngine = {
     return "Regular expressions are a powerful tool for pattern matching in strings. Key concepts include character classes, quantifiers, anchors, and grouping.";
   },
   
-  mutateTask: async (task: string, previousSteps: string[]) => {
+  mutateTask: async (task: string, solution: string, verification: string, reflection: string) => {
     // Use verification result to determine if we should increase difficulty
-    const success = previousSteps.some(step => step.includes('Correct'));
+    const success = verification.includes('Correct');
     
     if (success) {
       // Increase difficulty by applying a mutation pattern

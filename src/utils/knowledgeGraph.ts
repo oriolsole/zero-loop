@@ -1,4 +1,3 @@
-
 import { KnowledgeNode, KnowledgeEdge, QualityMetrics } from '../types/intelligence';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -178,6 +177,8 @@ export function createEdgesBetweenNodes(
       
       edges.push({
         id: uuidv4(), // Use proper UUID instead of string ID
+        sourceId: existingNode.id,
+        targetId: newNode.id,
         source: existingNode.id,
         target: newNode.id,
         type: edgeType,
@@ -197,6 +198,8 @@ export function createEdgesBetweenNodes(
       if (sourceNode) {
         edges.push({
           id: uuidv4(), // Use proper UUID instead of string ID
+          sourceId: sourceId,
+          targetId: newNode.id,
           source: sourceId,
           target: newNode.id,
           type: 'builds-on',

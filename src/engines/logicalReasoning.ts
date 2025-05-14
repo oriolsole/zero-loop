@@ -64,7 +64,7 @@ export const logicalReasoningEngine: DomainEngine = {
     const matchingTask = logicalTasks.find(t => t.task === task);
     
     if (!matchingTask) {
-      return "Cannot verify: unknown task.";
+      return { isCorrect: false, explanation: "Cannot verify: unknown task." };
     }
     
     // Check if solution is correct (simplified check)
@@ -72,7 +72,10 @@ export const logicalReasoningEngine: DomainEngine = {
     const solutionCorrect = solution.toLowerCase().includes(expectedSolution.toLowerCase()) || 
                            expectedSolution.toLowerCase().includes(solution.toLowerCase());
     
-    return solutionCorrect ? matchingTask.verification : "Incorrect. The solution does not match the expected reasoning pattern.";
+    return { 
+      isCorrect: solutionCorrect, 
+      explanation: solutionCorrect ? matchingTask.verification : "Incorrect. The solution does not match the expected reasoning pattern." 
+    };
   },
   
   reflect: async (task: string, solution: string, verification: string) => {
@@ -86,9 +89,9 @@ export const logicalReasoningEngine: DomainEngine = {
     return "This task tests logical reasoning abilities. The key is to identify the logical structure and apply the appropriate rules of inference while avoiding common fallacies.";
   },
   
-  mutateTask: async (task: string, previousSteps: string[]) => {
+  mutateTask: async (task: string, solution: string, verification: string, reflection: string) => {
     // Use verification result to determine if we should increase difficulty
-    const success = previousSteps.some(step => step.includes('Correct'));
+    const success = verification.includes('Correct');
     
     if (success) {
       // Increase difficulty by applying a mutation pattern

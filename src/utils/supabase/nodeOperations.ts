@@ -36,6 +36,11 @@ export async function saveKnowledgeNodeToSupabase(node: KnowledgeNode): Promise<
     const { data: { user } } = await supabase.auth.getUser();
     const userId = user?.id || null;
 
+    // Convert discoveredInLoop to a number for database compatibility
+    const discoveredInLoop = typeof node.discoveredInLoop === 'string' 
+      ? parseInt(node.discoveredInLoop, 10) 
+      : (node.discoveredInLoop || 0);
+
     const { error } = await supabase
       .from('knowledge_nodes')
       .insert({
@@ -44,7 +49,7 @@ export async function saveKnowledgeNodeToSupabase(node: KnowledgeNode): Promise<
         description: node.description,
         type: node.type,
         domain_id: node.domain || '',
-        discovered_in_loop: node.discoveredInLoop,
+        discovered_in_loop: discoveredInLoop,
         confidence: node.confidence || 0.7,
         created_at: new Date(node.timestamp || Date.now()).toISOString(),
         metadata: metadataJson,

@@ -112,19 +112,22 @@ export const webKnowledgeEngine: DomainEngine = {
 
       if (error) throw new Error(`Web knowledge error: ${error.message}`);
       
-      return data?.result || 'Failed to verify research';
+      return {
+        isCorrect: verificationResult.confidence > 0.5,
+        explanation: data?.result || 'Failed to verify research'
+      };
     } catch (error) {
       console.error('Error verifying research:', error);
       toast.error('Failed to verify research');
-      return 'Error verifying research. Please try again later.';
+      return {
+        isCorrect: false,
+        explanation: 'Error verifying research. Please try again later.'
+      };
     }
   },
 
   reflect: async (task: string, solution: string, verification: string) => {
     try {
-      // Get information about any sources used
-      let sources: ExternalSource[] = [];
-      
       // Call the AI for reflection
       const { data, error } = await supabase.functions.invoke('ai-reasoning', {
         body: { 
@@ -147,12 +150,15 @@ export const webKnowledgeEngine: DomainEngine = {
     }
   },
 
-  mutateTask: async (task: string, previousSteps: string[]) => {
+  mutateTask: async (task: string, solution: string, verification: string, reflection: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('ai-reasoning', {
         body: { 
           operation: 'mutateTask',
           task,
+          solution,
+          verification,
+          reflection,
           domain: 'Web Knowledge',
           domainContext: 'Create a new research question that builds on what we learned from the previous one.'
         }

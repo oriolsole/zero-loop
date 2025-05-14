@@ -73,6 +73,10 @@ export interface LearningStep {
     correct?: boolean;
     insightCount?: number;
     complexity?: number;
+    // Additional metrics used in templateData
+    approach?: string;
+    passedTests?: number;
+    newInsights?: number;
   };
 }
 
@@ -108,12 +112,12 @@ export interface KnowledgeNode {
   position?: { x: number; y: number };
   size?: { width: number; height: number } | number;
   discoveredInLoop?: string | number;
-  connections?: number;
+  connections?: KnowledgeEdge[] | number;
   domain?: string;
   timestamp?: number;
   sourceInsights?: string[];
   loopReference?: string;
-  qualityMetrics?: any;
+  qualityMetrics?: QualityMetrics;
 }
 
 export interface KnowledgeEdge {
@@ -150,10 +154,8 @@ export interface QualityMetrics {
 
 export interface DomainEngine {
   generateTask: (domainId?: string, previousSteps?: LearningStep[]) => Promise<string>;
-  generateSolution?: (task: string, domainId?: string) => Promise<string>;
-  solveTask?: (task: string, domainId?: string) => Promise<string>;
-  verifySolution?: (task: string, solution: string, domainId?: string) => Promise<{ isCorrect: boolean; explanation: string }>;
-  verifyResult?: (task: string, solution: string, domainId?: string) => Promise<{ isCorrect: boolean; explanation: string }>;
+  solveTask: (task: string, domainId?: string) => Promise<string>;
+  verifySolution: (task: string, solution: string, domainId?: string) => Promise<{ isCorrect: boolean; explanation: string; }>;
   reflect: (task: string, solution: string, verification: string, domainId?: string) => Promise<string>;
   mutateTask: (task: string, solution: string, verification: string, reflection: string, domainId?: string) => Promise<string>;
   enrichTask?: (task: string) => Promise<string>;

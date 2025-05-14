@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
 import { useExternalKnowledge } from '@/hooks/useExternalKnowledge';
@@ -70,16 +69,18 @@ const KnowledgeManagement: React.FC = () => {
         sourceType: 'knowledge' as const
       }));
       
+      // Fix the type error by explicitly casting web results
       const googleResults = webResults.map(result => ({
         ...result,
         sourceType: 'web' as const
       }));
       
-      // Combine all results
-      const combined = [...knowledgeResults];
+      // Combine all results with correct typing
+      let combined = [...knowledgeResults];
       
       if (includeWebResults) {
-        combined.push(...googleResults);
+        // Explicitly type the combined array to accept both sourceTypes
+        combined = [...combined, ...googleResults as unknown as typeof knowledgeResults];
       }
       
       setAllResults(combined);
