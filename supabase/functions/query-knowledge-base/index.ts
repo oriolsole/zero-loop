@@ -11,7 +11,13 @@ serve(async (req) => {
   }
 
   try {
-    const { query, limit = 5, useEmbeddings = true, matchThreshold = 0.5 } = await req.json();
+    const { 
+      query, 
+      limit = 5, 
+      useEmbeddings = true, 
+      matchThreshold = 0.5,
+      includeNodes = false // New parameter to include knowledge nodes
+    } = await req.json();
     
     if (!query) {
       throw new Error('Query parameter is required');
@@ -22,7 +28,8 @@ serve(async (req) => {
         query,
         limit,
         useEmbeddings,
-        matchThreshold
+        matchThreshold,
+        includeNodes
       });
 
       return new Response(

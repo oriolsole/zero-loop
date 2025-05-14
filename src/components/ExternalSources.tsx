@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ExternalLink, Globe, Link, Save, Database, File, FileText, Video, Image, Calendar, Building } from "lucide-react";
+import { ExternalLink, Globe, Link, Save, Database, File, FileText, Video, Image, Calendar, Building, LightbulbIcon, Brain, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -34,6 +34,11 @@ const ExternalSources: React.FC<ExternalSourcesProps> = ({
 
   // Function to get appropriate icon based on content type
   const getContentTypeIcon = (source: ExternalSource) => {
+    // Handle knowledge nodes first
+    if (source.sourceType === 'node') {
+      return <Brain className="h-3 w-3" />;
+    }
+    
     if (!source.contentType) return <Globe className="h-3 w-3" />;
     
     const type = source.contentType.toLowerCase();
@@ -48,6 +53,24 @@ const ExternalSources: React.FC<ExternalSourcesProps> = ({
       return <FileText className="h-3 w-3" />;
     } else {
       return <Globe className="h-3 w-3" />;
+    }
+  };
+  
+  // Function to get node type icon
+  const getNodeTypeIcon = (nodeType?: string) => {
+    if (!nodeType) return <Brain className="h-3 w-3" />;
+    
+    switch (nodeType) {
+      case 'rule':
+        return <LightbulbIcon className="h-3 w-3" />;
+      case 'concept':
+        return <Brain className="h-3 w-3" />;
+      case 'pattern':
+        return <FileText className="h-3 w-3" />;
+      case 'insight':
+        return <LightbulbIcon className="h-3 w-3" />;
+      default:
+        return <Brain className="h-3 w-3" />;
     }
   };
   
@@ -67,7 +90,7 @@ const ExternalSources: React.FC<ExternalSourcesProps> = ({
     <Card className="mt-4 overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Globe className="h-5 w-5" />
+          <Search className="h-5 w-5" />
           {title}
         </CardTitle>
         <CardDescription>{description}</CardDescription>
@@ -92,16 +115,25 @@ const ExternalSources: React.FC<ExternalSourcesProps> = ({
                       {/* Source type badge */}
                       {source.sourceType && (
                         <Badge 
-                          variant={source.sourceType === 'knowledge' ? 'secondary' : 'default'} 
+                          variant={
+                            source.sourceType === 'knowledge' ? 'secondary' : 
+                            source.sourceType === 'node' ? 'outline' : 'default'
+                          } 
                           className={cn(
                             "text-xs flex items-center gap-1",
-                            source.sourceType === 'web' && "bg-blue-500 hover:bg-blue-600"
+                            source.sourceType === 'web' && "bg-blue-500 hover:bg-blue-600",
+                            source.sourceType === 'node' && "bg-emerald-50 text-emerald-700 border-emerald-200"
                           )}
                         >
                           {source.sourceType === 'knowledge' ? (
                             <>
                               <Database className="h-3 w-3" />
                               Knowledge Base
+                            </>
+                          ) : source.sourceType === 'node' ? (
+                            <>
+                              <Brain className="h-3 w-3" />
+                              Knowledge Node
                             </>
                           ) : (
                             <>
@@ -113,10 +145,27 @@ const ExternalSources: React.FC<ExternalSourcesProps> = ({
                       )}
                       
                       {/* Content type badge */}
-                      {source.contentType && (
+                      {source.contentType && source.sourceType !== 'node' && (
                         <Badge variant="outline" className="text-xs flex items-center gap-1">
                           {getContentTypeIcon(source)}
                           {source.contentType.charAt(0).toUpperCase() + source.contentType.slice(1)}
+                        </Badge>
+                      )}
+                      
+                      {/* Node type badge */}
+                      {source.sourceType === 'node' && source.nodeType && (
+                        <Badge 
+                          variant="outline" 
+                          className={cn(
+                            "text-xs flex items-center gap-1",
+                            source.nodeType === 'rule' && "border-blue-200 bg-blue-50 text-blue-700",
+                            source.nodeType === 'concept' && "border-purple-200 bg-purple-50 text-purple-700",
+                            source.nodeType === 'pattern' && "border-amber-200 bg-amber-50 text-amber-700",
+                            source.nodeType === 'insight' && "border-green-200 bg-green-50 text-green-700"
+                          )}
+                        >
+                          {getNodeTypeIcon(source.nodeType)}
+                          {source.nodeType.charAt(0).toUpperCase() + source.nodeType.slice(1)}
                         </Badge>
                       )}
                       
@@ -128,9 +177,18 @@ const ExternalSources: React.FC<ExternalSourcesProps> = ({
                       )}
                       
                       {/* Source domain badge */}
-                      <Badge variant="outline" className="text-xs">
-                        {source.source}
-                      </Badge>
+                      {source.source && (
+                        <Badge variant="outline" className="text-xs">
+                          {source.source}
+                        </Badge>
+                      )}
+
+                      {/* Confidence badge for nodes */}
+                      {source.sourceType === 'node' && source.confidence !== undefined && (
+                        <Badge variant="outline" className="text-xs">
+                          Confidence: {Math.round(source.confidence * 100)}%
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   

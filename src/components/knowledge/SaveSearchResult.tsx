@@ -58,18 +58,29 @@ const SaveSearchResult: React.FC<SaveSearchResultProps> = ({
       const processedDomainId = domainId === "no-domain" ? undefined : 
                               (isValidUUID(domainId) ? domainId : undefined);
       
+      // Generate appropriate content based on the result type
+      let content = '';
+      
+      if (result.sourceType === 'node') {
+        content = `${result.title}\n\n${result.snippet}\n\nType: ${result.nodeType || 'Knowledge Node'}\nConfidence: ${result.confidence ? (result.confidence * 100).toFixed(0) + '%' : 'Unknown'}`;
+      } else {
+        content = result.snippet || '';
+      }
+      
       // Upload the knowledge
       const success = await uploadKnowledge({
         title: title,
-        content: result.snippet || '',
+        content: content,
         domainId: processedDomainId,
         sourceUrl: result.link,
         metadata: {
-          originalSource: result.source || 'web search',
+          originalSource: result.sourceType === 'node' ? 'knowledge_node' : (result.source || 'web search'),
           searchQuery: searchQuery,
           dateFound: new Date().toISOString(),
           userNotes: notes,
           originalContent: result.snippet || '',
+          nodeType: result.nodeType || null,
+          nodeConfidence: result.confidence || null
         }
       });
       
@@ -138,7 +149,9 @@ const SaveSearchResult: React.FC<SaveSearchResultProps> = ({
           <div className="space-y-2">
             <Label htmlFor="source">Source</Label>
             <div className="text-sm bg-muted p-2 rounded-md overflow-hidden text-ellipsis">
-              {result.source}
+              {result.sourceType === 'node' ? 'Knowledge Node' : result.source}
+              {result.nodeType && ` - ${result.nodeType.charAt(0).toUpperCase() + result.nodeType.slice(1)}`}
+              {result.confidence && ` (Confidence: ${Math.round(result.confidence * 100)}%)`}
             </div>
           </div>
           

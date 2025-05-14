@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
 import { useExternalKnowledge } from '@/hooks/useExternalKnowledge';
@@ -10,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Search, Info, Sliders, BookOpen, Library, Globe, Database } from "lucide-react";
+import { Loader2, Search, Info, Sliders, BookOpen, Library, Globe, Database, Brain } from "lucide-react";
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -47,11 +48,12 @@ const KnowledgeManagement: React.FC = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [useEmbeddings, setUseEmbeddings] = useState<boolean>(true);
   const [includeWebResults, setIncludeWebResults] = useState<boolean>(false);
+  const [includeNodeResults, setIncludeNodeResults] = useState<boolean>(true); // New state for including nodes
   const [matchThreshold, setMatchThreshold] = useState<number>(0.5);
   const [selectedResult, setSelectedResult] = useState<ExternalSource | null>(null);
   const [showSavePanel, setShowSavePanel] = useState(false);
   const [allResults, setAllResults] = useState<ExternalSource[]>([]);
-  const [activeResultsTab, setActiveResultsTab] = useState<'all' | 'knowledge' | 'web'>('all');
+  const [activeResultsTab, setActiveResultsTab] = useState<'all' | 'knowledge' | 'web' | 'node'>('all');
   const [isLoading, setIsLoading] = useState(false);
   
   // Ensure storage buckets exist on component mount
@@ -64,10 +66,13 @@ const KnowledgeManagement: React.FC = () => {
   useEffect(() => {
     if (hasSearched) {
       // Add source type to distinguish between knowledge base and web results
-      const knowledgeResults = recentResults.map(result => ({
+      const knowledgeResults = recentResults.filter(result => result.sourceType !== 'node').map(result => ({
         ...result,
-        sourceType: 'knowledge' as const
+        sourceType: result.sourceType || 'knowledge' as const
       }));
+
+      // Knowledge nodes
+      const nodeResults = recentResults.filter(result => result.sourceType === 'node');
       
       // Fix the type error by explicitly casting web results
       const googleResults = webResults.map(result => ({
@@ -76,7 +81,7 @@ const KnowledgeManagement: React.FC = () => {
       }));
       
       // Combine all results with correct typing
-      let combined = [...knowledgeResults];
+      let combined = [...knowledgeResults, ...nodeResults];
       
       if (includeWebResults) {
         // Explicitly type the combined array to accept both sourceTypes
@@ -104,7 +109,8 @@ const KnowledgeManagement: React.FC = () => {
         query: searchQuery,
         limit: 10,
         useEmbeddings,
-        matchThreshold
+        matchThreshold,
+        includeNodes: includeNodeResults // New parameter
       })
     );
     
@@ -139,6 +145,8 @@ const KnowledgeManagement: React.FC = () => {
       return allResults;
     } else if (activeResultsTab === 'knowledge') {
       return allResults.filter(result => result.sourceType === 'knowledge');
+    } else if (activeResultsTab === 'node') {
+      return allResults.filter(result => result.sourceType === 'node');
     } else {
       return allResults.filter(result => result.sourceType === 'web');
     }
@@ -238,7 +246,20 @@ const KnowledgeManagement: React.FC = () => {
                         )}
                         
                         <DropdownMenuSeparator />
-                        <DropdownMenuLabel>External Sources</DropdownMenuLabel>
+                        <DropdownMenuLabel>Sources</DropdownMenuLabel>
+                        
+                        {/* Knowledge nodes option */}
+                        <DropdownMenuCheckboxItem
+                          checked={includeNodeResults}
+                          onCheckedChange={setIncludeNodeResults}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Brain className="h-4 w-4" />
+                            <span>Include Knowledge Nodes</span>
+                          </div>
+                        </DropdownMenuCheckboxItem>
+                        
+                        {/* Web results option */}
                         <DropdownMenuCheckboxItem
                           checked={includeWebResults}
                           onCheckedChange={setIncludeWebResults}
@@ -305,6 +326,8 @@ const KnowledgeManagement: React.FC = () => {
                           <><Search className="h-3 w-3" /> All Sources</>
                         ) : activeResultsTab === 'knowledge' ? (
                           <><Database className="h-3 w-3" /> Knowledge Base</>
+                        ) : activeResultsTab === 'node' ? (
+                          <><Brain className="h-3 w-3" /> Knowledge Nodes</>
                         ) : (
                           <><Globe className="h-3 w-3" /> Web</>
                         )}
@@ -330,6 +353,17 @@ const KnowledgeManagement: React.FC = () => {
                         <Database className="h-3 w-3" />
                         Knowledge ({allResults.filter(r => r.sourceType === 'knowledge').length})
                       </Button>
+                      {includeNodeResults && (
+                        <Button
+                          variant={activeResultsTab === 'node' ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setActiveResultsTab('node')}
+                          className="flex items-center gap-1"
+                        >
+                          <Brain className="h-3 w-3" />
+                          Nodes ({allResults.filter(r => r.sourceType === 'node').length})
+                        </Button>
+                      )}
                       {includeWebResults && (
                         <Button
                           variant={activeResultsTab === 'web' ? "default" : "outline"}

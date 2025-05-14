@@ -7,6 +7,7 @@ interface QueryOptions {
   limit: number;
   useEmbeddings: boolean;
   matchThreshold?: number;
+  includeNodes?: boolean;  // New option to include knowledge nodes in search
 }
 
 interface KnowledgeChunk {
@@ -22,6 +23,19 @@ interface KnowledgeChunk {
   similarity?: number;
 }
 
+interface KnowledgeNode {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  domain_id: string;
+  created_at: string;
+  similarity?: number;
+  confidence: number;
+  metadata?: any;
+  discovered_in_loop?: number;
+}
+
 export interface FormattedResult {
   title: string;
   link: string;
@@ -33,6 +47,10 @@ export interface FormattedResult {
   filePath: string | null;
   fileUrl: string | null;
   metadata: any;
+  sourceType?: 'knowledge' | 'web' | 'node';  // Added node as a source type
+  contentType?: string;
+  nodeType?: string;  // Added for knowledge nodes
+  confidence?: number;  // Added for knowledge nodes
 }
 
 /**
@@ -70,6 +88,86 @@ function sanitizeTextQuery(query: string): string {
 }
 
 /**
+ * Search for knowledge nodes that match the query
+ */
+async function searchKnowledgeNodes(
+  supabase: any, 
+  query: string, 
+  limit: number
+): Promise<FormattedResult[]> {
+  try {
+    // Use text search across title and description fields
+    const sanitizedQuery = sanitizeTextQuery(query);
+    
+    if (!sanitizedQuery) {
+      console.log("Query was sanitized to empty string, skipping node search");
+      return [];
+    }
+    
+    // Search for nodes matching the query in title or description
+    const { data: nodes, error } = await supabase
+      .from('knowledge_nodes')
+      .select('*')
+      .or(`title.fts.${sanitizedQuery},description.fts.${sanitizedQuery}`)
+      .limit(limit);
+      
+    if (error) {
+      console.error("Error searching knowledge nodes:", error);
+      return [];
+    }
+    
+    if (!nodes || nodes.length === 0) {
+      return [];
+    }
+    
+    // Format results
+    return nodes.map((node: KnowledgeNode) => {
+      let nodeIconType = '';
+      switch(node.type) {
+        case 'rule': 
+          nodeIconType = 'Rule';
+          break;
+        case 'concept':
+          nodeIconType = 'Concept';
+          break;
+        case 'pattern':
+          nodeIconType = 'Pattern';
+          break;
+        case 'insight':
+          nodeIconType = 'Insight';
+          break;
+        default:
+          nodeIconType = 'Knowledge Node';
+      }
+      
+      return {
+        title: node.title,
+        link: '',  // Nodes don't have external links
+        snippet: node.description,
+        source: `Knowledge Node: ${nodeIconType}`,
+        date: new Date(node.created_at).toISOString().split('T')[0],
+        relevanceScore: node.similarity || node.confidence || 0.8,
+        fileType: null,
+        filePath: null,
+        fileUrl: null,
+        sourceType: 'node',
+        contentType: 'knowledge-node',
+        nodeType: node.type,
+        confidence: node.confidence,
+        metadata: {
+          ...node.metadata,
+          domain_id: node.domain_id,
+          discovered_in_loop: node.discovered_in_loop
+        }
+      };
+    });
+  } catch (error) {
+    console.error("Error processing knowledge node search:", error);
+    return [];
+  }
+}
+
+/**
  * Process a knowledge base query using vector or text search
  */
 export async function processQuery(options: QueryOptions): Promise<FormattedResult[]> {
@@ -77,150 +175,174 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
     query, 
     limit = 5, 
     useEmbeddings = true,
-    matchThreshold = 0.5 // Lower default threshold for better recall
+    matchThreshold = 0.5, // Lower default threshold for better recall
+    includeNodes = false  // Default to not including nodes
   } = options;
   
   const supabase = createSupabaseClient();
   
-  let results: KnowledgeChunk[];
+  let chunkResults: FormattedResult[] = [];
+  let nodeResults: FormattedResult[] = [];
   
-  if (useEmbeddings) {
-    try {
-      // Get embeddings for the query
-      const embedding = await generateQueryEmbedding(query);
-  
-      // Query using vector similarity search
-      const { data: vectorResults, error: vectorError } = await supabase.rpc(
-        'match_knowledge_chunks',
-        {
-          query_embedding: embedding,
-          match_threshold: matchThreshold,
-          match_count: limit
+  // Get results from knowledge chunks
+  try {
+    let chunksData: KnowledgeChunk[] = [];
+    
+    if (useEmbeddings) {
+      try {
+        // Get embeddings for the query
+        const embedding = await generateQueryEmbedding(query);
+    
+        // Query using vector similarity search
+        const { data: vectorResults, error: vectorError } = await supabase.rpc(
+          'match_knowledge_chunks',
+          {
+            query_embedding: embedding,
+            match_threshold: matchThreshold,
+            match_count: limit
+          }
+        );
+    
+        if (vectorError) {
+          throw vectorError;
         }
-      );
-  
-      if (vectorError) {
-        throw vectorError;
-      }
-  
-      results = vectorResults || [];
-      
-      // If no results with vector search, fall back to text search
-      if (results.length === 0) {
-        console.log(`No vector results found, falling back to text search for: ${query}`);
+    
+        chunksData = vectorResults || [];
         
+        // If no results with vector search, fall back to text search
+        if (chunksData.length === 0) {
+          console.log(`No vector results found, falling back to text search for: ${query}`);
+          
+          // Sanitize the query for text search
+          const sanitizedQuery = sanitizeTextQuery(query);
+          
+          if (!sanitizedQuery) {
+            console.log("Query was sanitized to empty string, skipping text search");
+          } else {
+            try {
+              const { data: textResults, error: textError } = await supabase
+                .from('knowledge_chunks')
+                .select('*')
+                .textSearch('content', sanitizedQuery)
+                .limit(limit);
+          
+              if (textError) {
+                console.error("Text search error:", textError);
+                throw textError;
+              }
+          
+              chunksData = textResults || [];
+            } catch (textSearchError) {
+              console.error("Failed to perform text search:", textSearchError);
+              // Return empty results rather than failing completely
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error in vector search:", error);
+        
+        // Fallback to text search on error
         // Sanitize the query for text search
         const sanitizedQuery = sanitizeTextQuery(query);
         
         if (!sanitizedQuery) {
           console.log("Query was sanitized to empty string, skipping text search");
-          return [];
+        } else {
+          try {
+            const { data: textResults, error: textError } = await supabase
+              .from('knowledge_chunks')
+              .select('*')
+              .textSearch('content', sanitizedQuery)
+              .limit(limit);
+
+            if (textError) {
+              console.error("Text search error:", textError);
+              throw textError;
+            }
+
+            chunksData = textResults || [];
+          } catch (textSearchError) {
+            console.error("Failed to perform text search as fallback:", textSearchError);
+            // Return empty results rather than failing completely
+          }
         }
-        
+      }
+    } else {
+      // Direct text search if embeddings aren't used
+      // Sanitize the query for text search
+      const sanitizedQuery = sanitizeTextQuery(query);
+      
+      if (!sanitizedQuery) {
+        console.log("Query was sanitized to empty string, skipping text search");
+      } else {
         try {
           const { data: textResults, error: textError } = await supabase
             .from('knowledge_chunks')
             .select('*')
             .textSearch('content', sanitizedQuery)
             .limit(limit);
-      
+
           if (textError) {
             console.error("Text search error:", textError);
             throw textError;
           }
-      
-          results = textResults || [];
+
+          chunksData = textResults || [];
         } catch (textSearchError) {
           console.error("Failed to perform text search:", textSearchError);
           // Return empty results rather than failing completely
-          results = [];
         }
       }
-    } catch (error) {
-      console.error("Error in vector search:", error);
-      
-      // Fallback to text search on error
-      // Sanitize the query for text search
-      const sanitizedQuery = sanitizeTextQuery(query);
-      
-      if (!sanitizedQuery) {
-        console.log("Query was sanitized to empty string, skipping text search");
-        return [];
+    }
+
+    // Format results for consistency
+    chunkResults = chunksData.map(chunk => {
+      // Get file URL if it exists
+      let fileUrl = '';
+      if (chunk.file_path) {
+        const { data } = supabase.storage
+          .from('knowledge_files')
+          .getPublicUrl(chunk.file_path);
+        fileUrl = data.publicUrl;
       }
       
-      try {
-        const { data: textResults, error: textError } = await supabase
-          .from('knowledge_chunks')
-          .select('*')
-          .textSearch('content', sanitizedQuery)
-          .limit(limit);
+      return {
+        title: chunk.title || 'Knowledge Document',
+        link: chunk.source_url || fileUrl || '',
+        snippet: chunk.content,
+        source: chunk.original_file_type 
+          ? `File: ${chunk.original_file_type.toUpperCase()}`
+          : 'Internal Knowledge Base',
+        date: new Date(chunk.created_at).toISOString().split('T')[0],
+        relevanceScore: chunk.similarity || 1.0,
+        fileType: chunk.original_file_type || null,
+        filePath: chunk.file_path || null,
+        fileUrl: fileUrl || null,
+        sourceType: 'knowledge',
+        contentType: chunk.original_file_type || 'document',
+        metadata: chunk.metadata || {}
+      };
+    });
 
-        if (textError) {
-          console.error("Text search error:", textError);
-          throw textError;
-        }
-
-        results = textResults || [];
-      } catch (textSearchError) {
-        console.error("Failed to perform text search as fallback:", textSearchError);
-        // Return empty results rather than failing completely
-        results = [];
-      }
-    }
-  } else {
-    // Direct text search if embeddings aren't used
-    // Sanitize the query for text search
-    const sanitizedQuery = sanitizeTextQuery(query);
-    
-    if (!sanitizedQuery) {
-      console.log("Query was sanitized to empty string, skipping text search");
-      return [];
-    }
-    
+  } catch (error) {
+    console.error("Error processing knowledge chunks search:", error);
+    // Continue execution to include node results if needed
+  }
+  
+  // Optionally get results from knowledge nodes
+  if (includeNodes) {
     try {
-      const { data: textResults, error: textError } = await supabase
-        .from('knowledge_chunks')
-        .select('*')
-        .textSearch('content', sanitizedQuery)
-        .limit(limit);
-
-      if (textError) {
-        console.error("Text search error:", textError);
-        throw textError;
-      }
-
-      results = textResults || [];
-    } catch (textSearchError) {
-      console.error("Failed to perform text search:", textSearchError);
-      // Return empty results rather than failing completely
-      results = [];
+      nodeResults = await searchKnowledgeNodes(supabase, query, limit);
+    } catch (error) {
+      console.error("Error processing knowledge nodes search:", error);
+      // Continue execution with just chunk results
     }
   }
+  
+  // Combine results and sort by relevance
+  const combinedResults = [...chunkResults, ...nodeResults]
+    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+    .slice(0, limit * 2); // Allow for twice the limit since we're combining two sources
 
-  // Format results for consistency
-  return results.map(chunk => {
-    // Get file URL if it exists
-    let fileUrl = '';
-    if (chunk.file_path) {
-      const { data } = supabase.storage
-        .from('knowledge_files')
-        .getPublicUrl(chunk.file_path);
-      fileUrl = data.publicUrl;
-    }
-    
-    return {
-      title: chunk.title || 'Knowledge Document',
-      link: chunk.source_url || fileUrl || '',
-      snippet: chunk.content,
-      source: chunk.original_file_type 
-        ? `File: ${chunk.original_file_type.toUpperCase()}`
-        : 'Internal Knowledge Base',
-      date: new Date(chunk.created_at).toISOString().split('T')[0],
-      relevanceScore: chunk.similarity || 1.0,
-      fileType: chunk.original_file_type || null,
-      filePath: chunk.file_path || null,
-      fileUrl: fileUrl || null,
-      metadata: chunk.metadata || {}
-    };
-  });
+  return combinedResults;
 }

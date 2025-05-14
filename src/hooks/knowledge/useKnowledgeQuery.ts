@@ -26,7 +26,8 @@ export function useKnowledgeQuery() {
           query: options.query,
           limit: options.limit || 5,
           useEmbeddings: options.useEmbeddings !== false,
-          matchThreshold: options.matchThreshold || 0.5
+          matchThreshold: options.matchThreshold || 0.5,
+          includeNodes: options.includeNodes || false // New parameter
         }
       });
       
