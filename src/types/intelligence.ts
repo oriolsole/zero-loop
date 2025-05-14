@@ -1,4 +1,3 @@
-
 export interface Domain {
   id: string;
   name: string;
@@ -14,6 +13,7 @@ export interface Domain {
     taskDifficulty: Array<{name: string; difficulty: number; success: number}>;
     skills: Array<{name: string; level: number}>;
   };
+  engineType?: string; // New field to store the engine type
 }
 
 export interface LearningStep {

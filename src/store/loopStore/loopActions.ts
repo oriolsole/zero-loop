@@ -4,6 +4,7 @@ import { LoopState } from '../useLoopStore';
 import { domainEngines } from '../../engines/domainEngines';
 import { extractInsightsFromReflection } from '../../utils/knowledgeGraph';
 import { toast } from '@/components/ui/sonner';
+import { getDomainEngine } from '../../utils/engineSelection';
 
 type SetFunction = (
   partial: LoopState | Partial<LoopState> | ((state: LoopState) => LoopState | Partial<LoopState>),
@@ -43,7 +44,11 @@ export const createLoopActions = (
     
     // Generate the task using domain engine
     try {
-      const engine = domainEngines[activeDomainId] || domainEngines[Object.keys(domainEngines)[0]];
+      // Use getDomainEngine utility to get the appropriate engine
+      const engine = getDomainEngine(currentDomain);
+      
+      console.log(`Using engine type: ${currentDomain.engineType || 'auto-determined'} for domain: ${currentDomain.name}`);
+      
       const taskContent = await engine.generateTask();
       
       // Handle both string and complex object responses
@@ -175,7 +180,8 @@ export const createLoopActions = (
     
     // Execute the step using domain engine
     try {
-      const engine = domainEngines[activeDomainId];
+      // Use getDomainEngine utility to get the appropriate engine
+      const engine = getDomainEngine(domain);
       
       let result;
       let metrics = {};

@@ -1,16 +1,13 @@
-
-import { toast } from '@/components/ui/sonner';
 import { Domain } from '../../types/intelligence';
-import { v4 as uuidv4 } from 'uuid';
 import { LoopState } from '../useLoopStore';
+import { EngineDetectionModel } from '../../models/engineDetection';
+import { v4 as uuidv4 } from 'uuid';
+import { toast } from '@/components/ui/sonner';
 import { 
   saveDomainToSupabase, 
-  updateDomainInSupabase, 
-  deleteDomainFromSupabase 
-} from '../../utils/supabase';
-import { isSupabaseConfigured } from '../../utils/supabase-client';
-import { isValidUUID } from '../../utils/supabase/helpers';
-import { ensureValidDomainId } from '../../utils/domainUtils';
+  deleteDomainFromSupabase, 
+  updateDomainInSupabase 
+} from '../../utils/supabase/domainOperations';
 
 type SetFunction = (
   partial: LoopState | Partial<LoopState> | ((state: LoopState) => LoopState | Partial<LoopState>),
@@ -24,107 +21,80 @@ export const createDomainActions = (
   get: GetFunction
 ) => ({
   addNewDomain: (domain: Domain) => {
-    // Ensure the domain has a valid ID (never empty)
-    const domainWithValidId = ensureValidDomainId(domain);
+    // Clone the current domains
+    const currentDomains = [...get().domains];
     
-    // ENHANCED: Ensure the domain ID is always a valid UUID
-    // Replace any non-UUID formatted ID with a new UUID if needed
-    const domainId = isValidUUID(domainWithValidId.id) ? domainWithValidId.id : uuidv4();
-    
-    const completeDomain: Domain = {
-      ...domainWithValidId,
-      id: domainId,
-      totalLoops: domainWithValidId.totalLoops || 0,
-      currentLoop: domainWithValidId.currentLoop || [],
-      knowledgeNodes: domainWithValidId.knowledgeNodes || [],
-      knowledgeEdges: domainWithValidId.knowledgeEdges || [],
-      metrics: domainWithValidId.metrics || {
-        successRate: 0,
-        knowledgeGrowth: [{ name: 'Start', nodes: 0 }],
-        taskDifficulty: [{ name: 'Start', difficulty: 1, success: 1 }],
-        skills: [{ name: 'Learning', level: 1 }]
-      }
-    };
+    // Ensure the domain has an engine type assigned
+    const domainWithEngine = EngineDetectionModel.assignEngineType(domain);
     
     // Add the new domain
-    set(state => ({
-      domains: [...state.domains, completeDomain],
-      activeDomainId: domainId // Switch to the new domain
-    }));
+    currentDomains.push(domainWithEngine);
     
-    // If remote logging is enabled, save to Supabase
-    if (get().useRemoteLogging && isSupabaseConfigured()) {
-      saveDomainToSupabase(completeDomain)
+    // Update state with new domains and set the added domain as active
+    set({
+      domains: currentDomains,
+      activeDomainId: domain.id,
+      isInitialized: true
+    });
+    
+    // Sync to Supabase if remote logging is enabled
+    if (get().useRemoteLogging) {
+      saveDomainToSupabase(domainWithEngine)
         .then(success => {
-          if (success) {
-            console.log('Domain saved to Supabase:', domainId);
+          if (!success) {
+            console.error('Failed to save domain to Supabase');
           }
         })
-        .catch(error => {
-          console.error('Error saving domain to Supabase:', error);
+        .catch(err => {
+          console.error('Error saving domain to Supabase:', err);
         });
     }
     
-    toast.success('New domain created!');
+    console.log(`New domain added: ${domain.name} with ID: ${domain.id} and engine type: ${domainWithEngine.engineType}`);
+    toast.success(`Domain "${domain.name}" created`);
   },
   
-  updateDomain: (updatedDomain: Domain) => {
-    // Ensure the domain has a valid ID (never empty)
-    const domainWithValidId = ensureValidDomainId(updatedDomain);
+  updateDomain: (domain: Domain) => {
+    const { domains, activeDomainId, useRemoteLogging } = get();
     
-    // Ensure we don't try to update domains with invalid IDs
-    const safeId = domainWithValidId.id;
+    // Find the domain to update
+    const index = domains.findIndex(d => d.id === domain.id);
     
-    if (!isValidUUID(safeId)) {
-      console.warn(`Attempting to update domain with non-UUID ID: ${safeId}`);
-      // Generate a proper UUID for this domain
-      const newId = uuidv4();
-      console.log(`Generated new UUID for domain: ${newId}`);
-      
-      // Create a copy with the new UUID
-      const domainWithProperUUID = {
-        ...domainWithValidId,
-        id: newId
-      };
-      
-      // Add as new domain instead of updating
-      get().addNewDomain(domainWithProperUUID);
-      toast.success('Domain created with new ID!');
+    if (index === -1) {
+      console.error(`Domain with ID: ${domain.id} not found`);
+      toast.error('Failed to update domain: Domain not found');
       return;
     }
     
-    set(state => {
-      const domainIndex = state.domains.findIndex(d => d.id === safeId);
-      if (domainIndex === -1) return state;
-      
-      const newDomains = [...state.domains];
-      
-      // Keep the existing complex data while updating the basic info
-      const existingDomain = state.domains[domainIndex];
-      newDomains[domainIndex] = {
-        ...existingDomain,
-        name: domainWithValidId.name,
-        shortDesc: domainWithValidId.shortDesc,
-        description: domainWithValidId.description,
-      };
-
-      // If remote logging is enabled, update in Supabase
-      if (state.useRemoteLogging && isSupabaseConfigured()) {
-        updateDomainInSupabase(newDomains[domainIndex])
-          .then(success => {
-            if (success) {
-              console.log('Domain updated in Supabase:', safeId);
-            }
-          })
-          .catch(error => {
-            console.error('Error updating domain in Supabase:', error);
-          });
-      }
-      
-      return { domains: newDomains };
+    // Ensure the domain has an engine type assigned if it doesn't have one
+    const domainWithEngine = EngineDetectionModel.assignEngineType(domain);
+    
+    // Create a new domains array with the updated domain
+    const updatedDomains = [...domains];
+    updatedDomains[index] = domainWithEngine;
+    
+    // Update state with modified domains
+    set({
+      domains: updatedDomains,
+      // If the active domain was updated, update it
+      activeDomainId: activeDomainId === domain.id ? domain.id : activeDomainId
     });
     
-    toast.success('Domain updated!');
+    // Sync to Supabase if remote logging is enabled
+    if (useRemoteLogging) {
+      updateDomainInSupabase(domainWithEngine)
+        .then(success => {
+          if (!success) {
+            console.error('Failed to update domain in Supabase');
+          }
+        })
+        .catch(err => {
+          console.error('Error updating domain in Supabase:', err);
+        });
+    }
+    
+    console.log(`Domain updated: ${domain.name} with ID: ${domain.id} and engine type: ${domainWithEngine.engineType}`);
+    toast.success(`Domain "${domain.name}" updated`);
   },
   
   deleteDomain: (domainId: string) => {

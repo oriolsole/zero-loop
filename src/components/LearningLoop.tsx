@@ -11,6 +11,8 @@ import ExternalSources from './ExternalSources';
 import { domainEngines } from '../engines/domainEngines';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { getDomainEngine } from '../utils/engineSelection';
 
 const LearningLoop: React.FC = () => {
   const { 
@@ -27,12 +29,16 @@ const LearningLoop: React.FC = () => {
   const currentLoop = activeDomain?.currentLoop || [];
   const currentStep = currentStepIndex !== null ? currentLoop[currentStepIndex] : null;
   
+  // Determine the engine type for this domain
+  const engineType = activeDomain?.engineType || 
+    (activeDomain ? Object.keys(domainEngines).find(key => key === activeDomainId) : 'logic');
+  
   // Check if this domain uses web knowledge capabilities
-  const isDomainWebKnowledge = activeDomainId === 'web-knowledge';
-  const hasWebKnowledgeEngine = domainEngines[activeDomainId]?.enrichTask !== undefined;
+  const isDomainWebKnowledge = engineType === 'web-knowledge' || 
+    domainEngines[engineType || '']?.enrichTask !== undefined;
   
   // Check if this domain uses AI reasoning
-  const isAIReasoning = activeDomainId === 'ai-reasoning';
+  const isAIReasoning = engineType === 'ai-reasoning';
   
   // Determine sources to show from the current step's metadata
   const currentStepSources = currentStep?.metadata?.sources || [];
@@ -56,11 +62,17 @@ const LearningLoop: React.FC = () => {
     return <div>No active domain selected</div>;
   }
 
+  // Get a display name for the engine type
+  const getEngineDisplayName = (type?: string) => {
+    if (!type) return 'Auto-selected';
+    return type.charAt(0).toUpperCase() + type.slice(1).replace('-', ' ');
+  };
+
   if (!isRunningLoop || currentLoop.length === 0) {
     return (
       <EmptyLoopState 
         handleStartLoop={handleStartLoop} 
-        isDomainWebKnowledge={isDomainWebKnowledge || hasWebKnowledgeEngine}
+        isDomainWebKnowledge={isDomainWebKnowledge}
         isAIReasoning={isAIReasoning}
       />
     );
@@ -69,23 +81,25 @@ const LearningLoop: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">
-          {isAIReasoning ? (
-            <span className="flex items-center">
-              AI-Powered Learning Loop
-              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                AI
+        <div className="flex items-center gap-2">
+          <h2 className="text-2xl font-bold">
+            {isAIReasoning ? (
+              <span className="flex items-center">
+                AI-Powered Learning Loop
               </span>
-            </span>
-          ) : (
-            "Learning Loop"
-          )}
-        </h2>
+            ) : (
+              "Learning Loop"
+            )}
+          </h2>
+          <Badge variant="outline" className="ml-2">
+            Engine: {getEngineDisplayName(engineType)}
+          </Badge>
+        </div>
         
         <SourcesToggle 
           showingSources={showingSources}
           toggleSources={handleToggleSources}
-          isDomainWebKnowledge={isDomainWebKnowledge || hasWebKnowledgeEngine}
+          isDomainWebKnowledge={isDomainWebKnowledge}
           sourceCount={currentStepSources.length}
         />
       </div>
