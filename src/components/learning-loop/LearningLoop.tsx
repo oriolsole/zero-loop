@@ -346,46 +346,7 @@ const LearningLoop: React.FC = () => {
         </Card>
       )}
 
-      {/* Status Debug Info Card */}
-      <Card className="p-4 bg-yellow-50 border-yellow-100">
-        <h3 className="font-medium mb-2">Loop Status</h3>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex gap-1 text-sm">
-            <span className="font-medium">First Step Status:</span> 
-            <span className={firstStepIsSuccess ? "text-green-600" : "text-red-500"}>
-              {currentLoop[0]?.status || "unknown"}
-            </span>
-          </div>
-          <div className="flex gap-1 text-sm">
-            <span className="font-medium">Can Advance:</span> 
-            <span className={canAdvance ? "text-green-600" : "text-red-500"}>
-              {canAdvance ? "Yes" : "No"}
-            </span>
-          </div>
-          <div className="flex gap-1 text-sm">
-            <span className="font-medium">Current Step:</span> 
-            <span>{currentStepType}</span>
-          </div>
-          <div className="flex gap-1 text-sm">
-            <span className="font-medium">Next Step:</span> 
-            <span>{nextStepType}</span>
-          </div>
-          <div className="flex gap-1 text-sm">
-            <span className="font-medium">Continuous Mode:</span> 
-            <span>{isContinuousMode ? "Enabled" : "Disabled"}</span>
-          </div>
-          <div className="flex gap-1 text-sm">
-            <span className="font-medium">Steps Complete:</span> 
-            <span>{completedSteps.length}/{currentLoop.length}</span>
-          </div>
-          <div className="flex gap-1 text-sm">
-            <span className="font-medium">Needs All Steps:</span> 
-            <span className={hasCompletedAllStepTypes ? "text-green-600" : "text-red-500"}>
-              {hasCompletedAllStepTypes ? "Yes" : "No"}
-            </span>
-          </div>
-        </div>
-      </Card>
+      {/* Debug Status Card has been removed */}
       
       <Separator />
       
