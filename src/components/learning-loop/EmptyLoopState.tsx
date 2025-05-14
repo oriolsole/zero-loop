@@ -15,6 +15,8 @@ const EmptyLoopState: React.FC<EmptyLoopStateProps> = ({
   isDomainWebKnowledge = false,
   isAIReasoning = false
 }) => {
+  console.log('Rendering EmptyLoopState with props:', { isDomainWebKnowledge, isAIReasoning });
+  
   return (
     <Card className="border-dashed border-2 p-8 flex flex-col items-center justify-center">
       <div className="text-muted-foreground text-center">
