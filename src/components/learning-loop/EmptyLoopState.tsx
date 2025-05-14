@@ -1,46 +1,71 @@
 
 import React from 'react';
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Brain, Sparkles } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Play, Globe, Brain } from 'lucide-react';
 
 interface EmptyLoopStateProps {
-  handleStartLoop: () => void;
+  handleStartLoop: () => Promise<void>;
   isDomainWebKnowledge?: boolean;
-  isAIReasoning?: boolean; // New prop to indicate if AI reasoning is being used
+  isAIReasoning?: boolean;
 }
 
-const EmptyLoopState: React.FC<EmptyLoopStateProps> = ({ 
-  handleStartLoop, 
+const EmptyLoopState: React.FC<EmptyLoopStateProps> = ({
+  handleStartLoop,
   isDomainWebKnowledge = false,
   isAIReasoning = false
 }) => {
   return (
-    <Card className="border-dashed border-2 p-8 flex flex-col items-center justify-center">
-      <div className="text-muted-foreground text-center">
-        {isAIReasoning ? (
-          <Sparkles className="w-10 h-10 mx-auto mb-4 opacity-50" />
-        ) : isDomainWebKnowledge ? (
-          <svg className="w-10 h-10 mx-auto mb-4 opacity-50" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-          </svg>
-        ) : (
-          <Brain className="w-10 h-10 mx-auto mb-4 opacity-50" />
-        )}
-        <h3 className="text-lg font-medium mb-2">No Active Learning Loop</h3>
-        <p className="mb-4">
-          {isAIReasoning ? (
-            "Start a new AI-powered learning loop to begin generating insights with advanced reasoning."
-          ) : isDomainWebKnowledge ? (
-            "Start a new learning loop to begin gathering knowledge from external sources."
+    <Card className="border-2 border-dashed p-8 text-center">
+      <CardHeader>
+        <CardTitle className="text-xl flex justify-center items-center gap-2">
+          {isDomainWebKnowledge ? (
+            <>
+              <Globe className="h-5 w-5 text-green-500" />
+              Start Web Knowledge Learning
+            </>
+          ) : isAIReasoning ? (
+            <>
+              <Brain className="h-5 w-5 text-purple-500" />
+              Start AI-Powered Learning
+            </>
           ) : (
-            "Start a new learning loop to begin generating insights."
+            <>
+              <Brain className="h-5 w-5" />
+              Start Learning Loop
+            </>
           )}
-        </p>
-        <Button onClick={handleStartLoop}>
-          {isAIReasoning ? "Start AI Learning Loop" : "Start Learning Loop"}
+        </CardTitle>
+        <CardDescription className="text-base mt-2">
+          {isDomainWebKnowledge 
+            ? "Generate tasks enhanced with web knowledge to improve learning outcomes."
+            : isAIReasoning
+              ? "Let the AI create and solve tasks autonomously for enhanced learning."
+              : "Begin a new learning cycle to generate insights and build knowledge."
+          }
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="py-4">
+        <div className="text-muted-foreground text-sm max-w-md mx-auto">
+          {isDomainWebKnowledge ? (
+            <p>This domain will use web search to enrich the learning process with external knowledge.</p>
+          ) : isAIReasoning ? (
+            <p>AI reasoning provides a more autonomous learning experience with minimal user intervention.</p>
+          ) : (
+            <p>Start a new learning loop to observe how the system solves problems and generates insights.</p>
+          )}
+        </div>
+      </CardContent>
+      <CardFooter className="flex justify-center pt-4">
+        <Button 
+          onClick={handleStartLoop} 
+          size="lg"
+          className="gap-2"
+        >
+          <Play className="h-4 w-4" />
+          Start Learning
         </Button>
-      </div>
+      </CardFooter>
     </Card>
   );
 };

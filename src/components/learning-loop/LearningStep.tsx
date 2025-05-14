@@ -22,10 +22,10 @@ const LearningStep: React.FC<LearningStepProps> = ({ step, index }) => {
   
   // Determine source type (web, knowledge base, or both)
   const hasWebSources = hasSources && step.metadata?.sources?.some(
-    source => source.source.includes('Google')
+    source => source.sourceType === 'web'
   );
   const hasKbSources = hasSources && step.metadata?.sources?.some(
-    source => source.source.includes('Knowledge Base') || source.source === 'Internal Knowledge Base'
+    source => source.sourceType === 'knowledge'
   );
   
   // Status indicator with appropriate icon and color

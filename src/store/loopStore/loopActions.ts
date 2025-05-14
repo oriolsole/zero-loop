@@ -48,7 +48,6 @@ export const createLoopActions = (
       const taskContent = await engine.generateTask(activeDomainId);
       
       // Handle both string and complex object responses
-      // Fix TypeScript errors by properly checking the type
       let content = '';
       let metadata = undefined;
       
@@ -65,7 +64,7 @@ export const createLoopActions = (
       
       const updatedStep: LearningStep = {
         ...initialStep,
-        status: 'success',
+        status: 'success',  // Explicitly set to success to enable advancement
         content,
         metadata,
         title: 'Task',
@@ -89,8 +88,13 @@ export const createLoopActions = (
           }
         }, get().loopDelay);
       }
+      
+      // Log success message
+      console.log("Task generated successfully:", content.substring(0, 50) + "...");
     } catch (error) {
       // Handle error in task generation
+      console.error("Error generating task:", error);
+      
       const updatedStep: LearningStep = {
         ...initialStep,
         status: 'failure',
