@@ -26,7 +26,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const KnowledgeManagement: React.FC = () => {
   const { 
-    queryKnowledgeBase, 
+    queryKnowledge, 
     isQuerying, 
     queryError, 
     searchResults,
@@ -77,7 +77,7 @@ const KnowledgeManagement: React.FC = () => {
     if (!searchQuery.trim()) return;
     
     try {
-      await queryKnowledgeBase({
+      await queryKnowledge({
         query: searchQuery,
         limit: 10,
         useEmbeddings,

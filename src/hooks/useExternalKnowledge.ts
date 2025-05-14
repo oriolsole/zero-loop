@@ -1,9 +1,8 @@
-
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ExternalSource } from '@/types/intelligence';
 import { toast } from '@/components/ui/sonner';
-import { useKnowledgeBase } from './useKnowledgeBase';
+import { useKnowledgeBase } from '@/features/knowledge/hooks/useKnowledgeBase';
 
 interface SearchOptions {
   useWeb?: boolean;
@@ -30,8 +29,8 @@ export function useExternalKnowledge() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [recentSources, setRecentSources] = useState<ExternalSource[]>([]);
   
-  // Get knowledge base methods
-  const { queryKnowledgeBase } = useKnowledgeBase();
+  // Get knowledge base methods - use the correct method name from the updated hook
+  const { queryKnowledge } = useKnowledgeBase();
   
   /**
    * Search the web for information related to a query
@@ -91,7 +90,7 @@ export function useExternalKnowledge() {
       // Search knowledge base if enabled
       if (options.useKnowledgeBase !== false) {
         try {
-          const kbResults = await queryKnowledgeBase({
+          const kbResults = await queryKnowledge({
             query,
             limit: options.limit || 5
           });
