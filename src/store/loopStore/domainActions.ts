@@ -1,3 +1,4 @@
+
 import { Domain } from '../../types/intelligence';
 import { LoopState } from '../useLoopStore';
 import { EngineDetectionModel } from '../../models/engineDetection';
@@ -8,6 +9,8 @@ import {
   deleteDomainFromSupabase, 
   updateDomainInSupabase 
 } from '../../utils/supabase/domainOperations';
+import { isSupabaseConfigured } from '../../utils/supabase-client';
+import { isValidUUID } from '../../utils/supabase/helpers';
 
 type SetFunction = (
   partial: LoopState | Partial<LoopState> | ((state: LoopState) => LoopState | Partial<LoopState>),
