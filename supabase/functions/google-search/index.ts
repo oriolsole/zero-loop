@@ -56,6 +56,9 @@ serve(async (req) => {
     searchUrl.searchParams.append('cx', cx);
     searchUrl.searchParams.append('q', query);
     
+    // Request additional fields like thumbnails and metadata
+    searchUrl.searchParams.append('fields', 'items(title,link,snippet,displayLink,pagemap,fileFormat,mime,formattedUrl,htmlFormattedUrl,formattedDate,htmlSnippet)');
+    
     const response = await fetch(searchUrl.toString());
     const data = await response.json();
     
@@ -67,14 +70,58 @@ serve(async (req) => {
       );
     }
     
-    // Process and limit search results
-    const processedResults = data.items?.slice(0, limit).map(item => ({
-      title: item.title,
-      link: item.link,
-      snippet: item.snippet,
-      source: item.displayLink,
-      date: item.formattedDate || null
-    })) || [];
+    // Process and limit search results with enhanced information
+    const processedResults = data.items?.slice(0, limit).map(item => {
+      // Extract content type
+      let contentType = "webpage";
+      let thumbnailUrl = null;
+      let publisher = null;
+      
+      // Extract information from pagemap if available
+      if (item.pagemap) {
+        // Get content type
+        if (item.pagemap.metatags?.length > 0) {
+          // Check for og:type
+          const ogType = item.pagemap.metatags[0]["og:type"];
+          if (ogType) contentType = ogType;
+        }
+        
+        // Get thumbnail
+        if (item.pagemap.cse_thumbnail?.length > 0) {
+          thumbnailUrl = item.pagemap.cse_thumbnail[0].src;
+        } else if (item.pagemap.cse_image?.length > 0) {
+          thumbnailUrl = item.pagemap.cse_image[0].src;
+        }
+        
+        // Get publisher
+        if (item.pagemap.organization?.length > 0) {
+          publisher = item.pagemap.organization[0].name;
+        } else if (item.pagemap.author?.length > 0) {
+          publisher = item.pagemap.author[0].name;
+        }
+      }
+      
+      // Get file format if present
+      let fileFormat = item.fileFormat || null;
+      if (!fileFormat && item.mime) {
+        fileFormat = item.mime.split('/').pop();
+      }
+      
+      // Create enhanced result object
+      return {
+        title: item.title,
+        link: item.link,
+        snippet: item.snippet,
+        source: item.displayLink,
+        date: item.formattedDate || null,
+        sourceType: 'web',
+        contentType: contentType,
+        thumbnailUrl: thumbnailUrl,
+        fileFormat: fileFormat,
+        description: item.htmlSnippet || item.snippet,
+        publisher: publisher
+      };
+    }) || [];
     
     // Return processed search results
     return new Response(

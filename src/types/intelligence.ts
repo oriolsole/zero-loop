@@ -1,4 +1,3 @@
-
 // Define the external source interface
 export interface ExternalSource {
   title: string;
@@ -7,6 +6,12 @@ export interface ExternalSource {
   source: string;
   date?: string;
   sourceType?: 'knowledge' | 'web';
+  // New fields for enhanced search results
+  contentType?: string;
+  thumbnailUrl?: string;
+  fileFormat?: string;
+  description?: string;
+  publisher?: string;
 }
 
 export interface QueryKnowledgeRequest {
@@ -33,6 +38,13 @@ export interface Domain {
   createdAt?: string;
   updatedAt?: string;
   metadata?: Record<string, any>;
+  // Additional properties needed by components
+  currentLoop?: string;
+  metrics?: QualityMetrics;
+  knowledgeNodes?: KnowledgeNode[];
+  knowledgeEdges?: KnowledgeEdge[];
+  totalLoops?: number;
+  shortDesc?: string;
 }
 
 export interface LearningStep {
@@ -43,8 +55,10 @@ export interface LearningStep {
   loopId?: string;
   metadata?: Record<string, any>;
   createdAt?: string;
-  status?: 'pending' | 'complete' | 'error';
+  status?: 'pending' | 'complete' | 'error' | 'success' | 'failure' | 'warning';
   sources?: ExternalSource[];
+  title?: string;
+  description?: string;
 }
 
 export interface LoopHistory {
@@ -54,6 +68,12 @@ export interface LoopHistory {
   endTime?: string;
   status: 'active' | 'completed' | 'error';
   metadata?: Record<string, any>;
+  // Additional properties needed by components
+  timestamp?: string;
+  insights?: any[];
+  steps?: LearningStep[];
+  success?: boolean;
+  score?: number;
 }
 
 export interface KnowledgeNode {
@@ -66,6 +86,13 @@ export interface KnowledgeNode {
   createdAt?: string;
   updatedAt?: string;
   metadata?: Record<string, any>;
+  // Additional properties needed by components
+  title?: string;
+  description?: string;
+  position?: { x: number; y: number };
+  size?: { width: number; height: number };
+  discoveredInLoop?: string;
+  connections?: number;
 }
 
 export interface KnowledgeEdge {
@@ -77,6 +104,10 @@ export interface KnowledgeEdge {
   createdAt?: string;
   updatedAt?: string;
   metadata?: Record<string, any>;
+  // Additional properties needed by components
+  source?: string;
+  target?: string;
+  label?: string;
 }
 
 export interface QualityMetrics {
@@ -93,4 +124,5 @@ export interface DomainEngine {
   verifyResult: (task: string, solution: string, domainId: string) => Promise<{ isCorrect: boolean; explanation: string }>;
   reflect: (task: string, solution: string, verification: string, domainId: string) => Promise<string>;
   mutateTask: (task: string, solution: string, verification: string, reflection: string, domainId: string) => Promise<string>;
+  enrichTask?: (task: string) => Promise<string>;
 }
