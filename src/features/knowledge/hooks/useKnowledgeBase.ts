@@ -2,13 +2,7 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
-import { 
-  KnowledgeItem, 
-  KnowledgeSearchResult, 
-  KnowledgeUploadOptions, 
-  KnowledgeQueryOptions,
-  UploadProgress
-} from '../types';
+import { ExternalSource, FileUploadProgress, KnowledgeQueryOptions, KnowledgeUploadOptions, KnowledgeSearchResult } from '../types';
 
 /**
  * Main hook for interacting with the knowledge base
@@ -16,7 +10,7 @@ import {
 export function useKnowledgeBase() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<FileUploadProgress | null>(null);
   const [isQuerying, setIsQuerying] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<KnowledgeSearchResult[]>([]);

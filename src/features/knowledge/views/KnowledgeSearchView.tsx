@@ -1,9 +1,10 @@
 
 import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, Search, Info, Sliders } from "lucide-react";
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -12,15 +13,14 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Search, Info, Loader2, Sliders } from 'lucide-react';
 import { useKnowledgeBase } from '../hooks/useKnowledgeBase';
 import ExternalSources from '@/components/ExternalSources';
 
 export function KnowledgeSearchView() {
   const { 
-    queryKnowledgeBase, 
+    queryKnowledge, 
     isQuerying, 
     queryError, 
     searchResults,
@@ -38,7 +38,7 @@ export function KnowledgeSearchView() {
     if (!searchQuery.trim()) return;
     
     try {
-      await queryKnowledgeBase({
+      await queryKnowledge({
         query: searchQuery,
         limit: 10,
         useEmbeddings,

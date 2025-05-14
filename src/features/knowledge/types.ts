@@ -1,9 +1,4 @@
 
-import { Domain } from "@/types/intelligence";
-
-/**
- * Knowledge item data structure
- */
 export interface KnowledgeItem {
   id: string;
   title: string;
@@ -18,9 +13,6 @@ export interface KnowledgeItem {
   metadata?: Record<string, any> | null;
 }
 
-/**
- * Search result from the knowledge base
- */
 export interface KnowledgeSearchResult {
   id: string;
   title: string;
@@ -35,18 +27,12 @@ export interface KnowledgeSearchResult {
   public_url?: string;
 }
 
-/**
- * Knowledge upload progress status
- */
-export interface UploadProgress {
+export interface FileUploadProgress {
   status: 'pending' | 'processing' | 'embedding' | 'saving' | 'complete' | 'error';
   progress: number;
   message?: string;
 }
 
-/**
- * Options for uploading knowledge
- */
 export interface KnowledgeUploadOptions {
   title: string;
   content?: string;
@@ -58,9 +44,6 @@ export interface KnowledgeUploadOptions {
   overlap?: number;
 }
 
-/**
- * Options for querying knowledge
- */
 export interface KnowledgeQueryOptions {
   query: string;
   limit?: number;
@@ -68,9 +51,20 @@ export interface KnowledgeQueryOptions {
   matchThreshold?: number;
 }
 
-/**
- * Filters for listing knowledge items
- */
+export type ExternalSource = {
+  title: string;
+  link: string;
+  snippet: string;
+  source: string;
+  date?: string;
+  id?: string;
+  timestamp?: number;
+  relevanceScore?: number;
+  fileType?: string;
+  fileUrl?: string;
+  public_url?: string;
+}
+
 export interface KnowledgeLibraryFilters {
   domainId?: string;
   fileType?: string;

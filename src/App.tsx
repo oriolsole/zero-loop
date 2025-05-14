@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useEffect } from 'react';
 
 import Index from './pages/Index';
-import KnowledgeManagement from './pages/KnowledgeManagement';
+import KnowledgeManager from './pages/KnowledgeManager';
 import Auth from './pages/Auth';
 import NotFound from './pages/NotFound';
 import Settings from './pages/Settings';
@@ -48,7 +48,7 @@ function App() {
               
               <Route path="/knowledge" element={
                 <ProtectedRoute>
-                  <KnowledgeManagement />
+                  <KnowledgeManager />
                 </ProtectedRoute>
               } />
               
