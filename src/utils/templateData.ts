@@ -113,8 +113,9 @@ export const getEmptyLearningSteps = (): LearningStep[] => {
       status: 'pending',
       content: '',
       metrics: {
-        complexity: 'Low',
-        timeSpent: '0.0s'
+        // Fix: Convert 'Low' string to a number (using 1 as a low complexity value)
+        complexity: 1,
+        timeMs: 0 // Fix: Changed from '0.0s' string to a number
       }
     },
     {
@@ -124,8 +125,10 @@ export const getEmptyLearningSteps = (): LearningStep[] => {
       status: 'pending',
       content: '',
       metrics: {
+        // Fix: Change approach string to be handled by metadata
         approach: 'Pending',
-        confidence: '0%'
+        // Fix: Remove confidence as a percentage string
+        insightCount: 0
       }
     },
     {
@@ -135,8 +138,9 @@ export const getEmptyLearningSteps = (): LearningStep[] => {
       status: 'pending',
       content: '',
       metrics: {
-        passedTests: '0/0',
-        verificationTime: '0.0s'
+        // Fix: Changed passedTests from string '0/0' to number
+        passedTests: 0,
+        timeMs: 0 // Fix: Changed from string to number
       }
     },
     {
@@ -147,7 +151,8 @@ export const getEmptyLearningSteps = (): LearningStep[] => {
       content: '',
       metrics: {
         newInsights: 0,
-        similarProblems: 0
+        // Fix: Replace similarProblems with insightCount that exists in the type
+        insightCount: 0
       }
     },
     {
@@ -157,8 +162,9 @@ export const getEmptyLearningSteps = (): LearningStep[] => {
       status: 'pending',
       content: '',
       metrics: {
-        difficultyIncrease: '0%',
-        novelty: 'Low'
+        // Fix: Changed from string percentage to number
+        complexity: 1,
+        novelty: 1 // Fix: Changed from string 'Low' to number
       }
     }
   ];
