@@ -56,8 +56,8 @@ serve(async (req) => {
     searchUrl.searchParams.append('cx', cx);
     searchUrl.searchParams.append('q', query);
     
-    // Request additional fields like thumbnails and metadata
-    searchUrl.searchParams.append('fields', 'items(title,link,snippet,displayLink,pagemap,fileFormat,mime,formattedUrl,htmlFormattedUrl,formattedDate,htmlSnippet)');
+    // Fixed: Removed 'formattedDate' from the fields parameter which was causing the error
+    searchUrl.searchParams.append('fields', 'items(title,link,snippet,displayLink,pagemap,fileFormat,mime,formattedUrl,htmlFormattedUrl,htmlSnippet)');
     
     const response = await fetch(searchUrl.toString());
     const data = await response.json();
@@ -76,6 +76,7 @@ serve(async (req) => {
       let contentType = "webpage";
       let thumbnailUrl = null;
       let publisher = null;
+      let datePublished = null; // New variable to store extracted date
       
       // Extract information from pagemap if available
       if (item.pagemap) {
@@ -84,6 +85,32 @@ serve(async (req) => {
           // Check for og:type
           const ogType = item.pagemap.metatags[0]["og:type"];
           if (ogType) contentType = ogType;
+          
+          // Extract date from metatags - check common date meta tags
+          const possibleDateFields = [
+            "article:published_time",
+            "date",
+            "og:published_time",
+            "datePublished",
+            "publication_date",
+            "pubdate"
+          ];
+          
+          for (const dateField of possibleDateFields) {
+            if (item.pagemap.metatags[0][dateField]) {
+              datePublished = item.pagemap.metatags[0][dateField];
+              break;
+            }
+          }
+        }
+        
+        // If date wasn't found in metatags, try other common pagemap locations
+        if (!datePublished) {
+          if (item.pagemap.newsarticle?.length > 0 && item.pagemap.newsarticle[0].datepublished) {
+            datePublished = item.pagemap.newsarticle[0].datepublished;
+          } else if (item.pagemap.article?.length > 0 && item.pagemap.article[0].datepublished) {
+            datePublished = item.pagemap.article[0].datepublished;
+          }
         }
         
         // Get thumbnail
@@ -113,7 +140,7 @@ serve(async (req) => {
         link: item.link,
         snippet: item.snippet,
         source: item.displayLink,
-        date: item.formattedDate || null,
+        date: datePublished, // Use the extracted date
         sourceType: 'web',
         contentType: contentType,
         thumbnailUrl: thumbnailUrl,
