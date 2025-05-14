@@ -2,10 +2,10 @@
 import React from 'react';
 import { Progress } from "@/components/ui/progress";
 import { Loader2 } from "lucide-react";
-import { UploadProgress as ProgressType } from '../types';
+import { FileUploadProgress } from '../types';
 
 interface UploadProgressProps {
-  progress: ProgressType;
+  progress: FileUploadProgress;
 }
 
 export function UploadProgress({ progress }: UploadProgressProps) {
