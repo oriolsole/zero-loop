@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
+import { useExternalKnowledge } from '@/hooks/useExternalKnowledge';
 import KnowledgeUpload from '@/components/knowledge/KnowledgeUpload';
 import KnowledgeLibrary from '@/components/knowledge/KnowledgeLibrary';
 import ExternalSources from '@/components/ExternalSources';
@@ -10,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Search, Info, Sliders, BookOpen, Library } from "lucide-react";
+import { Loader2, Search, Info, Sliders, BookOpen, Library, Globe, Database } from "lucide-react";
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -19,10 +20,13 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { ensureStorageBucketsExist } from '@/utils/supabase/storage';
 import { ExternalSource } from '@/types/intelligence';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 const KnowledgeManagement: React.FC = () => {
   const { 
@@ -31,15 +35,25 @@ const KnowledgeManagement: React.FC = () => {
     queryError, 
     recentResults,
     searchMode,
-    uploadKnowledge,
   } = useKnowledgeBase();
+  
+  const {
+    searchWeb,
+    isSearching: isSearchingWeb,
+    recentSources: webResults,
+    searchError: webSearchError
+  } = useExternalKnowledge();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
   const [useEmbeddings, setUseEmbeddings] = useState<boolean>(true);
+  const [includeWebResults, setIncludeWebResults] = useState<boolean>(false);
   const [matchThreshold, setMatchThreshold] = useState<number>(0.5);
   const [selectedResult, setSelectedResult] = useState<ExternalSource | null>(null);
   const [showSavePanel, setShowSavePanel] = useState(false);
+  const [allResults, setAllResults] = useState<ExternalSource[]>([]);
+  const [activeResultsTab, setActiveResultsTab] = useState<'all' | 'knowledge' | 'web'>('all');
+  const [isLoading, setIsLoading] = useState(false);
   
   // Ensure storage buckets exist on component mount
   useEffect(() => {
@@ -47,19 +61,65 @@ const KnowledgeManagement: React.FC = () => {
       .catch(err => console.error('Failed to initialize storage buckets:', err));
   }, []);
   
+  // Combine results whenever they change
+  useEffect(() => {
+    if (hasSearched) {
+      // Add source type to distinguish between knowledge base and web results
+      const knowledgeResults = recentResults.map(result => ({
+        ...result,
+        sourceType: 'knowledge'
+      }));
+      
+      const googleResults = webResults.map(result => ({
+        ...result,
+        sourceType: 'web'
+      }));
+      
+      // Combine all results
+      const combined = [...knowledgeResults];
+      
+      if (includeWebResults) {
+        combined.push(...googleResults);
+      }
+      
+      setAllResults(combined);
+    }
+  }, [recentResults, webResults, hasSearched, includeWebResults]);
+  
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!searchQuery.trim()) return;
     
-    await queryKnowledgeBase({
-      query: searchQuery,
-      limit: 10,
-      useEmbeddings,
-      matchThreshold
-    });
+    setIsLoading(true);
+    setHasSearched(false);
+    
+    // Create an array of promises to run in parallel
+    const searchPromises = [];
+    
+    // Always query knowledge base
+    searchPromises.push(
+      queryKnowledgeBase({
+        query: searchQuery,
+        limit: 10,
+        useEmbeddings,
+        matchThreshold
+      })
+    );
+    
+    // Conditionally add web search if enabled
+    if (includeWebResults) {
+      searchPromises.push(
+        searchWeb(searchQuery, 5)
+      );
+    }
+    
+    // Wait for all search operations to complete
+    await Promise.all(searchPromises);
     
     setHasSearched(true);
+    setIsLoading(false);
+    setActiveResultsTab('all');
   };
   
   const handleSaveResult = (result: ExternalSource) => {
@@ -71,6 +131,19 @@ const KnowledgeManagement: React.FC = () => {
     setSelectedResult(null);
     setShowSavePanel(false);
   };
+  
+  // Filter results based on the active tab
+  const getFilteredResults = () => {
+    if (activeResultsTab === 'all') {
+      return allResults;
+    } else if (activeResultsTab === 'knowledge') {
+      return allResults.filter(result => result.sourceType === 'knowledge');
+    } else {
+      return allResults.filter(result => result.sourceType === 'web');
+    }
+  };
+  
+  const filteredResults = getFilteredResults();
   
   return (
     <div className="container mx-auto py-6 space-y-8">
@@ -104,7 +177,7 @@ const KnowledgeManagement: React.FC = () => {
                 Search Knowledge Base
               </CardTitle>
               <CardDescription>
-                Search your existing knowledge to see what's already stored
+                Search your existing knowledge and optionally include web results
               </CardDescription>
             </CardHeader>
             
@@ -122,7 +195,7 @@ const KnowledgeManagement: React.FC = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="w-56">
-                        <DropdownMenuLabel>Search Method</DropdownMenuLabel>
+                        <DropdownMenuLabel>Knowledge Base Options</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuRadioGroup 
                           value={useEmbeddings ? "semantic" : "text"} 
@@ -162,6 +235,18 @@ const KnowledgeManagement: React.FC = () => {
                             </div>
                           </>
                         )}
+                        
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>External Sources</DropdownMenuLabel>
+                        <DropdownMenuCheckboxItem
+                          checked={includeWebResults}
+                          onCheckedChange={setIncludeWebResults}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-4 w-4" />
+                            <span>Include Google Search</span>
+                          </div>
+                        </DropdownMenuCheckboxItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -174,8 +259,8 @@ const KnowledgeManagement: React.FC = () => {
                       placeholder="Enter search terms"
                       className="flex-1"
                     />
-                    <Button type="submit" disabled={isQuerying || !searchQuery.trim()}>
-                      {isQuerying ? (
+                    <Button type="submit" disabled={isLoading || !searchQuery.trim()}>
+                      {isLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Search className="h-4 w-4" />
@@ -190,35 +275,84 @@ const KnowledgeManagement: React.FC = () => {
           
           {hasSearched && (
             <div className="space-y-4">
-              {queryError && (
+              {/* Error messages */}
+              {(queryError || (includeWebResults && webSearchError)) && (
                 <div className="bg-red-50 border border-red-200 p-4 rounded-md">
-                  <p className="text-red-700">{queryError}</p>
+                  {queryError && <p className="text-red-700">{queryError}</p>}
+                  {includeWebResults && webSearchError && <p className="text-red-700">{webSearchError}</p>}
                 </div>
               )}
               
-              {!queryError && recentResults.length === 0 ? (
+              {/* No results message */}
+              {!queryError && filteredResults.length === 0 ? (
                 <div className="bg-muted p-8 rounded-md text-center">
                   <Info className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
                   <h3 className="font-medium text-lg mb-1">No results found</h3>
                   <p className="text-muted-foreground">
-                    Try different search terms, adjusting the search method, or lowering the similarity threshold
+                    Try different search terms, adjusting the search method, or {!includeWebResults && "enabling web search"}
                   </p>
                 </div>
               ) : (
+                /* Results container */
                 <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-lg font-medium">Knowledge Base Results</h3>
-                    <Badge variant={searchMode === 'semantic' ? 'default' : 'secondary'}>
-                      {searchMode === 'semantic' ? 'AI Semantic Search' : 'Text Search'}
-                    </Badge>
-                    <span className="text-sm text-muted-foreground">
-                      Found {recentResults.length} results for "{searchQuery}"
-                    </span>
+                  {/* Result filtering tabs */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-medium">Search Results</h3>
+                      <Badge variant="outline" className="flex gap-1 items-center">
+                        {activeResultsTab === 'all' ? (
+                          <><Search className="h-3 w-3" /> All Sources</>
+                        ) : activeResultsTab === 'knowledge' ? (
+                          <><Database className="h-3 w-3" /> Knowledge Base</>
+                        ) : (
+                          <><Globe className="h-3 w-3" /> Web</>
+                        )}
+                      </Badge>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Button
+                        variant={activeResultsTab === 'all' ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setActiveResultsTab('all')}
+                        className="flex items-center gap-1"
+                      >
+                        <Search className="h-3 w-3" />
+                        All ({allResults.length})
+                      </Button>
+                      <Button
+                        variant={activeResultsTab === 'knowledge' ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setActiveResultsTab('knowledge')}
+                        className="flex items-center gap-1"
+                      >
+                        <Database className="h-3 w-3" />
+                        Knowledge ({allResults.filter(r => r.sourceType === 'knowledge').length})
+                      </Button>
+                      {includeWebResults && (
+                        <Button
+                          variant={activeResultsTab === 'web' ? "default" : "outline"}
+                          size="sm" 
+                          onClick={() => setActiveResultsTab('web')}
+                          className="flex items-center gap-1"
+                        >
+                          <Globe className="h-3 w-3" />
+                          Web ({allResults.filter(r => r.sourceType === 'web').length})
+                        </Button>
+                      )}
+                    </div>
                   </div>
+                  
+                  {/* Search result counts */}
+                  <div className="text-sm text-muted-foreground mb-2">
+                    Found {filteredResults.length} results for "{searchQuery}"
+                  </div>
+                  
+                  {/* Results display */}
                   <ExternalSources 
-                    sources={recentResults}
-                    title="Knowledge Base Results"
-                    description={`Found ${recentResults.length} results for "${searchQuery}"`}
+                    sources={filteredResults}
+                    title="Search Results"
+                    description={`Found ${filteredResults.length} results for "${searchQuery}"`}
                     showSaveButton={true}
                     onSaveResult={handleSaveResult}
                   />

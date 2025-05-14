@@ -1,12 +1,13 @@
 
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ExternalLink, Globe, Link, Save } from "lucide-react";
+import { ExternalLink, Globe, Link, Save, Database } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ExternalSource } from '@/types/intelligence';
+import { cn } from '@/lib/utils';
 
 interface ExternalSourcesProps {
   sources: ExternalSource[];
@@ -47,9 +48,33 @@ const ExternalSources: React.FC<ExternalSourcesProps> = ({
               
               <div className="flex justify-between items-start">
                 <h4 className="font-medium text-sm">{source.title}</h4>
-                <Badge variant="outline" className="text-xs">
-                  {source.source}
-                </Badge>
+                <div className="flex gap-1">
+                  {/* Show source type badge */}
+                  {source.sourceType && (
+                    <Badge 
+                      variant={source.sourceType === 'knowledge' ? 'secondary' : 'default'} 
+                      className={cn(
+                        "text-xs flex items-center gap-1",
+                        source.sourceType === 'web' && "bg-blue-500 hover:bg-blue-600"
+                      )}
+                    >
+                      {source.sourceType === 'knowledge' ? (
+                        <>
+                          <Database className="h-3 w-3" />
+                          Knowledge Base
+                        </>
+                      ) : (
+                        <>
+                          <Globe className="h-3 w-3" />
+                          Web
+                        </>
+                      )}
+                    </Badge>
+                  )}
+                  <Badge variant="outline" className="text-xs">
+                    {source.source}
+                  </Badge>
+                </div>
               </div>
               
               <p className="text-sm text-muted-foreground">{source.snippet}</p>
