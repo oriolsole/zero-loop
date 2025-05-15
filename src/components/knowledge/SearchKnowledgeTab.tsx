@@ -42,7 +42,7 @@ const SearchKnowledgeTab: React.FC = () => {
   const [activeResultsTab, setActiveResultsTab] = useState<'all' | 'knowledge' | 'web' | 'node'>('all');
   const [isLoading, setIsLoading] = useState(false);
   
-  // Use the new knowledge search engine
+  // Use the knowledge search engine
   const knowledgeSearchEngine = domainEngines['knowledge-search'];
   
   // Combine results whenever they change
@@ -86,7 +86,7 @@ const SearchKnowledgeTab: React.FC = () => {
     try {
       // Use the knowledge search engine if available
       if (knowledgeSearchEngine) {
-        const { solution, metadata } = await knowledgeSearchEngine.solveTask(searchQuery, {
+        const result = await knowledgeSearchEngine.solveTask(searchQuery, {
           includeWeb: includeWebResults,
           useEmbeddings,
           matchThreshold,
@@ -94,8 +94,8 @@ const SearchKnowledgeTab: React.FC = () => {
           limit: 10
         });
         
-        if (metadata?.sources?.length > 0) {
-          setAllResults(metadata.sources);
+        if (result?.metadata?.sources?.length > 0) {
+          setAllResults(result.metadata.sources);
           setHasSearched(true);
           setIsLoading(false);
           setActiveResultsTab('all');

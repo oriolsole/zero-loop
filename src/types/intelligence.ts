@@ -1,3 +1,4 @@
+
 // Define the external source interface
 export interface ExternalSource {
   title: string;
@@ -17,6 +18,8 @@ export interface ExternalSource {
   // New fields for knowledge nodes
   nodeType?: string;
   confidence?: number;
+  // Add relevance score for search results
+  relevanceScore?: number;
 }
 
 export interface QueryKnowledgeRequest {
@@ -155,11 +158,23 @@ export interface QualityMetrics {
   validation_status?: string;
 }
 
+// Add DomainEngineMetadata interface for engine definitions
+export interface DomainEngineMetadata {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  capabilities: string[];
+  category: string;
+  version: string;
+  author: string;
+}
+
+// Update DomainEngine interface to match the implementation
 export interface DomainEngine {
   generateTask: (domainId?: string, previousSteps?: LearningStep[]) => Promise<string>;
-  solveTask: (task: string, domainId?: string) => Promise<string>;
-  verifySolution: (task: string, solution: string, domainId?: string) => Promise<{ isCorrect: boolean; explanation: string; }>;
-  reflect: (task: string, solution: string, verification: string, domainId?: string) => Promise<string>;
-  mutateTask: (task: string, solution: string, verification: string, reflection: string, domainId?: string) => Promise<string>;
-  enrichTask?: (task: string) => Promise<string>;
+  solveTask: (task: string, options?: any) => Promise<any>;
+  verifyTask?: (task: string, solution: any) => Promise<{ result: boolean; explanation: string; score: number }>;
+  reflectOnTask?: (task: string, solution: any, verification: any) => Promise<{ reflection: string; insights: string[] }>;
+  mutateTask?: (task: string, solution: any, verification: any, reflection: any) => Promise<string>;
 }

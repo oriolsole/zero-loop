@@ -1,7 +1,6 @@
+
 // Knowledge Search Engine - Specialized domain engine for searching across knowledge sources
 import { DomainEngine, DomainEngineMetadata, ExternalSource } from '../types/intelligence';
-import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
-import { useExternalKnowledge } from '@/hooks/useExternalKnowledge';
 
 // Engine metadata for UI display and configuration
 export const knowledgeSearchEngineMetadata: DomainEngineMetadata = {
@@ -41,6 +40,9 @@ export const knowledgeSearchEngine: DomainEngine = {
   // Solve a search query by searching across multiple knowledge sources
   solveTask: async (query, options = {}) => {
     try {
+      // Import hooks dynamically to avoid hooks-outside-component issues
+      const { useKnowledgeBase } = await import('@/hooks/useKnowledgeBase');
+      const { useExternalKnowledge } = await import('@/hooks/useExternalKnowledge');
       const { queryKnowledgeBase } = useKnowledgeBase();
       const { searchWeb } = useExternalKnowledge();
       
@@ -49,8 +51,8 @@ export const knowledgeSearchEngine: DomainEngine = {
         useEmbeddings: true,
         matchThreshold: 0.5,
         includeNodes: true,
-        includeWeb: options.includeWeb !== false,
-        limit: options.limit || 10
+        includeWeb: options?.includeWeb !== false,
+        limit: options?.limit || 10
       };
       
       // Initialize results array
@@ -76,7 +78,7 @@ export const knowledgeSearchEngine: DomainEngine = {
       
       // Search web if enabled and we need more results
       if (searchOptions.includeWeb && 
-          (options.forceWebSearch || allResults.length < searchOptions.limit)) {
+          (options?.forceWebSearch || allResults.length < searchOptions.limit)) {
         try {
           const webLimit = Math.max(1, searchOptions.limit - allResults.length);
           const webResults = await searchWeb(query, webLimit);
@@ -93,7 +95,7 @@ export const knowledgeSearchEngine: DomainEngine = {
       // Sort combined results by relevance (if available) or source type priority
       allResults.sort((a, b) => {
         // If both have relevance scores, sort by that
-        if (a.relevanceScore !== undefined && b.relevanceScore !== undefined) {
+        if (typeof a.relevanceScore === 'number' && typeof b.relevanceScore === 'number') {
           return b.relevanceScore - a.relevanceScore;
         }
         
@@ -138,9 +140,9 @@ export const knowledgeSearchEngine: DomainEngine = {
   // Verify search results by checking if they match the query intent
   verifyTask: async (task, solution) => {
     // Simple verification - check if we have any results
-    const metadata = solution.metadata;
+    const metadata = solution?.metadata;
     
-    if (metadata.error) {
+    if (!metadata || metadata.error) {
       return {
         result: false,
         explanation: 'Search failed due to an error',
@@ -169,14 +171,15 @@ export const knowledgeSearchEngine: DomainEngine = {
   
   // Reflect on search results to extract insights
   reflectOnTask: async (task, solution, verification) => {
-    if (!verification.result) {
+    const metadata = solution?.metadata || {};
+    
+    if (!verification?.result) {
       return {
         reflection: "The search yielded no results. Consider refining the query or expanding the knowledge sources.",
         insights: []
       };
     }
     
-    const metadata = solution.metadata;
     const sources = metadata.sources || [];
     
     // Identify most common source types
@@ -223,10 +226,10 @@ export const knowledgeSearchEngine: DomainEngine = {
   
   // Generate a follow-up or refined search query
   mutateTask: async (task, solution, verification, reflection) => {
-    const metadata = solution.metadata;
+    const metadata = solution?.metadata || {};
     const query = metadata.query || task;
     
-    if (!verification.result || !metadata.sources || metadata.sources.length === 0) {
+    if (!verification?.result || !metadata.sources || metadata.sources.length === 0) {
       // If no results, broaden the query
       const broadeningPrefixes = [
         "basics of ",
