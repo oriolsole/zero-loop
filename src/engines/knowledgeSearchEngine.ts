@@ -248,7 +248,10 @@ export const knowledgeSearchEngine: DomainEngine = {
       return prefix + query.replace(/^(what is|how to|explain|describe)\s+/i, '');
     }
     
-    if (metadata.sources.length > 10) {
+    // Ensure we have a number for sources.length before comparison
+    const sourceCount = Array.isArray(metadata.sources) ? metadata.sources.length : 0;
+    
+    if (sourceCount > 10) {
       // If too many results, make the query more specific
       const specifyingPrefixes = [
         "detailed explanation of ",
