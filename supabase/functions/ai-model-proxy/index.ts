@@ -22,6 +22,55 @@ serve(async (req) => {
     // Parse the request body
     const requestData = await req.json();
     
+    // Check if this is a settings operation
+    if (requestData.operation === 'getSettings') {
+      console.log('Handling getSettings operation');
+      return new Response(
+        JSON.stringify({
+          localModelUrl: localModelUrl || null,
+          isUsingLocalModel: !!localModelUrl
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Check if this is a request to get available models
+    if (requestData.operation === 'getAvailableModels') {
+      console.log('Handling getAvailableModels operation');
+      
+      // If no local model URL is set, return empty list
+      if (!localModelUrl) {
+        return new Response(
+          JSON.stringify({ models: [] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      try {
+        // Call the LM Studio models endpoint
+        const modelsResponse = await fetch(`${localModelUrl}/models`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (!modelsResponse.ok) {
+          throw new Error(`Error fetching models: ${modelsResponse.status}`);
+        }
+        
+        const modelsData = await modelsResponse.json();
+        return new Response(
+          JSON.stringify({ models: modelsData.data || [] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (error) {
+        console.error("Error fetching models:", error);
+        return new Response(
+          JSON.stringify({ error: `Could not fetch models: ${error.message}`, models: [] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    
     console.log(`Processing AI request, using ${localModelUrl ? 'local model' : 'OpenAI'}`);
     
     // Determine which API to use (local model or OpenAI)
