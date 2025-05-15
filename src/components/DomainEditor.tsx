@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from "react-hook-form";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +12,8 @@ import { Domain, QualityMetrics } from '../types/intelligence';
 import { Brain, Code, Calculator, Puzzle, FileText, Briefcase, Save, Copy, Trash, Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { v4 as uuidv4 } from 'uuid';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { domainEngines } from '../engines/domainEngines';
 
 interface DomainEditorProps {
   domain?: Domain;
@@ -33,6 +34,7 @@ interface DomainFormValues {
   taskLogic: string;
   colorTheme: string;
   icon: string;
+  engineType: string;
 }
 
 const DomainEditor: React.FC<DomainEditorProps> = ({ 
@@ -45,6 +47,9 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState('basic');
   
+  // Get available engine types from domainEngines
+  const availableEngines = Object.keys(domainEngines);
+  
   // Generate a proper UUID for new domains instead of the timestamp-based ID
   const defaultValues: DomainFormValues = {
     id: domain?.id || uuidv4(),
@@ -55,7 +60,8 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
     initialKnowledge: '',
     taskLogic: 'function generateTask() {\n  return "Create a task related to this domain.";\n}',
     colorTheme: 'purple',
-    icon: domain?.icon || 'brain'
+    icon: domain?.icon || 'brain',
+    engineType: domain?.engineType || availableEngines[0] || 'logic'
   };
   
   const form = useForm<DomainFormValues>({
@@ -81,6 +87,7 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
         name: values.name,
         shortDesc: values.shortDesc,
         description: values.description,
+        engineType: values.engineType, // Add engine type to the domain object
         totalLoops: domain?.totalLoops || 0,
         currentLoop: domain?.currentLoop || [],
         knowledgeNodes: domain?.knowledgeNodes || [],
@@ -191,6 +198,36 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
                           {...field} 
                         />
                       </FormControl>
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
+                  name="engineType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Engine Type</FormLabel>
+                      <Select 
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select an engine" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {availableEngines.map(engine => (
+                            <SelectItem key={engine} value={engine}>
+                              {engine.charAt(0).toUpperCase() + engine.slice(1).replace('-', ' ')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        The engine that will process tasks in this domain
+                      </FormDescription>
                     </FormItem>
                   )}
                 />

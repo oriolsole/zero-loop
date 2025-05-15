@@ -10,6 +10,7 @@ import {
 } from '../../utils/supabase';
 import { isSupabaseConfigured } from '../../utils/supabase-client';
 import { isValidUUID } from '../../utils/supabase/helpers';
+import { domainEngines } from '../../engines/domainEngines';
 
 type SetFunction = (
   partial: LoopState | Partial<LoopState> | ((state: LoopState) => LoopState | Partial<LoopState>),
@@ -27,9 +28,15 @@ export const createDomainActions = (
     // Replace any non-UUID formatted ID with a new UUID
     const domainId = isValidUUID(domain.id) ? domain.id : uuidv4();
     
+    // Ensure the domain has an engineType set, defaulting to a valid one if missing
+    const engineType = domain.engineType && domainEngines[domain.engineType] 
+      ? domain.engineType 
+      : Object.keys(domainEngines)[0];
+    
     const completeDomain: Domain = {
       ...domain,
       id: domainId,
+      engineType,
       totalLoops: domain.totalLoops || 0,
       currentLoop: domain.currentLoop || [],
       knowledgeNodes: domain.knowledgeNodes || [],
@@ -71,6 +78,12 @@ export const createDomainActions = (
       return;
     }
     
+    // Ensure engineType is valid if it exists
+    if (updatedDomain.engineType && !domainEngines[updatedDomain.engineType]) {
+      console.warn(`Invalid engine type ${updatedDomain.engineType}, defaulting to ${Object.keys(domainEngines)[0]}`);
+      updatedDomain.engineType = Object.keys(domainEngines)[0];
+    }
+    
     set(state => {
       const domainIndex = state.domains.findIndex(d => d.id === updatedDomain.id);
       if (domainIndex === -1) return state;
@@ -84,6 +97,7 @@ export const createDomainActions = (
         name: updatedDomain.name,
         shortDesc: updatedDomain.shortDesc,
         description: updatedDomain.description,
+        engineType: updatedDomain.engineType || existingDomain.engineType,
       };
 
       // If remote logging is enabled, update in Supabase

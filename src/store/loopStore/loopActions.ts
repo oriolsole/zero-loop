@@ -1,4 +1,3 @@
-
 import { LearningStep, LoopHistory } from '../../types/intelligence';
 import { LoopState } from '../useLoopStore';
 import { domainEngines } from '../../engines/domainEngines';
@@ -46,7 +45,14 @@ export const createLoopActions = (
     // Generate the task using domain engine
     try {
       console.log("Starting task generation for domain:", activeDomainId);
-      const engine = domainEngines[activeDomainId] || domainEngines[Object.keys(domainEngines)[0]];
+      
+      // Use the domain's engineType to select the engine, with fallback
+      const engineType = currentDomain.engineType || activeDomainId;
+      const engine = domainEngines[engineType] || domainEngines[Object.keys(domainEngines)[0]];
+      
+      // Log the engine being used
+      console.log(`Using engine ${engineType} for domain ${currentDomain.name}`);
+      
       const taskContent = await engine.generateTask(activeDomainId);
       
       // Handle both string and complex object responses
@@ -206,7 +212,11 @@ export const createLoopActions = (
     
     // Execute the step using domain engine
     try {
-      const engine = domainEngines[activeDomainId];
+      // Use the domain's engineType to select the engine, with fallback
+      const engineType = domain.engineType || activeDomainId;
+      const engine = domainEngines[engineType] || domainEngines[Object.keys(domainEngines)[0]];
+      
+      console.log(`Using engine ${engineType} for step ${nextStep.type}`);
       
       let result;
       let metrics = {};
@@ -663,4 +673,3 @@ export const createLoopActions = (
     set({ isContinuousMode: false });
   },
 });
-
