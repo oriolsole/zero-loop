@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, Brain, Database, Globe, BookText, Info } from "lucide-react";
 import { knowledgeSearchEngineMetadata } from '@/engines/knowledgeSearchEngine';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { InfoBox } from "@/components/ui/info-box";
 
 const KnowledgeSearchEngine: React.FC = () => {
   return (
@@ -27,14 +27,13 @@ const KnowledgeSearchEngine: React.FC = () => {
       </CardHeader>
       
       <CardContent>
-        <Alert variant="info" className="mb-4 bg-blue-50">
-          <Info className="h-4 w-4" />
-          <AlertTitle>Using local LLM models</AlertTitle>
-          <AlertDescription className="text-sm">
-            When using local LM Studio models, you need to make your local server accessible through a tunnel 
-            like ngrok or localtunnel. Edge functions cannot access localhost directly since they run in the cloud.
-          </AlertDescription>
-        </Alert>
+        <InfoBox 
+          title="Using local LLM models"
+          className="mb-4"
+        >
+          When using local LM Studio models, you need to make your local server accessible through a tunnel 
+          like ngrok or localtunnel. Edge functions cannot access localhost directly since they run in the cloud.
+        </InfoBox>
         
         <Tabs defaultValue="capabilities">
           <TabsList className="mb-4">

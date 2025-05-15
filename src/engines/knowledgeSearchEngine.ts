@@ -22,6 +22,28 @@ export const knowledgeSearchEngineMetadata: DomainEngineMetadata = {
   author: 'ZeroLoop',
 };
 
+// Helper functions for type safety
+function isArrayWithLength<T>(value: any): value is T[] {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function ensureNumber(value: any): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+  
+  // Try to convert to number if it's a string
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10);
+    if (!isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  
+  // Default fallback
+  return 0;
+}
+
 // Main knowledge search engine implementation
 export const knowledgeSearchEngine: DomainEngine = {
   // Generate task/query examples for this domain
@@ -71,7 +93,7 @@ export const knowledgeSearchEngine: DomainEngine = {
           includeNodes: searchOptions.includeNodes
         });
         
-        if (kbResults.length > 0) {
+        if (isArrayWithLength<ExternalSource>(kbResults)) {
           allResults = [...allResults, ...kbResults];
         }
       } catch (error) {
@@ -86,7 +108,7 @@ export const knowledgeSearchEngine: DomainEngine = {
           const webLimit = Math.max(1, searchOptions.limit - allResults.length);
           const webResults = await searchWeb(query, webLimit);
           
-          if (webResults.length > 0) {
+          if (isArrayWithLength<ExternalSource>(webResults)) {
             allResults = [...allResults, ...webResults];
           }
         } catch (error) {
@@ -148,7 +170,9 @@ export const knowledgeSearchEngine: DomainEngine = {
       };
     }
     
-    if (!metadata.sources || metadata.sources.length === 0) {
+    // Check if sources is an array and has items
+    const hasSources = isArrayWithLength<ExternalSource>(metadata.sources);
+    if (!hasSources) {
       return {
         result: false,
         explanation: 'No search results found for the query',
@@ -161,7 +185,7 @@ export const knowledgeSearchEngine: DomainEngine = {
     let resultCount = 0;
     if (typeof metadata.resultCount === 'number') {
       resultCount = metadata.resultCount;
-    } else if (metadata.sources && Array.isArray(metadata.sources)) {
+    } else if (isArrayWithLength<ExternalSource>(metadata.sources)) {
       resultCount = metadata.sources.length;
     }
     
@@ -186,7 +210,7 @@ export const knowledgeSearchEngine: DomainEngine = {
       };
     }
     
-    const sources = metadata.sources || [];
+    const sources = Array.isArray(metadata.sources) ? metadata.sources : [];
     
     // Identify most common source types
     const sourceTypes = sources.reduce((acc, source) => {
@@ -237,10 +261,8 @@ export const knowledgeSearchEngine: DomainEngine = {
     const query = metadata.query || task;
     
     // Add proper type checking for results
-    const hasNoResults = !verification?.result || 
-                         !metadata.sources || 
-                         !Array.isArray(metadata.sources) || 
-                         metadata.sources.length === 0;
+    const sources = Array.isArray(metadata.sources) ? metadata.sources : [];
+    const hasNoResults = !verification?.result || sources.length === 0;
     
     if (hasNoResults) {
       // If no results, broaden the query
@@ -257,7 +279,7 @@ export const knowledgeSearchEngine: DomainEngine = {
     }
     
     // Ensure we have a number for sources.length before comparison
-    const sourceCount = Array.isArray(metadata.sources) ? metadata.sources.length : 0;
+    const sourceCount = sources.length;
     
     // Now TypeScript knows sourceCount is definitely a number
     if (sourceCount > 10) {
