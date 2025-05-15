@@ -1,0 +1,266 @@
+// Knowledge Search Engine - Specialized domain engine for searching across knowledge sources
+import { DomainEngine, DomainEngineMetadata, ExternalSource } from '../types/intelligence';
+import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
+import { useExternalKnowledge } from '@/hooks/useExternalKnowledge';
+
+// Engine metadata for UI display and configuration
+export const knowledgeSearchEngineMetadata: DomainEngineMetadata = {
+  id: 'knowledge-search',
+  name: 'Knowledge Search',
+  description: 'Search across all knowledge sources including knowledge base, nodes, and web',
+  icon: 'search',
+  capabilities: [
+    'Semantic search across knowledge base',
+    'Text-based matching',
+    'Web search integration',
+    'Knowledge node integration',
+    'Multi-source ranking'
+  ],
+  category: 'knowledge',
+  version: '1.0.0',
+  author: 'ZeroLoop',
+};
+
+// Main knowledge search engine implementation
+export const knowledgeSearchEngine: DomainEngine = {
+  // Generate task/query examples for this domain
+  generateTask: async () => {
+    const examples = [
+      "What is the relationship between quantum computing and artificial intelligence?",
+      "Explain how transformer neural networks work and their applications",
+      "What are the main challenges in developing AGI?",
+      "Compare and contrast supervised and unsupervised learning",
+      "What are the ethical implications of large language models?",
+    ];
+    
+    // Return a random example as the task
+    const randomExample = examples[Math.floor(Math.random() * examples.length)];
+    return randomExample;
+  },
+  
+  // Solve a search query by searching across multiple knowledge sources
+  solveTask: async (query, options = {}) => {
+    try {
+      const { queryKnowledgeBase } = useKnowledgeBase();
+      const { searchWeb } = useExternalKnowledge();
+      
+      // Default search options
+      const searchOptions = {
+        useEmbeddings: true,
+        matchThreshold: 0.5,
+        includeNodes: true,
+        includeWeb: options.includeWeb !== false,
+        limit: options.limit || 10
+      };
+      
+      // Initialize results array
+      let allResults: ExternalSource[] = [];
+      
+      // Search knowledge base (includes nodes if enabled)
+      try {
+        const kbResults = await queryKnowledgeBase({
+          query,
+          limit: searchOptions.limit,
+          useEmbeddings: searchOptions.useEmbeddings,
+          matchThreshold: searchOptions.matchThreshold,
+          includeNodes: searchOptions.includeNodes
+        });
+        
+        if (kbResults.length > 0) {
+          allResults = [...allResults, ...kbResults];
+        }
+      } catch (error) {
+        console.error('Error searching knowledge base:', error);
+        // Continue with other sources even if KB search fails
+      }
+      
+      // Search web if enabled and we need more results
+      if (searchOptions.includeWeb && 
+          (options.forceWebSearch || allResults.length < searchOptions.limit)) {
+        try {
+          const webLimit = Math.max(1, searchOptions.limit - allResults.length);
+          const webResults = await searchWeb(query, webLimit);
+          
+          if (webResults.length > 0) {
+            allResults = [...allResults, ...webResults];
+          }
+        } catch (error) {
+          console.error('Error searching web:', error);
+          // Continue with what we have
+        }
+      }
+      
+      // Sort combined results by relevance (if available) or source type priority
+      allResults.sort((a, b) => {
+        // If both have relevance scores, sort by that
+        if (a.relevanceScore !== undefined && b.relevanceScore !== undefined) {
+          return b.relevanceScore - a.relevanceScore;
+        }
+        
+        // Otherwise prioritize by source type: knowledge nodes > knowledge base > web
+        const getSourcePriority = (source: ExternalSource) => {
+          if (source.sourceType === 'node') return 3;
+          if (source.sourceType === 'knowledge') return 2;
+          return 1; // Web sources
+        };
+        
+        return getSourcePriority(b) - getSourcePriority(a);
+      });
+      
+      // Format the solution as a comprehensive answer with sources
+      const sourcesText = allResults.slice(0, 5).map((source, index) => 
+        `[${index + 1}] ${source.title} - ${source.snippet}`
+      ).join('\n\n');
+      
+      const solution = `Search Results for: "${query}"\n\n${sourcesText}\n\n` +
+        `Found ${allResults.length} results across all knowledge sources.`;
+      
+      return {
+        solution,
+        metadata: {
+          resultCount: allResults.length,
+          sources: allResults,
+          query
+        }
+      };
+    } catch (error) {
+      console.error('Error in knowledge search engine:', error);
+      return {
+        solution: `Failed to search knowledge sources: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        metadata: {
+          error: true,
+          query
+        }
+      };
+    }
+  },
+  
+  // Verify search results by checking if they match the query intent
+  verifyTask: async (task, solution) => {
+    // Simple verification - check if we have any results
+    const metadata = solution.metadata;
+    
+    if (metadata.error) {
+      return {
+        result: false,
+        explanation: 'Search failed due to an error',
+        score: 0
+      };
+    }
+    
+    if (!metadata.sources || metadata.sources.length === 0) {
+      return {
+        result: false,
+        explanation: 'No search results found for the query',
+        score: 0
+      };
+    }
+    
+    // Calculate a basic relevance score based on number of results
+    const resultCount = metadata.resultCount || metadata.sources.length;
+    const normalizedScore = Math.min(1, resultCount / 10); // 10+ results = perfect score
+    
+    return {
+      result: true,
+      explanation: `Found ${resultCount} results for the query`,
+      score: normalizedScore * 100
+    };
+  },
+  
+  // Reflect on search results to extract insights
+  reflectOnTask: async (task, solution, verification) => {
+    if (!verification.result) {
+      return {
+        reflection: "The search yielded no results. Consider refining the query or expanding the knowledge sources.",
+        insights: []
+      };
+    }
+    
+    const metadata = solution.metadata;
+    const sources = metadata.sources || [];
+    
+    // Identify most common source types
+    const sourceTypes = sources.reduce((acc, source) => {
+      const type = source.sourceType || 'unknown';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    // Generate insights based on the search results
+    const insights = [
+      `Query "${metadata.query}" returned ${sources.length} results`,
+      `Source distribution: ${Object.entries(sourceTypes)
+        .map(([type, count]) => `${type}: ${count}`)
+        .join(', ')}`,
+    ];
+    
+    // Analyze the specific knowledge returned
+    if (sources.length > 0) {
+      // Extract key topics from titles
+      const titles = sources.map(s => s.title).join(' ');
+      const words = titles.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+      const wordFreq = words.reduce((acc, word) => {
+        acc[word] = (acc[word] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      // Get top 5 keywords
+      const topKeywords = Object.entries(wordFreq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([word]) => word);
+        
+      if (topKeywords.length > 0) {
+        insights.push(`Key topics: ${topKeywords.join(', ')}`);
+      }
+    }
+    
+    return {
+      reflection: `Search for "${metadata.query}" found ${sources.length} results across multiple knowledge sources. The search returned a mix of ${Object.keys(sourceTypes).join(', ')} sources, suggesting ${sources.length > 5 ? 'broad coverage' : 'limited information'} on this topic in the knowledge base.`,
+      insights
+    };
+  },
+  
+  // Generate a follow-up or refined search query
+  mutateTask: async (task, solution, verification, reflection) => {
+    const metadata = solution.metadata;
+    const query = metadata.query || task;
+    
+    if (!verification.result || !metadata.sources || metadata.sources.length === 0) {
+      // If no results, broaden the query
+      const broadeningPrefixes = [
+        "basics of ",
+        "introduction to ",
+        "overview of ",
+        "fundamentals of ",
+      ];
+      
+      const prefix = broadeningPrefixes[Math.floor(Math.random() * broadeningPrefixes.length)];
+      return prefix + query.replace(/^(what is|how to|explain|describe)\s+/i, '');
+    }
+    
+    if (metadata.sources.length > 10) {
+      // If too many results, make the query more specific
+      const specifyingPrefixes = [
+        "detailed explanation of ",
+        "technical breakdown of ",
+        "advanced concepts in ",
+        "practical applications of ",
+      ];
+      
+      const prefix = specifyingPrefixes[Math.floor(Math.random() * specifyingPrefixes.length)];
+      return prefix + query;
+    }
+    
+    // Otherwise, generate a follow-up query based on the original
+    const followUpPatterns = [
+      `Compare ${query} with related approaches`,
+      `Latest developments in ${query}`,
+      `Practical applications of ${query}`,
+      `Challenges and limitations of ${query}`,
+      `Future directions for ${query}`,
+    ];
+    
+    return followUpPatterns[Math.floor(Math.random() * followUpPatterns.length)];
+  }
+};

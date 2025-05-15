@@ -12,6 +12,7 @@ import { mathEngine, mathEngineMetadata } from './mathEngine';
 import { writingEngine, writingEngineMetadata } from './writingEngine';
 import { businessEngine, businessEngineMetadata } from './businessEngine';
 import { webScrapingEngine, webScrapingEngineMetadata } from './webScrapingEngine';
+import { knowledgeSearchEngine, knowledgeSearchEngineMetadata } from './knowledgeSearchEngine';
 
 // Registry of all available domain engines
 export const domainEngines: Record<string, DomainEngine> = {
@@ -22,7 +23,8 @@ export const domainEngines: Record<string, DomainEngine> = {
   'math': mathEngine,
   'writing': writingEngine,
   'business': businessEngine,
-  'web-scraping': webScrapingEngine
+  'web-scraping': webScrapingEngine,
+  'knowledge-search': knowledgeSearchEngine
 };
 
 // Export engine metadata for UI components
@@ -34,5 +36,6 @@ export const engineMetadata = {
   'math': mathEngineMetadata,
   'writing': writingEngineMetadata,
   'business': businessEngineMetadata,
-  'web-scraping': webScrapingEngineMetadata
+  'web-scraping': webScrapingEngineMetadata,
+  'knowledge-search': knowledgeSearchEngineMetadata
 };

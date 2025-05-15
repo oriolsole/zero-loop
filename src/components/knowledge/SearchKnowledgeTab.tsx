@@ -7,6 +7,7 @@ import ExternalSources from '@/components/ExternalSources';
 import SaveSearchResult from '@/components/knowledge/SaveSearchResult';
 import SearchOptions from '@/components/knowledge/SearchOptions';
 import SearchResults from '@/components/knowledge/SearchResults';
+import { domainEngines } from '@/engines/domainEngines';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,9 @@ const SearchKnowledgeTab: React.FC = () => {
   const [allResults, setAllResults] = useState<ExternalSource[]>([]);
   const [activeResultsTab, setActiveResultsTab] = useState<'all' | 'knowledge' | 'web' | 'node'>('all');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Use the new knowledge search engine
+  const knowledgeSearchEngine = domainEngines['knowledge-search'];
   
   // Combine results whenever they change
   useEffect(() => {
@@ -79,33 +83,59 @@ const SearchKnowledgeTab: React.FC = () => {
     setIsLoading(true);
     setHasSearched(false);
     
-    // Create an array of promises to run in parallel
-    const searchPromises = [];
-    
-    // Always query knowledge base
-    searchPromises.push(
-      queryKnowledgeBase({
-        query: searchQuery,
-        limit: 10,
-        useEmbeddings,
-        matchThreshold,
-        includeNodes: includeNodeResults
-      })
-    );
-    
-    // Conditionally add web search if enabled
-    if (includeWebResults) {
+    try {
+      // Use the knowledge search engine if available
+      if (knowledgeSearchEngine) {
+        const { solution, metadata } = await knowledgeSearchEngine.solveTask(searchQuery, {
+          includeWeb: includeWebResults,
+          useEmbeddings,
+          matchThreshold,
+          includeNodes: includeNodeResults,
+          limit: 10
+        });
+        
+        if (metadata?.sources?.length > 0) {
+          setAllResults(metadata.sources);
+          setHasSearched(true);
+          setIsLoading(false);
+          setActiveResultsTab('all');
+          return;
+        }
+      }
+      
+      // Fall back to the original implementation if engine fails
+      // Create an array of promises to run in parallel
+      const searchPromises = [];
+      
+      // Always query knowledge base
       searchPromises.push(
-        searchWeb(searchQuery, 5)
+        queryKnowledgeBase({
+          query: searchQuery,
+          limit: 10,
+          useEmbeddings,
+          matchThreshold,
+          includeNodes: includeNodeResults
+        })
       );
+      
+      // Conditionally add web search if enabled
+      if (includeWebResults) {
+        searchPromises.push(
+          searchWeb(searchQuery, 5)
+        );
+      }
+      
+      // Wait for all search operations to complete
+      await Promise.all(searchPromises);
+      
+      setHasSearched(true);
+      setActiveResultsTab('all');
+    } catch (error) {
+      console.error('Error during search:', error);
+      // Show error toast or message
+    } finally {
+      setIsLoading(false);
     }
-    
-    // Wait for all search operations to complete
-    await Promise.all(searchPromises);
-    
-    setHasSearched(true);
-    setIsLoading(false);
-    setActiveResultsTab('all');
   };
   
   const handleSaveResult = (result: ExternalSource) => {
