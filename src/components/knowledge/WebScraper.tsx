@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { FileSearch, Search, Check, X, Loader2, Save } from "lucide-react";
+import { FileSearch, Search, X, Loader2, Save } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { SourceUrlInput } from './SourceUrlInput';
 import { TitleInput } from './TitleInput';
@@ -84,11 +84,14 @@ const WebScraper: React.FC = () => {
     
     try {
       await uploadKnowledge({
-        contentType: 'text',
         title: title || (metadata?.title || 'Scraped content'),
         content: scrapedContent,
         sourceUrl: sourceUrl || url,
-        tags: ['scraped', 'web-content', metadata?.domain || '']
+        metadata: {
+          type: 'scraped',
+          tags: ['scraped', 'web-content', metadata?.domain || ''],
+          source: 'web-scraper'
+        }
       });
       
       toast.success('Content saved to knowledge base');
