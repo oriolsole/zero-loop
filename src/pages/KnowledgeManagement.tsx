@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
 import { useExternalKnowledge } from '@/hooks/useExternalKnowledge';
 import KnowledgeUpload from '@/components/knowledge/KnowledgeUpload';
 import KnowledgeLibrary from '@/components/knowledge/KnowledgeLibrary';
+import KnowledgeEngines from '@/components/knowledge/KnowledgeEngines';
 import ExternalSources from '@/components/ExternalSources';
 import SaveSearchResult from '@/components/knowledge/SaveSearchResult';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Search, Info, Sliders, BookOpen, Library, Globe, Database, Brain } from "lucide-react";
+import { Loader2, Search, Info, Sliders, BookOpen, Library, Globe, Database, Brain, Cog } from "lucide-react";
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -173,6 +173,12 @@ const KnowledgeManagement: React.FC = () => {
             <span className="flex items-center gap-1">
               <Library className="h-4 w-4" />
               Knowledge Library
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="engines">
+            <span className="flex items-center gap-1">
+              <Cog className="h-4 w-4" />
+              Knowledge Engines
             </span>
           </TabsTrigger>
           <TabsTrigger value="upload">Upload Knowledge</TabsTrigger>
@@ -421,6 +427,24 @@ const KnowledgeManagement: React.FC = () => {
             
             <CardContent>
               <KnowledgeLibrary />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="engines">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Cog className="h-5 w-5" />
+                Knowledge Engines
+              </CardTitle>
+              <CardDescription>
+                Explore the available knowledge engines and their capabilities
+              </CardDescription>
+            </CardHeader>
+            
+            <CardContent>
+              <KnowledgeEngines />
             </CardContent>
           </Card>
         </TabsContent>
