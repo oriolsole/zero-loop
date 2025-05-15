@@ -8,10 +8,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Get the OpenAI API key from environment variables
-const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-if (!openaiApiKey) {
-  console.error("Missing OPENAI_API_KEY environment variable");
+// Get the Supabase URL from environment variables
+const supabaseUrl = Deno.env.get('SUPABASE_URL');
+if (!supabaseUrl) {
+  console.error("Missing SUPABASE_URL environment variable");
 }
 
 interface AIReasoningRequest {
@@ -30,10 +30,10 @@ serve(async (req) => {
   }
 
   try {
-    // Verify we have the OpenAI API key
-    if (!openaiApiKey) {
+    // Verify we have the Supabase URL
+    if (!supabaseUrl) {
       return new Response(
-        JSON.stringify({ error: 'OpenAI API key is not configured' }),
+        JSON.stringify({ error: 'Supabase URL is not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -96,17 +96,17 @@ serve(async (req) => {
         break;
     }
 
-    console.log("Sending request to OpenAI");
+    console.log("Sending request to AI model proxy");
     
-    // Make the API call to OpenAI
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    // Make the API call to our model proxy instead of directly to OpenAI
+    const response = await fetch(`${supabaseUrl}/functions/v1/ai-model-proxy`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4o', // This will be used by OpenAI but ignored by local models
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage }
@@ -119,9 +119,9 @@ serve(async (req) => {
     // Check for API errors
     if (!response.ok) {
       const error = await response.json();
-      console.error("OpenAI API error:", error);
+      console.error("AI model proxy error:", error);
       return new Response(
-        JSON.stringify({ error: `OpenAI API error: ${error.error?.message || 'Unknown error'}` }),
+        JSON.stringify({ error: `AI model error: ${error.error?.message || 'Unknown error'}` }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

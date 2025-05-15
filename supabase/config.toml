@@ -1,49 +1,24 @@
 
+# This is the configuration for your Supabase project.
 project_id = "dwescgkujhhizyrokuiv"
 
 [api]
 enabled = true
 port = 54321
-schemas = ["public", "storage", "graphql_public"]
 
 [db]
 port = 54322
 
-[studio]
+[auth]
 enabled = true
-port = 54323
-api_url = "http://127.0.0.1"
-
-[inbucket]
-enabled = true
-port = 54324
+port = 9999
+uri = "postgresql://postgres:postgres@localhost:54322/postgres"
 
 [storage]
 enabled = true
-file_size_limit = "50MiB"
 
-[auth]
-enabled = true
-site_url = "http://127.0.0.1:3000"
-
-[analytics]
-enabled = false
-
-[experimental]
-includes_preview_migrations = false
-
-[[migrations.templates]]
-path = "supabase/templates/database.sql"
-placeholders = []
-
-[migrations.template_config]
-use_database_migrations = true
-
-[functions.query-knowledge-base]
-verify_jwt = false
-
-[functions.upload-knowledge]
-verify_jwt = false
-
+[functions]
 [functions.ai-reasoning]
-verify_jwt = false
+verify_jwt = true
+[functions.ai-model-proxy]
+verify_jwt = true

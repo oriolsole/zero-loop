@@ -3,7 +3,8 @@ import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import SupabaseControl from '@/components/SupabaseControl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Database, User, Globe, Trash, HardDrive, Shield } from 'lucide-react';
+import { Database, User, Globe, Trash, HardDrive, Shield, BrainCircuit } from 'lucide-react';
+import ModelSettings from '@/components/ModelSettings';
 
 const Settings = () => {
   return (
@@ -16,6 +17,10 @@ const Settings = () => {
             <TabsTrigger value="database" className="flex items-center gap-2">
               <Database className="h-4 w-4" />
               Database
+            </TabsTrigger>
+            <TabsTrigger value="models" className="flex items-center gap-2">
+              <BrainCircuit className="h-4 w-4" />
+              AI Models
             </TabsTrigger>
             <TabsTrigger value="account" className="flex items-center gap-2">
               <User className="h-4 w-4" />
@@ -62,6 +67,10 @@ const Settings = () => {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+          
+          <TabsContent value="models">
+            <ModelSettings />
           </TabsContent>
           
           <TabsContent value="account">

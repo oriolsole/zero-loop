@@ -1,4 +1,3 @@
-
 // Knowledge Search Engine - Specialized domain engine for searching across knowledge sources
 import { DomainEngine, DomainEngineMetadata, ExternalSource } from '../types/intelligence';
 
@@ -249,10 +248,11 @@ export const knowledgeSearchEngine: DomainEngine = {
         "introduction to ",
         "overview of ",
         "fundamentals of ",
+        "guide to "
       ];
       
-      const prefix = broadeningPrefixes[Math.floor(Math.random() * broadeningPrefixes.length)];
-      return prefix + query.replace(/^(what is|how to|explain|describe)\s+/i, '');
+      const randomPrefix = broadeningPrefixes[Math.floor(Math.random() * broadeningPrefixes.length)];
+      return `${randomPrefix}${query}`;
     }
     
     // Ensure we have a number for sources.length before comparison
