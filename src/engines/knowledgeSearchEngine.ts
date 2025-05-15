@@ -232,10 +232,17 @@ export const knowledgeSearchEngine: DomainEngine = {
   
   // Generate a follow-up or refined search query
   mutateTask: async (task, solution, verification, reflection) => {
+    // Safely access metadata and ensure it's an object
     const metadata = solution?.metadata || {};
     const query = metadata.query || task;
     
-    if (!verification?.result || !metadata.sources || metadata.sources.length === 0) {
+    // Add proper type checking for results
+    const hasNoResults = !verification?.result || 
+                         !metadata.sources || 
+                         !Array.isArray(metadata.sources) || 
+                         metadata.sources.length === 0;
+    
+    if (hasNoResults) {
       // If no results, broaden the query
       const broadeningPrefixes = [
         "basics of ",
@@ -251,6 +258,7 @@ export const knowledgeSearchEngine: DomainEngine = {
     // Ensure we have a number for sources.length before comparison
     const sourceCount = Array.isArray(metadata.sources) ? metadata.sources.length : 0;
     
+    // Now TypeScript knows sourceCount is definitely a number
     if (sourceCount > 10) {
       // If too many results, make the query more specific
       const specifyingPrefixes = [
