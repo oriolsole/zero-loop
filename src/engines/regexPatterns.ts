@@ -1,5 +1,5 @@
-
 import { DomainEngine } from '../types/intelligence';
+import { Code } from 'lucide-react';
 
 // Predefined regex tasks and solutions
 const regexTasks = [
@@ -109,4 +109,14 @@ export const regexPatternsEngine: DomainEngine = {
       return newTask ? newTask.task : regexTasks[0].task;
     }
   }
+};
+
+// Add metadata for the engine
+export const regexPatternsEngineMetadata = {
+  id: 'programming',
+  name: 'Regex Patterns',
+  icon: Code,
+  description: 'Processes and generates regex pattern matching tasks',
+  sources: ['code'],
+  color: 'green'
 };

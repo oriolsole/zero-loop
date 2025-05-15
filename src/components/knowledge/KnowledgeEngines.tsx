@@ -3,8 +3,8 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Check, Code, Database, Brain, FileText, Globe, Calculator, FileCode, PencilRuler, Info } from "lucide-react";
-import { domainEngines } from '@/engines/domainEngines';
+import { Check, Database, Globe, Brain, FileCode } from "lucide-react";
+import { domainEngines, engineMetadata } from '@/engines/domainEngines';
 
 const KnowledgeEngines: React.FC = () => {
   // Convert the engines object to an array for rendering
@@ -18,67 +18,24 @@ const KnowledgeEngines: React.FC = () => {
       mutateTask: typeof engine.mutateTask === 'function',
     };
 
-    // Map engine keys to human-readable names and icons
-    const engineInfo = {
-      'logic': {
-        name: 'Logical Reasoning',
-        icon: PencilRuler,
-        description: 'Handles logical reasoning tasks and syllogisms',
-        sources: ['knowledge']
-      },
-      'programming': {
-        name: 'Regex Patterns',
-        icon: Code,
-        description: 'Processes and generates regex pattern matching tasks',
-        sources: ['code']
-      },
-      'web-knowledge': {
-        name: 'Web Knowledge',
-        icon: Globe,
-        description: 'Retrieves and processes information from web sources',
-        sources: ['web', 'knowledge']
-      },
-      'ai-reasoning': {
-        name: 'AI Reasoning',
-        icon: Brain,
-        description: 'Advanced AI-based reasoning for complex tasks',
-        sources: ['ai', 'knowledge']
-      },
-      'math': {
-        name: 'Mathematics',
-        icon: Calculator,
-        description: 'Solves mathematical problems and equations',
-        sources: ['knowledge']
-      },
-      'writing': {
-        name: 'Content Writing',
-        icon: FileText,
-        description: 'Creates and evaluates written content',
-        sources: ['knowledge']
-      },
-      'business': {
-        name: 'Business Strategy',
-        icon: Info,
-        description: 'Develops and analyzes business strategies',
-        sources: ['knowledge']
-      }
-    };
-
-    // Get the specific info for this engine
-    const info = engineInfo[key as keyof typeof engineInfo] || {
+    // Get metadata for this engine
+    const metadata = engineMetadata[key] || {
+      id: key,
       name: key.charAt(0).toUpperCase() + key.slice(1),
       icon: Database,
       description: 'Knowledge processing engine',
-      sources: ['knowledge']
+      sources: ['knowledge'],
+      color: 'gray'
     };
 
     return {
       id: key,
-      name: info.name,
-      Icon: info.icon,
-      description: info.description,
+      name: metadata.name,
+      Icon: metadata.icon,
+      description: metadata.description,
       capabilities,
-      sources: info.sources
+      sources: metadata.sources,
+      color: metadata.color
     };
   });
 
@@ -89,8 +46,8 @@ const KnowledgeEngines: React.FC = () => {
           <Card key={engine.id} className="overflow-hidden">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-md">
-                  <engine.Icon className="h-6 w-6 text-primary" />
+                <div className={`p-2 bg-${engine.color}-100 dark:bg-${engine.color}-950 rounded-md`}>
+                  <engine.Icon className={`h-6 w-6 text-${engine.color}-600 dark:text-${engine.color}-400`} />
                 </div>
                 <div>
                   <CardTitle className="text-xl">{engine.name}</CardTitle>

@@ -1,5 +1,5 @@
-
 import { DomainEngine } from '../types/intelligence';
+import { Brain } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 
@@ -101,4 +101,14 @@ export const aiReasoningEngine: DomainEngine = {
       return 'Error mutating task. Please try again later.';
     }
   }
+};
+
+// Add metadata for the engine
+export const aiReasoningEngineMetadata = {
+  id: 'ai-reasoning',
+  name: 'AI Reasoning',
+  icon: Brain,
+  description: 'Advanced AI-based reasoning for complex tasks',
+  sources: ['ai', 'knowledge'],
+  color: 'indigo'
 };

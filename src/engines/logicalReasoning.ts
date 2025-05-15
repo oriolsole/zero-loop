@@ -1,5 +1,5 @@
-
 import { DomainEngine } from '../types/intelligence';
+import { PencilRuler } from 'lucide-react';
 
 // Predefined tasks and solutions for logical reasoning
 const logicalTasks = [
@@ -103,4 +103,14 @@ export const logicalReasoningEngine: DomainEngine = {
       return newTask ? newTask.task : logicalTasks[0].task;
     }
   }
+};
+
+// Add metadata for the engine
+export const logicalReasoningEngineMetadata = {
+  id: 'logic',
+  name: 'Logical Reasoning',
+  icon: PencilRuler,
+  description: 'Handles logical reasoning tasks and syllogisms',
+  sources: ['knowledge'],
+  color: 'violet'
 };

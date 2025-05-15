@@ -1,5 +1,5 @@
-
 import { DomainEngine } from '../types/intelligence';
+import { Globe } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 import { ExternalSource } from '@/types/intelligence';
@@ -172,4 +172,14 @@ export const webKnowledgeEngine: DomainEngine = {
       return 'Error creating new research question. Please try again later.';
     }
   }
+};
+
+// Add metadata for the engine
+export const webKnowledgeEngineMetadata = {
+  id: 'web-knowledge',
+  name: 'Web Knowledge',
+  icon: Globe,
+  description: 'Retrieves and processes information from web sources',
+  sources: ['web', 'knowledge'],
+  color: 'sky'
 };
