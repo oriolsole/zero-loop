@@ -179,4 +179,7 @@ export interface DomainEngine {
   verifyTask?: (task: string, solution: any) => Promise<{ result: boolean; explanation: string; score: number }>;
   reflectOnTask?: (task: string, solution: any, verification: any) => Promise<{ reflection: string; insights: string[] }>;
   mutateTask?: (task: string, solution: any, verification: any, reflection: any) => Promise<string>;
+  // Add aliases for backward compatibility
+  verifySolution?: (task: string, solution: any, domainId?: string) => Promise<any>;
+  reflect?: (task: string, solution: any, verification: any, domainId?: string) => Promise<any>;
 }

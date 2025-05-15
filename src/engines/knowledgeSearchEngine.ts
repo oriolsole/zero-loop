@@ -157,7 +157,8 @@ export const knowledgeSearchEngine: DomainEngine = {
     
     // Calculate a basic relevance score based on number of results
     const resultCount = metadata.resultCount || metadata.sources.length;
-    const normalizedScore = Math.min(1, resultCount / 10); // 10+ results = perfect score
+    // Ensure values are numbers before arithmetic operations
+    const normalizedScore = Math.min(1, Number(resultCount) / 10); // 10+ results = perfect score
     
     return {
       result: true,

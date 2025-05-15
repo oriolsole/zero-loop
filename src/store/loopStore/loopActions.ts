@@ -233,11 +233,10 @@ export const createLoopActions = (
             ? solutionStep.content 
             : String(solutionStep);
   
-          result = await engine.verifySolution(
-            currentLoop[0].content, 
-            solutionContent,
-            activeDomainId
-          );
+          // Use either verifyTask or verifySolution, whichever is available
+          result = engine.verifyTask 
+            ? await engine.verifyTask(currentLoop[0].content, solutionContent)
+            : await engine.verifySolution(currentLoop[0].content, solutionContent, activeDomainId);
           
           // Process verification result properly
           let content = '';
@@ -279,12 +278,19 @@ export const createLoopActions = (
             ? verificationData.content
             : String(verificationData);
             
-          result = await engine.reflect(
-            currentLoop[0].content,
-            currentLoop[1].content || String(currentLoop[1]),
-            verificationContent,
-            activeDomainId
-          );
+          // Use either reflectOnTask or reflect, whichever is available
+          result = engine.reflectOnTask
+            ? await engine.reflectOnTask(
+                currentLoop[0].content,
+                currentLoop[1].content || String(currentLoop[1]),
+                verificationContent
+              )
+            : await engine.reflect(
+                currentLoop[0].content,
+                currentLoop[1].content || String(currentLoop[1]),
+                verificationContent,
+                activeDomainId
+              );
           
           metrics = { insightCount: typeof result === 'object' && result !== null
             ? String(result.content).split('.').length - 1 
@@ -319,8 +325,7 @@ export const createLoopActions = (
             currentLoop[0].content,
             currentLoop[1].content || '',
             currentLoop[2].content || '',
-            currentLoop[3].content || '',
-            activeDomainId
+            currentLoop[3].content || ''
           );
           metrics = { complexity: Math.floor(Math.random() * 10) + 1 };
           break;
