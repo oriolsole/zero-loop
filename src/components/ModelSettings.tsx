@@ -48,7 +48,7 @@ const ModelSettings = () => {
         if (data) {
           const hasLocalUrl = !!data.localModelUrl;
           setIsLocalModel(hasLocalUrl);
-          setLocalModelUrl(data.localModelUrl || 'http://localhost:1234/v1');
+          setLocalModelUrl(data.localModelUrl || 'http://localhost:1234');
           
           // If using local model, also fetch available models
           if (hasLocalUrl) {
@@ -70,16 +70,25 @@ const ModelSettings = () => {
   const fetchAvailableModels = async (url: string) => {
     try {
       setIsLoadingModels(true);
+      setError(null);
+      
+      console.log('Fetching models from URL:', url);
       
       const { data, error } = await supabase.functions.invoke('ai-model-proxy', {
-        body: { operation: 'getAvailableModels', localUrl: url }
+        body: { 
+          operation: 'getAvailableModels', 
+          localUrl: url 
+        }
       });
       
       if (error) {
         console.error('Error fetching available models:', error);
         toast.error('Failed to fetch available models');
+        setError(`Failed to fetch models: ${error.message || 'Unknown error'}`);
         return;
       }
+      
+      console.log('Models response:', data);
       
       if (data && data.models) {
         setAvailableModels(data.models);
@@ -88,9 +97,14 @@ const ModelSettings = () => {
         if (data.models.length > 0) {
           setSelectedModel(data.models[0].id);
         }
+      } else if (data && data.error) {
+        setError(`API error: ${data.error}`);
+      } else {
+        setError('No models returned from API');
       }
     } catch (error) {
       console.error('Error fetching available models:', error);
+      setError(`Exception: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoadingModels(false);
     }
@@ -188,12 +202,12 @@ const ModelSettings = () => {
                   <Label htmlFor="model-url">Local Model URL</Label>
                   <Input
                     id="model-url"
-                    placeholder="http://localhost:1234/v1"
+                    placeholder="http://localhost:1234"
                     value={localModelUrl}
                     onChange={handleUrlChange}
                   />
                   <p className="text-xs text-muted-foreground">
-                    The base URL of your LM Studio server's OpenAI-compatible API
+                    The base URL of your LM Studio server (without /v1 path)
                   </p>
                 </div>
                 
@@ -231,9 +245,14 @@ const ModelSettings = () => {
                       </SelectContent>
                     </Select>
                   ) : (
-                    <p className="text-sm text-muted-foreground py-2">
-                      No models found. Make sure LM Studio is running and the URL is correct.
-                    </p>
+                    <div className="bg-amber-50 text-amber-800 p-3 rounded-md text-sm">
+                      <p className="font-medium">No models found.</p>
+                      <p className="mt-1">
+                        Make sure LM Studio is running and the URL is correct. Edge functions cannot 
+                        directly access localhost, so this feature works best during local development 
+                        or with tunneling tools like ngrok.
+                      </p>
+                    </div>
                   )}
                 </div>
               </>

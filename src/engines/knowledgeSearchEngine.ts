@@ -1,3 +1,4 @@
+
 // Knowledge Search Engine - Specialized domain engine for searching across knowledge sources
 import { DomainEngine, DomainEngineMetadata, ExternalSource } from '../types/intelligence';
 
@@ -157,7 +158,7 @@ export const knowledgeSearchEngine: DomainEngine = {
     
     // Calculate a basic relevance score based on number of results
     // First ensure we have a number for the result count
-    let resultCount: number = 0;
+    let resultCount = 0;
     if (typeof metadata.resultCount === 'number') {
       resultCount = metadata.resultCount;
     } else if (metadata.sources && Array.isArray(metadata.sources)) {
