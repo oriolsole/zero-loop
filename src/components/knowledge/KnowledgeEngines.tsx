@@ -13,8 +13,8 @@ const KnowledgeEngines: React.FC = () => {
     const capabilities = {
       generateTask: typeof engine.generateTask === 'function',
       solveTask: typeof engine.solveTask === 'function',
-      verifySolution: typeof engine.verifySolution === 'function',
-      reflect: typeof engine.reflect === 'function',
+      verifyTask: typeof engine.verifyTask === 'function',
+      reflectOnTask: typeof engine.reflectOnTask === 'function',
       mutateTask: typeof engine.mutateTask === 'function',
     };
 
@@ -34,7 +34,7 @@ const KnowledgeEngines: React.FC = () => {
       Icon: metadata.icon,
       description: metadata.description,
       capabilities,
-      sources: metadata.sources,
+      sources: metadata.sources || [], // Ensure sources is always at least an empty array
       color: metadata.color
     };
   });
@@ -81,7 +81,7 @@ const KnowledgeEngines: React.FC = () => {
                 <div>
                   <h4 className="text-sm font-medium mb-2">Knowledge Sources</h4>
                   <div className="flex flex-wrap gap-1.5">
-                    {engine.sources.map(source => {
+                    {engine.sources && engine.sources.map(source => {
                       let SourceIcon = Database;
                       
                       if (source === 'web') SourceIcon = Globe;

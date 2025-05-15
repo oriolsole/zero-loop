@@ -163,11 +163,13 @@ export interface DomainEngineMetadata {
   id: string;
   name: string;
   description: string;
-  icon: string;
-  capabilities: string[];
-  category: string;
-  version: string;
-  author: string;
+  icon: any; // Changed from string to any to allow React components
+  sources?: string[];
+  color?: string;
+  capabilities?: string[];
+  category?: string;
+  version?: string;
+  author?: string;
 }
 
 // Update DomainEngine interface to match the implementation

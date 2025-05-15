@@ -1,4 +1,3 @@
-
 // Knowledge Search Engine - Specialized domain engine for searching across knowledge sources
 import { DomainEngine, DomainEngineMetadata, ExternalSource } from '../types/intelligence';
 
@@ -8,6 +7,8 @@ export const knowledgeSearchEngineMetadata: DomainEngineMetadata = {
   name: 'Knowledge Search',
   description: 'Search across all knowledge sources including knowledge base, nodes, and web',
   icon: 'search',
+  sources: ['knowledge', 'web'],
+  color: 'blue',
   capabilities: [
     'Semantic search across knowledge base',
     'Text-based matching',
@@ -46,13 +47,14 @@ export const knowledgeSearchEngine: DomainEngine = {
       const { queryKnowledgeBase } = useKnowledgeBase();
       const { searchWeb } = useExternalKnowledge();
       
-      // Default search options
+      // Parse options properly
       const searchOptions = {
         useEmbeddings: true,
         matchThreshold: 0.5,
         includeNodes: true,
-        includeWeb: options?.includeWeb !== false,
-        limit: options?.limit || 10
+        includeWeb: false,
+        limit: 10,
+        ...(typeof options === 'object' ? options : {})
       };
       
       // Initialize results array
@@ -78,7 +80,7 @@ export const knowledgeSearchEngine: DomainEngine = {
       
       // Search web if enabled and we need more results
       if (searchOptions.includeWeb && 
-          (options?.forceWebSearch || allResults.length < searchOptions.limit)) {
+          (searchOptions.forceWebSearch || allResults.length < searchOptions.limit)) {
         try {
           const webLimit = Math.max(1, searchOptions.limit - allResults.length);
           const webResults = await searchWeb(query, webLimit);
@@ -92,14 +94,9 @@ export const knowledgeSearchEngine: DomainEngine = {
         }
       }
       
-      // Sort combined results by relevance (if available) or source type priority
+      // Sort combined results by source type priority
       allResults.sort((a, b) => {
-        // If both have relevance scores, sort by that
-        if (typeof a.relevanceScore === 'number' && typeof b.relevanceScore === 'number') {
-          return b.relevanceScore - a.relevanceScore;
-        }
-        
-        // Otherwise prioritize by source type: knowledge nodes > knowledge base > web
+        // Prioritize by source type: knowledge nodes > knowledge base > web
         const getSourcePriority = (source: ExternalSource) => {
           if (source.sourceType === 'node') return 3;
           if (source.sourceType === 'knowledge') return 2;
@@ -165,7 +162,7 @@ export const knowledgeSearchEngine: DomainEngine = {
     return {
       result: true,
       explanation: `Found ${resultCount} results for the query`,
-      score: normalizedScore * 100
+      score: normalizedScore * 100 // Convert to percentage
     };
   },
   
