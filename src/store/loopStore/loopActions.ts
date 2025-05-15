@@ -229,15 +229,38 @@ export const createLoopActions = (
             activeDomainId
           );
           
-          // Default metrics if not provided in the result
-          const isSuccessful = typeof result === 'object' && result !== null
-            ? !String(result.content).toLowerCase().includes('incorrect')
-            : !String(result).toLowerCase().includes('incorrect');
+          // Process verification result properly
+          let content = '';
+          let isCorrect = false;
+          
+          // Check if result is an object with isCorrect and explanation properties
+          if (typeof result === 'object' && result !== null) {
+            // Handle structured verification result
+            if ('isCorrect' in result && 'explanation' in result) {
+              content = String(result.explanation);
+              isCorrect = Boolean(result.isCorrect);
+            } else if ('content' in result) {
+              // Handle result with content field
+              content = String(result.content);
+              isCorrect = !content.toLowerCase().includes('incorrect');
+            } else {
+              // Fallback for other object structures
+              content = JSON.stringify(result);
+              isCorrect = !content.toLowerCase().includes('incorrect');
+            }
+          } else {
+            // Handle string result
+            content = String(result);
+            isCorrect = !content.toLowerCase().includes('incorrect');
+          }
             
           metrics = { 
-            correct: isSuccessful,
+            correct: isCorrect,
             timeMs: Math.floor(Math.random() * 300) + 50 
           };
+          
+          // Set the result variable to ensure it's properly passed to later code
+          result = { content, isCorrect };
           break;
         }
         case 'reflection': {
@@ -295,14 +318,28 @@ export const createLoopActions = (
           result = "Unexpected step type";
       }
       
-      // Update step with result, handling both string and object responses
-      const content = typeof result === 'object' && result !== null ? 
-        String(result.content) : String(result);
-      const metadata = typeof result === 'object' && result !== null ? 
-        result.metadata : undefined;
+      // Extract content from the result
+      let content = '';
+      let metadata = undefined;
+      
+      if (typeof result === 'object' && result !== null) {
+        // Handle object results
+        if ('content' in result) {
+          content = String(result.content);
+        } else if ('explanation' in result) {
+          content = String(result.explanation);
+        } else {
+          content = JSON.stringify(result);
+        }
+        
+        metadata = 'metadata' in result ? result.metadata : undefined;
+      } else {
+        // Handle string or other primitive results
+        content = String(result);
+      }
       
       const status = content.toLowerCase().includes('error') || 
-                   (nextStep.type === 'verification' && content.includes('Incorrect')) 
+                   (nextStep.type === 'verification' && content.toLowerCase().includes('incorrect')) 
                    ? 'failure' : 'success';
       
       const updatedStep: LearningStep = {
@@ -626,3 +663,4 @@ export const createLoopActions = (
     set({ isContinuousMode: false });
   },
 });
+
