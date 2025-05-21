@@ -18,6 +18,15 @@ export interface MCP {
   user_id?: string;
   created_at?: string;
   updated_at?: string;
+  // New fields for categorization and additional metadata
+  isDefault?: boolean;
+  category?: string;
+  tags?: string[];
+  suggestedPrompt?: string;
+  sampleUseCases?: string[];
+  requiresAuth?: boolean;
+  authType?: 'api_key' | 'oauth' | 'basic';
+  authKeyName?: string;
 }
 
 export interface MCPExecution {

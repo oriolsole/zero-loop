@@ -7,9 +7,10 @@ interface MCPGridProps {
   mcps: MCP[];
   onEdit: (mcp: MCP) => void;
   onDelete: (id: string) => void;
+  onClone: (id: string) => void;
 }
 
-const MCPGrid: React.FC<MCPGridProps> = ({ mcps, onEdit, onDelete }) => {
+const MCPGrid: React.FC<MCPGridProps> = ({ mcps, onEdit, onDelete, onClone }) => {
   if (mcps.length === 0) {
     return (
       <div className="text-center py-12 border-2 border-dashed rounded-md">
@@ -28,7 +29,8 @@ const MCPGrid: React.FC<MCPGridProps> = ({ mcps, onEdit, onDelete }) => {
           key={mcp.id} 
           mcp={mcp} 
           onEdit={() => onEdit(mcp)} 
-          onDelete={() => onDelete(mcp.id)} 
+          onDelete={() => onDelete(mcp.id)}
+          onClone={() => onClone(mcp.id)}
         />
       ))}
     </div>

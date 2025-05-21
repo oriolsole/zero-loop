@@ -1,8 +1,8 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPParameter } from '@/types/mcp';
 import { toast } from '@/components/ui/sonner';
 import { Json } from '@/integrations/supabase/types';
+import { defaultMCPs } from '@/constants/defaultMCPs';
 
 // Helper function to convert a JSON parameter from Supabase to our frontend MCPParameter type
 const convertJsonToMCPParameter = (param: Json): MCPParameter => {
@@ -41,6 +41,64 @@ const convertToMCPStatus = (status: string): "pending" | "running" | "completed"
 };
 
 export const mcpService = {
+  /**
+   * Seed the default MCPs into the database if they don't exist already
+   */
+  async seedDefaultMCPs(): Promise<void> {
+    try {
+      // First, get all existing MCPs to check which default ones are missing
+      const { data: existingMCPs, error: fetchError } = await supabase
+        .from('mcps')
+        .select('id')
+        .eq('isDefault', true);
+
+      if (fetchError) throw fetchError;
+
+      // Determine which default MCPs need to be created
+      const existingIds = (existingMCPs || []).map(mcp => mcp.id);
+      const mcpsToCreate = defaultMCPs.filter(mcp => !existingIds.includes(mcp.id));
+
+      if (mcpsToCreate.length === 0) {
+        console.log('All default MCPs are already seeded');
+        return;
+      }
+
+      // Prepare MCPs for insertion
+      const mcpsForInsert = mcpsToCreate.map(mcp => ({
+        id: mcp.id,
+        title: mcp.title,
+        description: mcp.description,
+        endpoint: mcp.endpoint,
+        icon: mcp.icon,
+        parameters: mcp.parameters.map(convertMCPParameterToJson),
+        isDefault: true,
+        category: mcp.category,
+        tags: mcp.tags,
+        suggestedPrompt: mcp.suggestedPrompt,
+        sampleUseCases: mcp.sampleUseCases,
+        requiresAuth: mcp.requiresAuth,
+        authType: mcp.authType,
+        authKeyName: mcp.authKeyName
+      }));
+
+      // Insert the missing default MCPs
+      const { error: insertError } = await supabase
+        .from('mcps')
+        .insert(mcpsForInsert);
+
+      if (insertError) throw insertError;
+
+      console.log(`Seeded ${mcpsToCreate.length} default MCPs`);
+      
+      if (mcpsToCreate.length > 0) {
+        toast.success(`Added ${mcpsToCreate.length} pre-configured tools`);
+      }
+    } catch (error) {
+      console.error('Error seeding default MCPs:', error);
+      toast.error('Failed to seed default MCPs');
+    }
+  },
+
   /**
    * Fetch all MCPs available to the user
    */
@@ -389,6 +447,47 @@ export const mcpService = {
       console.error('Error saving result as knowledge node:', error);
       toast.error('Failed to save as knowledge node');
       return false;
+    }
+  },
+
+  /**
+   * Clone a default MCP to create a customizable copy
+   */
+  async cloneMCP(mcpId: string): Promise<MCP | null> {
+    try {
+      // First fetch the MCP to clone
+      const mcp = await this.fetchMCPById(mcpId);
+      if (!mcp) throw new Error(`MCP with ID ${mcpId} not found`);
+      
+      // Create a new MCP based on the original, but with a new ID
+      const newMCP: Omit<MCP, 'id' | 'created_at' | 'updated_at'> = {
+        title: `${mcp.title} (Custom)`,
+        description: mcp.description,
+        endpoint: mcp.endpoint,
+        icon: mcp.icon,
+        parameters: mcp.parameters,
+        isDefault: false, // Mark as not default since it's a custom copy
+        category: mcp.category,
+        tags: mcp.tags ? [...mcp.tags, 'custom'] : ['custom'],
+        suggestedPrompt: mcp.suggestedPrompt,
+        sampleUseCases: mcp.sampleUseCases,
+        requiresAuth: mcp.requiresAuth,
+        authType: mcp.authType,
+        authKeyName: mcp.authKeyName
+      };
+      
+      // Save the new MCP
+      const createdMCP = await this.createMCP(newMCP);
+      
+      if (createdMCP) {
+        toast.success('MCP cloned successfully');
+      }
+      
+      return createdMCP;
+    } catch (error) {
+      console.error('Error cloning MCP:', error);
+      toast.error('Failed to clone MCP');
+      return null;
     }
   }
 };

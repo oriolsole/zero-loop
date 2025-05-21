@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,17 +10,29 @@ import MCPGrid from './MCPGrid';
 import MCPForm from './MCPForm';
 import MCPChatInterface from './MCPChatInterface';
 import { MCP } from '@/types/mcp';
+import { Badge } from '@/components/ui/badge';
 
 const MCPsTab: React.FC = () => {
   const [view, setView] = useState<'grid' | 'chat'>('grid');
   const [isCreating, setIsCreating] = useState(false);
   const [editingMCP, setEditingMCP] = useState<MCP | null>(null);
+  const [filter, setFilter] = useState<'all' | 'default' | 'custom'>('all');
 
   // Fetch MCPs using react-query
   const { data: mcps, isLoading, refetch } = useQuery({
     queryKey: ['mcps'],
     queryFn: mcpService.fetchMCPs
   });
+
+  // Seed default MCPs on component mount
+  useEffect(() => {
+    const seedDefaultTools = async () => {
+      await mcpService.seedDefaultMCPs();
+      refetch();
+    };
+    
+    seedDefaultTools();
+  }, [refetch]);
 
   const handleCreateNew = () => {
     setEditingMCP(null);
@@ -49,12 +61,39 @@ const MCPsTab: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
+    const mcp = mcps?.find(m => m.id === id);
+    
+    // Prevent deletion of default MCPs
+    if (mcp?.isDefault) {
+      alert('Default MCPs cannot be deleted. You can create a custom copy instead.');
+      return;
+    }
+    
     const confirmed = window.confirm('Are you sure you want to delete this MCP?');
     if (confirmed) {
       await mcpService.deleteMCP(id);
       refetch();
     }
   };
+
+  const handleCloneMCP = async (id: string) => {
+    await mcpService.cloneMCP(id);
+    refetch();
+  };
+
+  // Filter MCPs based on the selected filter
+  const filteredMCPs = React.useMemo(() => {
+    if (!mcps) return [];
+    
+    switch (filter) {
+      case 'default':
+        return mcps.filter(mcp => mcp.isDefault);
+      case 'custom':
+        return mcps.filter(mcp => !mcp.isDefault);
+      default:
+        return mcps;
+    }
+  }, [mcps, filter]);
 
   if (isCreating) {
     return (
@@ -89,15 +128,41 @@ const MCPsTab: React.FC = () => {
           </TabsList>
           
           <TabsContent value="grid">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="text-sm font-medium">Filter:</div>
+              <Badge 
+                variant={filter === 'all' ? 'default' : 'outline'}
+                className="cursor-pointer"
+                onClick={() => setFilter('all')}
+              >
+                All
+              </Badge>
+              <Badge 
+                variant={filter === 'default' ? 'default' : 'outline'}
+                className="cursor-pointer"
+                onClick={() => setFilter('default')}
+              >
+                Default
+              </Badge>
+              <Badge 
+                variant={filter === 'custom' ? 'default' : 'outline'}
+                className="cursor-pointer"
+                onClick={() => setFilter('custom')}
+              >
+                Custom
+              </Badge>
+            </div>
+            
             {isLoading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : (
               <MCPGrid 
-                mcps={mcps || []} 
+                mcps={filteredMCPs} 
                 onEdit={handleEditMCP} 
                 onDelete={handleDelete} 
+                onClone={handleCloneMCP}
               />
             )}
           </TabsContent>
