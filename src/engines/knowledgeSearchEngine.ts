@@ -279,7 +279,7 @@ export const knowledgeSearchEngine: DomainEngine = {
     }
     
     // IMPORTANT FIX: Explicitly convert sources.length to a number to ensure type safety
-    const sourceCount = sources.length;
+    const sourceCount = Number(sources.length);
     
     // Now TypeScript knows sourceCount is definitely a number
     if (sourceCount > 10) {

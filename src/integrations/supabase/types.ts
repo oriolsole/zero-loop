@@ -242,6 +242,86 @@ export type Database = {
         }
         Relationships: []
       }
+      mcp_executions: {
+        Row: {
+          created_at: string | null
+          error: string | null
+          execution_time: number | null
+          id: string
+          mcp_id: string | null
+          parameters: Json
+          result: Json | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          error?: string | null
+          execution_time?: number | null
+          id?: string
+          mcp_id?: string | null
+          parameters?: Json
+          result?: Json | null
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          error?: string | null
+          execution_time?: number | null
+          id?: string
+          mcp_id?: string | null
+          parameters?: Json
+          result?: Json | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_executions_mcp_id_fkey"
+            columns: ["mcp_id"]
+            isOneToOne: false
+            referencedRelation: "mcps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mcps: {
+        Row: {
+          created_at: string | null
+          description: string
+          endpoint: string
+          icon: string | null
+          id: string
+          parameters: Json
+          title: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description: string
+          endpoint: string
+          icon?: string | null
+          id?: string
+          parameters?: Json
+          title: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string
+          endpoint?: string
+          icon?: string | null
+          id?: string
+          parameters?: Json
+          title?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

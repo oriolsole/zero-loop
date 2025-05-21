@@ -6,9 +6,10 @@ import KnowledgeEngines from '@/components/knowledge/KnowledgeEngines';
 import SearchKnowledgeTab from '@/components/knowledge/SearchKnowledgeTab';
 import WebScraper from '@/components/knowledge/WebScraper';
 import KnowledgeManagementHeader from '@/components/knowledge/KnowledgeManagementHeader';
+import MCPsTab from '@/components/knowledge/MCPsTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Library, Cog, Brain, FileSearch } from "lucide-react";
+import { Library, Cog, Brain, FileSearch, Terminal } from "lucide-react";
 import { ensureStorageBucketsExist } from '@/utils/supabase/storage';
 
 const KnowledgeManagement: React.FC = () => {
@@ -41,6 +42,12 @@ const KnowledgeManagement: React.FC = () => {
             <span className="flex items-center gap-1">
               <FileSearch className="h-4 w-4" />
               Web Scraper
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="mcps">
+            <span className="flex items-center gap-1">
+              <Terminal className="h-4 w-4" />
+              MCPs
             </span>
           </TabsTrigger>
           <TabsTrigger value="upload">Upload Knowledge</TabsTrigger>
@@ -88,6 +95,10 @@ const KnowledgeManagement: React.FC = () => {
         
         <TabsContent value="scraper">
           <WebScraper />
+        </TabsContent>
+        
+        <TabsContent value="mcps">
+          <MCPsTab />
         </TabsContent>
         
         <TabsContent value="upload">
