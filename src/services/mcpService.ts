@@ -15,7 +15,14 @@ export const mcpService = {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      
+      // Convert the parameters from JSON to proper typed array
+      return (data || []).map(item => ({
+        ...item,
+        parameters: Array.isArray(item.parameters) 
+          ? item.parameters 
+          : []
+      })) as MCP[];
     } catch (error) {
       console.error('Error fetching MCPs:', error);
       toast.error('Failed to load MCPs');
@@ -35,7 +42,14 @@ export const mcpService = {
         .single();
 
       if (error) throw error;
-      return data;
+      
+      // Convert parameters from JSON
+      return data ? {
+        ...data,
+        parameters: Array.isArray(data.parameters) 
+          ? data.parameters 
+          : []
+      } as MCP : null;
     } catch (error) {
       console.error(`Error fetching MCP ${id}:`, error);
       toast.error('Failed to load MCP details');
@@ -48,15 +62,32 @@ export const mcpService = {
    */
   async createMCP(mcp: Omit<MCP, 'id' | 'created_at' | 'updated_at'>): Promise<MCP | null> {
     try {
+      // Ensure we're sending the correct data structure to Supabase
+      const mcpData = {
+        title: mcp.title,
+        description: mcp.description,
+        endpoint: mcp.endpoint,
+        icon: mcp.icon,
+        parameters: mcp.parameters
+      };
+      
       const { data, error } = await supabase
         .from('mcps')
-        .insert(mcp)
+        .insert(mcpData)
         .select()
         .single();
 
       if (error) throw error;
+      
       toast.success('MCP created successfully');
-      return data;
+      
+      // Convert parameters from JSON
+      return data ? {
+        ...data,
+        parameters: Array.isArray(data.parameters) 
+          ? data.parameters 
+          : []
+      } as MCP : null;
     } catch (error) {
       console.error('Error creating MCP:', error);
       toast.error('Failed to create MCP');
@@ -69,16 +100,34 @@ export const mcpService = {
    */
   async updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null> {
     try {
+      // Ensure we're sending the correct data structure to Supabase
+      const updateData = {
+        ...(updates.title !== undefined && { title: updates.title }),
+        ...(updates.description !== undefined && { description: updates.description }),
+        ...(updates.endpoint !== undefined && { endpoint: updates.endpoint }),
+        ...(updates.icon !== undefined && { icon: updates.icon }),
+        ...(updates.parameters !== undefined && { parameters: updates.parameters }),
+        updated_at: new Date().toISOString()
+      };
+      
       const { data, error } = await supabase
         .from('mcps')
-        .update({ ...updates, updated_at: new Date().toISOString() })
+        .update(updateData)
         .eq('id', id)
         .select()
         .single();
 
       if (error) throw error;
+      
       toast.success('MCP updated successfully');
-      return data;
+      
+      // Convert parameters from JSON
+      return data ? {
+        ...data,
+        parameters: Array.isArray(data.parameters) 
+          ? data.parameters 
+          : []
+      } as MCP : null;
     } catch (error) {
       console.error(`Error updating MCP ${id}:`, error);
       toast.error('Failed to update MCP');
@@ -124,6 +173,13 @@ export const mcpService = {
 
       if (executionError) throw executionError;
       
+      // Convert parameters for type safety
+      const execution: MCPExecution = {
+        ...executionData,
+        parameters: executionData.parameters || {},
+        result: executionData.result || {}
+      };
+      
       // Get the MCP details
       const mcp = await this.fetchMCPById(mcpId);
       if (!mcp) throw new Error(`MCP with ID ${mcpId} not found`);
@@ -158,14 +214,20 @@ export const mcpService = {
             result,
             execution_time: executionTime
           })
-          .eq('id', executionData.id)
+          .eq('id', execution.id)
           .select()
           .single();
           
         if (updateError) throw updateError;
         
         toast.success('MCP executed successfully');
-        return updatedExecution;
+        
+        // Convert for type safety
+        return updatedExecution ? {
+          ...updatedExecution,
+          parameters: updatedExecution.parameters || {},
+          result: updatedExecution.result || {}
+        } as MCPExecution : null;
       } catch (error) {
         // Update execution record with error
         const { data: failedExecution } = await supabase
@@ -175,13 +237,19 @@ export const mcpService = {
             error: error instanceof Error ? error.message : 'Unknown error',
             execution_time: Date.now() - startTime
           })
-          .eq('id', executionData.id)
+          .eq('id', execution.id)
           .select()
           .single();
           
         console.error(`MCP execution failed:`, error);
         toast.error('MCP execution failed');
-        return failedExecution;
+        
+        // Convert for type safety
+        return failedExecution ? {
+          ...failedExecution,
+          parameters: failedExecution.parameters || {},
+          result: failedExecution.result || {}
+        } as MCPExecution : null;
       }
     } catch (error) {
       console.error('Error executing MCP:', error);
@@ -202,7 +270,13 @@ export const mcpService = {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      
+      // Convert parameters and results for type safety
+      return (data || []).map(item => ({
+        ...item,
+        parameters: item.parameters || {},
+        result: item.result || {}
+      })) as MCPExecution[];
     } catch (error) {
       console.error(`Error fetching executions for MCP ${mcpId}:`, error);
       toast.error('Failed to load execution history');
@@ -230,6 +304,7 @@ export const mcpService = {
       const { error } = await supabase
         .from('knowledge_nodes')
         .insert({
+          id: crypto.randomUUID(), // Generate a UUID for the node
           title: title || `${mcp.title} Result`,
           description: `Generated from MCP "${mcp.title}"`,
           type: 'mcp-result',

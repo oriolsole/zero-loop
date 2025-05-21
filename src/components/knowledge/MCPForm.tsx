@@ -1,33 +1,33 @@
 
-import React from 'react';
-import { useForm } from 'react-hook-form';
+import React, { useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { MCP } from '@/types/mcp';
-import { Button } from '@/components/ui/button';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Trash2 } from 'lucide-react';
 import { Icons } from '@/components/icons';
-import { Badge } from '@/components/ui/badge';
+import { MCP, MCPParameter } from '@/types/mcp';
 
-const parameterTypes = ['string', 'number', 'boolean', 'array', 'object'] as const;
+const parameterSchema = z.object({
+  name: z.string().min(1, 'Parameter name is required'),
+  type: z.enum(['string', 'number', 'boolean', 'array', 'object']),
+  description: z.string().optional(),
+  required: z.boolean().default(true),
+  default: z.any().optional(),
+});
 
 const formSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().min(1, 'Description is required'),
-  endpoint: z.string().url('Must be a valid URL'),
+  endpoint: z.string().url('Endpoint must be a valid URL'),
   icon: z.string().default('terminal'),
-  parameters: z.array(z.object({
-    name: z.string().min(1, 'Parameter name is required'),
-    type: z.enum(parameterTypes),
-    description: z.string().optional(),
-    required: z.boolean().default(true),
-    default: z.any().optional(),
-  }))
+  parameters: z.array(parameterSchema).default([]),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -39,87 +39,82 @@ interface MCPFormProps {
 }
 
 const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
+  const [selectedIcon, setSelectedIcon] = useState<string>(mcp?.icon || 'terminal');
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: mcp ? {
-      title: mcp.title,
-      description: mcp.description,
-      endpoint: mcp.endpoint,
-      icon: mcp.icon,
-      parameters: mcp.parameters
-    } : {
-      title: '',
-      description: '',
-      endpoint: 'http://',
-      icon: 'terminal',
-      parameters: []
-    }
+    defaultValues: {
+      title: mcp?.title || '',
+      description: mcp?.description || '',
+      endpoint: mcp?.endpoint || '',
+      icon: mcp?.icon || 'terminal',
+      parameters: mcp?.parameters || [],
+    },
   });
   
-  const { fields, append, remove } = form.useFieldArray({
-    name: 'parameters'
-  });
-  
+  // We need to use useFieldArray from react-hook-form for the parameters array
+  const { fields, append, remove } = form.control._formValues.parameters 
+    ? form.control._formValues.parameters
+    : { fields: [], append: () => {}, remove: () => {} };
+
   const handleSubmit = (values: FormValues) => {
-    const mcpData = mcp ? { ...mcp, ...values } : values;
-    onSave(mcpData);
+    // Make sure all required fields are populated
+    const validMcp: Omit<MCP, 'id' | 'created_at' | 'updated_at'> = {
+      title: values.title,
+      description: values.description,
+      endpoint: values.endpoint,
+      icon: values.icon,
+      parameters: values.parameters.map(param => ({
+        name: param.name,
+        type: param.type,
+        description: param.description || '',
+        required: param.required,
+        default: param.default
+      })),
+    };
+    
+    if (mcp?.id) {
+      onSave({ ...validMcp, id: mcp.id, created_at: mcp.created_at, updated_at: mcp.updated_at });
+    } else {
+      onSave(validMcp);
+    }
   };
-  
+
   const addParameter = () => {
-    append({
+    const newParam: MCPParameter = {
       name: '',
       type: 'string',
       description: '',
-      required: true
-    });
+      required: true,
+    };
+    append(newParam);
   };
-  
-  const iconOptions = Object.keys(Icons);
-  
+
   return (
-    <Card>
+    <Card className="w-full">
       <CardHeader>
-        <div className="flex items-center">
-          <Button variant="ghost" onClick={onCancel} className="mr-2 p-0 w-8 h-8">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <CardTitle>{mcp ? 'Edit' : 'Create'} MCP Tool</CardTitle>
-        </div>
+        <CardTitle>{mcp ? 'Edit MCP Tool' : 'Create New MCP Tool'}</CardTitle>
       </CardHeader>
-      
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)}>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="title"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Title</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Weather API" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="endpoint"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Endpoint URL</FormLabel>
-                    <FormControl>
-                      <Input placeholder="https://api.example.com/mcp" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-            
+          <CardContent className="space-y-4">
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Title</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Weather API" {...field} />
+                  </FormControl>
+                  <FormDescription>
+                    A descriptive name for your MCP tool
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <FormField
               control={form.control}
               name="description"
@@ -128,16 +123,38 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                   <FormLabel>Description</FormLabel>
                   <FormControl>
                     <Textarea 
-                      placeholder="Gets current weather data for a specified location" 
-                      className="min-h-[80px]"
+                      placeholder="Get current weather for a location" 
                       {...field} 
                     />
                   </FormControl>
+                  <FormDescription>
+                    Explain what this tool does
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            
+
+            <FormField
+              control={form.control}
+              name="endpoint"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Endpoint URL</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="https://your-mcp-server.com/api/weather" 
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    The URL of your MCP server endpoint
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <FormField
               control={form.control}
               name="icon"
@@ -145,74 +162,78 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                 <FormItem>
                   <FormLabel>Icon</FormLabel>
                   <Select 
-                    onValueChange={field.onChange} 
-                    defaultValue={field.value}
+                    value={field.value} 
+                    onValueChange={(value) => {
+                      field.onChange(value);
+                      setSelectedIcon(value);
+                    }}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select an icon" />
+                        <SelectValue placeholder="Select an icon">
+                          <div className="flex items-center">
+                            {selectedIcon && React.createElement(Icons[selectedIcon as keyof typeof Icons] || Icons.zap, { className: "h-4 w-4 mr-2" })}
+                            <span className="capitalize">{selectedIcon}</span>
+                          </div>
+                        </SelectValue>
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {iconOptions.map((icon) => {
-                        const IconComponent = Icons[icon as keyof typeof Icons];
-                        return (
-                          <SelectItem key={icon} value={icon} className="flex items-center gap-2">
-                            <div className="flex items-center gap-2">
-                              {IconComponent && <IconComponent className="h-4 w-4" />}
-                              <span>{icon}</span>
-                            </div>
-                          </SelectItem>
-                        );
-                      })}
+                      {Object.keys(Icons).map((iconName) => (
+                        <SelectItem key={iconName} value={iconName}>
+                          <div className="flex items-center">
+                            {React.createElement(Icons[iconName as keyof typeof Icons], { className: "h-4 w-4 mr-2" })}
+                            <span className="capitalize">{iconName}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
+                  <FormDescription>
+                    Choose an icon to represent this tool
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium">Parameters</h3>
+
+            <div>
+              <div className="flex justify-between mb-2">
+                <FormLabel>Parameters</FormLabel>
                 <Button 
                   type="button" 
-                  onClick={addParameter} 
                   variant="outline" 
-                  size="sm"
+                  size="sm" 
+                  onClick={addParameter}
                 >
-                  <Plus className="h-4 w-4 mr-1" />
                   Add Parameter
                 </Button>
               </div>
               
-              {fields.length === 0 ? (
-                <div className="text-center py-6 border border-dashed rounded-md">
-                  <p className="text-muted-foreground">No parameters added yet</p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {fields.map((field, index) => (
-                    <div key={field.id} className="p-4 border rounded-md relative space-y-4">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-2 top-2 h-8 w-8 p-0"
-                        onClick={() => remove(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+              <div className="space-y-4">
+                {fields && fields.length > 0 ? (
+                  fields.map((field: any, index: number) => (
+                    <div key={field.id || index} className="border p-4 rounded-md">
+                      <div className="flex justify-between mb-2">
+                        <h4 className="text-sm font-medium">Parameter {index + 1}</h4>
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => remove(index)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                       
-                      <Badge className="absolute left-2 top-2">{index + 1}</Badge>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={form.control}
                           name={`parameters.${index}.name`}
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Parameter Name</FormLabel>
+                              <FormLabel className="text-xs">Name</FormLabel>
                               <FormControl>
                                 <Input placeholder="city" {...field} />
                               </FormControl>
@@ -226,22 +247,22 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                           name={`parameters.${index}.type`}
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Type</FormLabel>
+                              <FormLabel className="text-xs">Type</FormLabel>
                               <Select 
-                                onValueChange={field.onChange} 
-                                defaultValue={field.value}
+                                value={field.value} 
+                                onValueChange={field.onChange}
                               >
                                 <FormControl>
                                   <SelectTrigger>
-                                    <SelectValue placeholder="Select type" />
+                                    <SelectValue placeholder="Select a type" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  {parameterTypes.map((type) => (
-                                    <SelectItem key={type} value={type}>
-                                      {type}
-                                    </SelectItem>
-                                  ))}
+                                  <SelectItem value="string">String</SelectItem>
+                                  <SelectItem value="number">Number</SelectItem>
+                                  <SelectItem value="boolean">Boolean</SelectItem>
+                                  <SelectItem value="array">Array</SelectItem>
+                                  <SelectItem value="object">Object</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage />
@@ -254,10 +275,10 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                         control={form.control}
                         name={`parameters.${index}.description`}
                         render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Description (Optional)</FormLabel>
+                          <FormItem className="mt-2">
+                            <FormLabel className="text-xs">Description</FormLabel>
                             <FormControl>
-                              <Input placeholder="City name or location" {...field} />
+                              <Input placeholder="The city to get weather for" {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -268,34 +289,44 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                         control={form.control}
                         name={`parameters.${index}.required`}
                         render={({ field }) => (
-                          <FormItem className="flex items-center gap-2 space-y-0">
+                          <FormItem className="mt-2 flex items-center space-x-2">
                             <FormControl>
-                              <input
-                                type="checkbox"
-                                checked={field.value}
-                                onChange={field.onChange}
-                                className="h-4 w-4"
+                              <Switch 
+                                checked={field.value} 
+                                onCheckedChange={field.onChange}
                               />
                             </FormControl>
-                            <FormLabel className="text-sm font-normal">
-                              Required parameter
-                            </FormLabel>
+                            <FormLabel className="text-xs">Required</FormLabel>
+                            <FormMessage />
                           </FormItem>
                         )}
                       />
                     </div>
-                  ))}
-                </div>
-              )}
+                  ))
+                ) : (
+                  <div className="text-center py-4 border-2 border-dashed rounded-md">
+                    <p className="text-sm text-muted-foreground">No parameters added yet</p>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={addParameter}
+                      className="mt-2"
+                    >
+                      Add a parameter
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
           
-          <CardFooter className="flex justify-between border-t pt-4">
+          <CardFooter className="flex justify-between">
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
             <Button type="submit">
-              {mcp ? 'Save Changes' : 'Create MCP'}
+              {mcp ? 'Update' : 'Create'} MCP
             </Button>
           </CardFooter>
         </form>
