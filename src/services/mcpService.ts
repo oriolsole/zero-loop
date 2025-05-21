@@ -37,8 +37,17 @@ const convertJsonToMCPParameter = (param: Json): MCPParameter => {
 };
 
 // Helper function to convert MCPParameter to Json for storage
+// Fixed to avoid excessive type instantiation
 const convertMCPParameterToJson = (param: MCPParameter): Json => {
-  return param as unknown as Json;
+  // Return a plain object without type recursion
+  return {
+    name: param.name,
+    type: param.type,
+    description: param.description,
+    required: param.required,
+    default: param.default,
+    enum: param.enum
+  } as Json;
 };
 
 // Helper function to safely convert status string to MCPExecution status type
