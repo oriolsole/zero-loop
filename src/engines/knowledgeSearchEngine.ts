@@ -1,3 +1,4 @@
+
 // Knowledge Search Engine - Specialized domain engine for searching across knowledge sources
 import { DomainEngine, DomainEngineMetadata, ExternalSource } from '../types/intelligence';
 
@@ -278,7 +279,7 @@ export const knowledgeSearchEngine: DomainEngine = {
     }
     
     // FIX: Convert the sources length to an explicit number to fix the arithmetic operation error
-    const sourceCount = sources.length;
+    const sourceCount: number = sources.length;
     
     // Now we can safely use sourceCount in numeric comparisons
     if (sourceCount > 10) {

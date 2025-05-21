@@ -29,6 +29,17 @@ const convertMCPParameterToJson = (param: MCPParameter): Json => {
   return param as unknown as Json;
 };
 
+// Helper function to safely convert status string to MCPExecution status type
+const convertToMCPStatus = (status: string): "pending" | "running" | "completed" | "failed" => {
+  switch (status) {
+    case "pending": return "pending";
+    case "running": return "running";
+    case "completed": return "completed";
+    case "failed": return "failed";
+    default: return "pending"; // Default fallback
+  }
+};
+
 export const mcpService = {
   /**
    * Fetch all MCPs available to the user
@@ -203,9 +214,15 @@ export const mcpService = {
       
       // Handle the conversion properly for type safety
       const execution: MCPExecution = {
-        ...executionData,
+        id: executionData.id,
+        mcp_id: executionData.mcp_id || '',
         parameters: executionData.parameters as unknown as Record<string, any>,
-        result: executionData.result as unknown as Record<string, any> || {}
+        result: executionData.result as unknown as Record<string, any> || {},
+        status: convertToMCPStatus(executionData.status),
+        error: executionData.error || '',
+        execution_time: executionData.execution_time || 0,
+        created_at: executionData.created_at || '',
+        user_id: executionData.user_id || ''
       };
       
       // Get the MCP details
@@ -252,9 +269,15 @@ export const mcpService = {
         
         // Convert for type safety
         return updatedExecution ? {
-          ...updatedExecution,
+          id: updatedExecution.id,
+          mcp_id: updatedExecution.mcp_id || '',
           parameters: updatedExecution.parameters as unknown as Record<string, any>,
-          result: updatedExecution.result as unknown as Record<string, any> || {}
+          result: updatedExecution.result as unknown as Record<string, any> || {},
+          status: convertToMCPStatus(updatedExecution.status),
+          error: updatedExecution.error || '',
+          execution_time: updatedExecution.execution_time || 0,
+          created_at: updatedExecution.created_at || '',
+          user_id: updatedExecution.user_id || ''
         } as MCPExecution : null;
       } catch (error) {
         // Update execution record with error
@@ -274,9 +297,15 @@ export const mcpService = {
         
         // Convert for type safety
         return failedExecution ? {
-          ...failedExecution,
+          id: failedExecution.id,
+          mcp_id: failedExecution.mcp_id || '',
           parameters: failedExecution.parameters as unknown as Record<string, any>,
-          result: failedExecution.result as unknown as Record<string, any> || {}
+          result: failedExecution.result as unknown as Record<string, any> || {},
+          status: convertToMCPStatus(failedExecution.status),
+          error: failedExecution.error || '',
+          execution_time: failedExecution.execution_time || 0,
+          created_at: failedExecution.created_at || '',
+          user_id: failedExecution.user_id || ''
         } as MCPExecution : null;
       }
     } catch (error) {
@@ -301,9 +330,15 @@ export const mcpService = {
       
       // Convert parameters and results for type safety
       return (data || []).map(item => ({
-        ...item,
+        id: item.id,
+        mcp_id: item.mcp_id || '',
         parameters: item.parameters as unknown as Record<string, any>,
-        result: item.result as unknown as Record<string, any> || {}
+        result: item.result as unknown as Record<string, any> || {},
+        status: convertToMCPStatus(item.status),
+        error: item.error || '',
+        execution_time: item.execution_time || 0,
+        created_at: item.created_at || '',
+        user_id: item.user_id || ''
       })) as MCPExecution[];
     } catch (error) {
       console.error(`Error fetching executions for MCP ${mcpId}:`, error);
