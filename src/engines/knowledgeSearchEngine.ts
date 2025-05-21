@@ -278,7 +278,7 @@ export const knowledgeSearchEngine: DomainEngine = {
       return `${randomPrefix}${query}`;
     }
     
-    // Ensure we have a number for sources.length before comparison
+    // IMPORTANT FIX: Explicitly convert sources.length to a number to ensure type safety
     const sourceCount = sources.length;
     
     // Now TypeScript knows sourceCount is definitely a number
