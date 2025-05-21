@@ -210,7 +210,8 @@ export const knowledgeSearchEngine: DomainEngine = {
       };
     }
     
-    const sources = Array.isArray(metadata.sources) ? metadata.sources : [];
+    // Ensure sources is an array, or default to empty array
+    const sources: ExternalSource[] = Array.isArray(metadata.sources) ? metadata.sources : [];
     
     // Identify most common source types
     const sourceTypes = sources.reduce((acc, source) => {
@@ -261,7 +262,7 @@ export const knowledgeSearchEngine: DomainEngine = {
     const query = metadata.query || task;
     
     // Add proper type checking for results
-    const sources = Array.isArray(metadata.sources) ? metadata.sources : [];
+    const sources: ExternalSource[] = Array.isArray(metadata.sources) ? metadata.sources : [];
     const hasNoResults = !verification?.result || sources.length === 0;
     
     if (hasNoResults) {
@@ -278,10 +279,9 @@ export const knowledgeSearchEngine: DomainEngine = {
       return `${randomPrefix}${query}`;
     }
     
-    // FIX: Convert the sources length to an explicit number to fix the arithmetic operation error
-    const sourceCount: number = sources.length;
+    // Ensure we have a numeric value for sources.length
+    const sourceCount = sources.length;
     
-    // Now we can safely use sourceCount in numeric comparisons
     if (sourceCount > 10) {
       // If too many results, make the query more specific
       const specifyingPrefixes = [
