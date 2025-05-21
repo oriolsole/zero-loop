@@ -277,10 +277,10 @@ export const knowledgeSearchEngine: DomainEngine = {
       return `${randomPrefix}${query}`;
     }
     
-    // IMPORTANT FIX: Explicitly convert sources.length to a number to ensure type safety
-    const sourceCount = Number(sources.length);
+    // FIX: Convert the sources length to an explicit number to fix the arithmetic operation error
+    const sourceCount = sources.length;
     
-    // Now TypeScript knows sourceCount is definitely a number
+    // Now we can safely use sourceCount in numeric comparisons
     if (sourceCount > 10) {
       // If too many results, make the query more specific
       const specifyingPrefixes = [

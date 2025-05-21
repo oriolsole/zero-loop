@@ -1,7 +1,33 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { MCP, MCPExecution, ExecuteMCPParams } from '@/types/mcp';
+import { MCP, MCPExecution, ExecuteMCPParams, MCPParameter } from '@/types/mcp';
 import { toast } from '@/components/ui/sonner';
+import { Json } from '@/integrations/supabase/types';
+
+// Helper function to convert a JSON parameter from Supabase to our frontend MCPParameter type
+const convertJsonToMCPParameter = (param: Json): MCPParameter => {
+  if (typeof param === 'object' && param !== null && !Array.isArray(param)) {
+    return {
+      name: (param as any).name || '',
+      type: (param as any).type || 'string',
+      description: (param as any).description || '',
+      required: (param as any).required || false,
+      default: (param as any).default,
+      enum: (param as any).enum
+    };
+  }
+  // Return a default parameter if the data is malformed
+  return {
+    name: 'unknown',
+    type: 'string',
+    required: false
+  };
+};
+
+// Helper function to convert MCPParameter to Json for storage
+const convertMCPParameterToJson = (param: MCPParameter): Json => {
+  return param as unknown as Json;
+};
 
 export const mcpService = {
   /**
@@ -20,7 +46,7 @@ export const mcpService = {
       return (data || []).map(item => ({
         ...item,
         parameters: Array.isArray(item.parameters) 
-          ? item.parameters 
+          ? item.parameters.map(convertJsonToMCPParameter)
           : []
       })) as MCP[];
     } catch (error) {
@@ -43,11 +69,11 @@ export const mcpService = {
 
       if (error) throw error;
       
-      // Convert parameters from JSON
+      // Convert parameters from JSON to typed parameters
       return data ? {
         ...data,
         parameters: Array.isArray(data.parameters) 
-          ? data.parameters 
+          ? data.parameters.map(convertJsonToMCPParameter)
           : []
       } as MCP : null;
     } catch (error) {
@@ -62,13 +88,13 @@ export const mcpService = {
    */
   async createMCP(mcp: Omit<MCP, 'id' | 'created_at' | 'updated_at'>): Promise<MCP | null> {
     try {
-      // Ensure we're sending the correct data structure to Supabase
+      // Convert parameters to JSON for storage
       const mcpData = {
         title: mcp.title,
         description: mcp.description,
         endpoint: mcp.endpoint,
         icon: mcp.icon,
-        parameters: mcp.parameters
+        parameters: mcp.parameters.map(convertMCPParameterToJson)
       };
       
       const { data, error } = await supabase
@@ -81,11 +107,11 @@ export const mcpService = {
       
       toast.success('MCP created successfully');
       
-      // Convert parameters from JSON
+      // Convert parameters from JSON to typed parameters when returning
       return data ? {
         ...data,
         parameters: Array.isArray(data.parameters) 
-          ? data.parameters 
+          ? data.parameters.map(convertJsonToMCPParameter)
           : []
       } as MCP : null;
     } catch (error) {
@@ -100,13 +126,15 @@ export const mcpService = {
    */
   async updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null> {
     try {
-      // Ensure we're sending the correct data structure to Supabase
-      const updateData = {
+      // Prepare update data ensuring proper JSON conversion
+      const updateData: any = {
         ...(updates.title !== undefined && { title: updates.title }),
         ...(updates.description !== undefined && { description: updates.description }),
         ...(updates.endpoint !== undefined && { endpoint: updates.endpoint }),
         ...(updates.icon !== undefined && { icon: updates.icon }),
-        ...(updates.parameters !== undefined && { parameters: updates.parameters }),
+        ...(updates.parameters !== undefined && { 
+          parameters: updates.parameters.map(convertMCPParameterToJson)
+        }),
         updated_at: new Date().toISOString()
       };
       
@@ -121,11 +149,11 @@ export const mcpService = {
       
       toast.success('MCP updated successfully');
       
-      // Convert parameters from JSON
+      // Convert parameters from JSON to typed parameters when returning
       return data ? {
         ...data,
         parameters: Array.isArray(data.parameters) 
-          ? data.parameters 
+          ? data.parameters.map(convertJsonToMCPParameter)
           : []
       } as MCP : null;
     } catch (error) {
@@ -165,7 +193,7 @@ export const mcpService = {
         .from('mcp_executions')
         .insert({
           mcp_id: mcpId,
-          parameters,
+          parameters: parameters as unknown as Json,
           status: 'running'
         })
         .select()
@@ -173,11 +201,11 @@ export const mcpService = {
 
       if (executionError) throw executionError;
       
-      // Convert parameters for type safety
+      // Handle the conversion properly for type safety
       const execution: MCPExecution = {
         ...executionData,
-        parameters: executionData.parameters || {},
-        result: executionData.result || {}
+        parameters: executionData.parameters as unknown as Record<string, any>,
+        result: executionData.result as unknown as Record<string, any> || {}
       };
       
       // Get the MCP details
@@ -211,7 +239,7 @@ export const mcpService = {
           .from('mcp_executions')
           .update({
             status: 'completed',
-            result,
+            result: result as Json,
             execution_time: executionTime
           })
           .eq('id', execution.id)
@@ -225,8 +253,8 @@ export const mcpService = {
         // Convert for type safety
         return updatedExecution ? {
           ...updatedExecution,
-          parameters: updatedExecution.parameters || {},
-          result: updatedExecution.result || {}
+          parameters: updatedExecution.parameters as unknown as Record<string, any>,
+          result: updatedExecution.result as unknown as Record<string, any> || {}
         } as MCPExecution : null;
       } catch (error) {
         // Update execution record with error
@@ -247,8 +275,8 @@ export const mcpService = {
         // Convert for type safety
         return failedExecution ? {
           ...failedExecution,
-          parameters: failedExecution.parameters || {},
-          result: failedExecution.result || {}
+          parameters: failedExecution.parameters as unknown as Record<string, any>,
+          result: failedExecution.result as unknown as Record<string, any> || {}
         } as MCPExecution : null;
       }
     } catch (error) {
@@ -274,8 +302,8 @@ export const mcpService = {
       // Convert parameters and results for type safety
       return (data || []).map(item => ({
         ...item,
-        parameters: item.parameters || {},
-        result: item.result || {}
+        parameters: item.parameters as unknown as Record<string, any>,
+        result: item.result as unknown as Record<string, any> || {}
       })) as MCPExecution[];
     } catch (error) {
       console.error(`Error fetching executions for MCP ${mcpId}:`, error);
