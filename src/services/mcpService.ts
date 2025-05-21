@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPParameter } from '@/types/mcp';
 import { toast } from '@/components/ui/sonner';
@@ -5,15 +6,26 @@ import { Json } from '@/integrations/supabase/types';
 import { defaultMCPs } from '@/constants/defaultMCPs';
 
 // Helper function to convert a JSON parameter from Supabase to our frontend MCPParameter type
+// Modified to avoid excessive type instantiation
 const convertJsonToMCPParameter = (param: Json): MCPParameter => {
   if (typeof param === 'object' && param !== null && !Array.isArray(param)) {
+    // Use type assertion to avoid deep type instantiation
+    const typedParam = param as {
+      name?: string;
+      type?: 'string' | 'number' | 'boolean' | 'array' | 'object';
+      description?: string;
+      required?: boolean;
+      default?: any;
+      enum?: string[];
+    };
+    
     return {
-      name: (param as any).name || '',
-      type: (param as any).type || 'string',
-      description: (param as any).description || '',
-      required: (param as any).required || false,
-      default: (param as any).default,
-      enum: (param as any).enum
+      name: typedParam.name || '',
+      type: typedParam.type || 'string',
+      description: typedParam.description || '',
+      required: Boolean(typedParam.required),
+      default: typedParam.default,
+      enum: typedParam.enum
     };
   }
   // Return a default parameter if the data is malformed
