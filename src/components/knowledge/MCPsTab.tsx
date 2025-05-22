@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Loader2, Share2 } from 'lucide-react';
+import { Plus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,27 +12,32 @@ import MCPChatInterface from './MCPChatInterface';
 import { MCP } from '@/types/mcp';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/components/ui/sonner';
 
 const MCPsTab: React.FC = () => {
   const [view, setView] = useState<'grid' | 'chat'>('grid');
   const [isCreating, setIsCreating] = useState(false);
   const [editingMCP, setEditingMCP] = useState<MCP | null>(null);
   const [filter, setFilter] = useState<'all' | 'default' | 'custom'>('all');
-  const { user } = useAuth();
+  const [seedingAttempted, setSeedingAttempted] = useState(false);
+  const { user, isInitialized } = useAuth();
 
   // Fetch MCPs using react-query
   const { data: mcps, isLoading, refetch } = useQuery({
     queryKey: ['mcps'],
     queryFn: mcpService.fetchMCPs,
     // Don't retry on error - we'll handle retries for seeding separately
-    retry: false
+    retry: false,
+    enabled: !!user && isInitialized // Only run when user is authenticated
   });
 
-  // Seed default MCPs on component mount, but only if user is authenticated
+  // Seed default MCPs when component mounts and user is available
   useEffect(() => {
     const seedDefaultTools = async () => {
-      if (user) {
+      if (user && isInitialized && !seedingAttempted) {
         console.log('User authenticated, seeding default MCPs:', user.id);
+        setSeedingAttempted(true);
+        
         try {
           await mcpService.seedDefaultMCPs(user.id);
           refetch();
@@ -40,21 +45,16 @@ const MCPsTab: React.FC = () => {
           console.error('Error in seedDefaultTools:', error);
         }
       } else {
-        console.log('User not authenticated yet, delaying MCP seeding');
+        console.log('Cannot seed MCPs yet:', { 
+          userAuthenticated: !!user, 
+          isInitialized, 
+          seedingAttempted 
+        });
       }
     };
     
     seedDefaultTools();
-  }, [user, refetch]);
-
-  // If user changes, attempt to seed MCPs again
-  useEffect(() => {
-    if (user) {
-      mcpService.seedDefaultMCPs(user.id)
-        .then(() => refetch())
-        .catch(error => console.error('Failed to seed MCPs on user change:', error));
-    }
-  }, [user?.id, refetch]);
+  }, [user, isInitialized, seedingAttempted, refetch]);
 
   const handleCreateNew = () => {
     setEditingMCP(null);
@@ -87,7 +87,7 @@ const MCPsTab: React.FC = () => {
     
     // Prevent deletion of default MCPs
     if (mcp?.isDefault) {
-      alert('Default MCPs cannot be deleted. You can create a custom copy instead.');
+      toast.error('Default MCPs cannot be deleted. You can create a custom copy instead.');
       return;
     }
     
@@ -101,6 +101,23 @@ const MCPsTab: React.FC = () => {
   const handleCloneMCP = async (id: string) => {
     await mcpService.cloneMCP(id);
     refetch();
+  };
+
+  const handleRetrySeed = async () => {
+    if (!user) {
+      toast.error('Please sign in to seed default MCPs');
+      return;
+    }
+    
+    toast.loading('Seeding default MCPs...');
+    try {
+      await mcpService.seedDefaultMCPs(user.id);
+      await refetch();
+      toast.success('Default MCPs seeded successfully');
+    } catch (error) {
+      console.error('Error re-seeding MCPs:', error);
+      toast.error('Failed to seed default MCPs');
+    }
   };
 
   // Filter MCPs based on the selected filter
@@ -194,7 +211,7 @@ const MCPsTab: React.FC = () => {
                     <Button 
                       variant="outline" 
                       className="mt-4"
-                      onClick={() => mcpService.seedDefaultMCPs(user.id).then(() => refetch())}
+                      onClick={handleRetrySeed}
                     >
                       Retry Seeding Default MCPs
                     </Button>

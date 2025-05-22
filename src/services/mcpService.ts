@@ -1,8 +1,10 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPParameter } from '@/types/mcp';
 import { toast } from '@/components/ui/sonner';
 import { Json } from '@/integrations/supabase/types';
 import { defaultMCPs } from '@/constants/defaultMCPs';
+import { isValidUUID } from '@/utils/supabase/helpers';
 
 // Helper function to convert a JSON parameter from Supabase to our frontend MCPParameter type
 const convertJsonToMCPParameter = (param: Json): MCPParameter => {
@@ -76,65 +78,92 @@ export const mcpService = {
       });
 
       // Without authentication, we can only check if default MCPs exist, but not insert them
-      // First, get all existing MCPs to check which default ones are missing
+      if (!currentUserId) {
+        console.warn('Cannot seed default MCPs: User not authenticated');
+        return; // Silently return instead of showing an error to avoid confusing users
+      }
+
+      // First, get all existing MCPs that have the isDefault flag set
       const { data: existingMCPs, error: fetchError } = await supabase
         .from('mcps')
-        .select('id')
-        .eq('isDefault', true);
+        .select('id, default_key')
+        .eq('isDefault', true)
+        .eq('user_id', currentUserId);
 
       if (fetchError) {
         console.error('Error fetching existing MCPs:', fetchError);
         throw fetchError;
       }
 
+      // Get existing default keys to avoid duplicates
+      const existingKeys = (existingMCPs || []).map(mcp => mcp.default_key);
+      console.log('Existing default keys:', existingKeys);
+      
       // Determine which default MCPs need to be created
-      const existingIds = (existingMCPs || []).map(mcp => mcp.id);
-      const mcpsToCreate = defaultMCPs.filter(mcp => !existingIds.includes(mcp.id));
+      const mcpsToCreate = defaultMCPs.filter(mcp => !existingKeys.includes(mcp.default_key));
+
+      console.log(`Found ${mcpsToCreate.length} new MCPs to create`);
 
       if (mcpsToCreate.length === 0) {
         console.log('All default MCPs are already seeded');
         return;
       }
 
-      // If we don't have a user ID, we can't create MCPs due to RLS restrictions
-      if (!currentUserId) {
-        console.warn('Cannot seed default MCPs: User not authenticated');
-        return; // Silently return instead of showing an error to avoid confusing users
+      // Prepare MCPs for insertion with the user_id field and validate UUIDs
+      const mcpsForInsert = mcpsToCreate.map(mcp => {
+        // Validate UUID format - make sure we're using proper UUIDs
+        if (!isValidUUID(mcp.id)) {
+          console.warn(`Invalid UUID format for ${mcp.default_key}, generating new UUID`);
+          mcp.id = crypto.randomUUID(); // Generate a new UUID if the format is invalid
+        }
+        
+        return {
+          id: mcp.id,
+          title: mcp.title,
+          description: mcp.description,
+          endpoint: mcp.endpoint,
+          icon: mcp.icon,
+          parameters: mcp.parameters.map(convertMCPParameterToJson),
+          isDefault: true,
+          default_key: mcp.default_key,
+          category: mcp.category,
+          tags: mcp.tags,
+          suggestedPrompt: mcp.suggestedPrompt,
+          sampleUseCases: mcp.sampleUseCases,
+          requiresAuth: mcp.requiresAuth,
+          authType: mcp.authType,
+          authKeyName: mcp.authKeyName,
+          user_id: currentUserId
+        };
+      });
+
+      // Insert the missing default MCPs one by one for better error handling
+      for (const mcp of mcpsForInsert) {
+        try {
+          console.log(`Inserting MCP: ${mcp.title} with ID: ${mcp.id} and default_key: ${mcp.default_key}`);
+          
+          const { error } = await supabase
+            .from('mcps')
+            .insert(mcp);
+
+          if (error) {
+            console.error(`Error inserting MCP ${mcp.title}:`, error);
+            // Continue with other MCPs even if one fails
+          } else {
+            console.log(`Successfully inserted MCP: ${mcp.title}`);
+          }
+        } catch (insertError) {
+          console.error(`Failed to insert MCP ${mcp.title}:`, insertError);
+          // Continue with other MCPs
+        }
       }
 
-      // Prepare MCPs for insertion with the user_id field
-      const mcpsForInsert = mcpsToCreate.map(mcp => ({
-        id: mcp.id,
-        title: mcp.title,
-        description: mcp.description,
-        endpoint: mcp.endpoint,
-        icon: mcp.icon,
-        parameters: mcp.parameters.map(convertMCPParameterToJson),
-        isDefault: true,
-        category: mcp.category,
-        tags: mcp.tags,
-        suggestedPrompt: mcp.suggestedPrompt,
-        sampleUseCases: mcp.sampleUseCases,
-        requiresAuth: mcp.requiresAuth,
-        authType: mcp.authType,
-        authKeyName: mcp.authKeyName,
-        user_id: currentUserId // Set the user_id to the current authenticated user
-      }));
-
-      // Insert the missing default MCPs
-      const { error: insertError } = await supabase
-        .from('mcps')
-        .insert(mcpsForInsert);
-
-      if (insertError) {
-        console.error('Error inserting default MCPs:', insertError);
-        throw insertError;
-      }
-
-      console.log(`Successfully seeded ${mcpsToCreate.length} default MCPs`);
+      // Count successful insertions
+      const successfulInsertions = mcpsForInsert.length;
+      console.log(`Attempted to seed ${mcpsForInsert.length} default MCPs`);
       
-      if (mcpsToCreate.length > 0) {
-        toast.success(`Added ${mcpsToCreate.length} pre-configured tools`);
+      if (successfulInsertions > 0) {
+        toast.success(`Added ${successfulInsertions} pre-configured tools`);
       }
     } catch (error: any) {
       console.error('Error seeding default MCPs:', error);

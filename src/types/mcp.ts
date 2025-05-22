@@ -20,6 +20,7 @@ export interface MCP {
   updated_at?: string;
   // New fields for categorization and additional metadata
   isDefault?: boolean;
+  default_key?: string; // New field to store the readable identifier
   category?: string;
   tags?: string[];
   suggestedPrompt?: string;

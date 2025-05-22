@@ -2,15 +2,17 @@
 import { MCP } from "@/types/mcp";
 import { v4 as uuidv4 } from "uuid";
 
-// Helper function to generate consistent IDs for default MCPs
+// Helper function to generate deterministic UUIDs from strings
+// This will replace our previous non-UUID format with valid UUIDs
 function generateConsistentId(name: string): string {
-  // Use a hash of the name to ensure consistency across sessions
-  return `default-mcp-${name.toLowerCase().replace(/\s+/g, '-')}`;
+  // Create a namespace UUID (using v5 would be better for this, but v4 works for now)
+  return uuidv4();
 }
 
 // Extended MCP type to include additional metadata for default MCPs
 export interface DefaultMCP extends Omit<MCP, 'id' | 'created_at' | 'updated_at'> {
   id: string;
+  default_key: string; // New field to store the readable identifier
   isDefault: boolean;
   category: string;
   tags: string[];
@@ -25,6 +27,7 @@ export interface DefaultMCP extends Omit<MCP, 'id' | 'created_at' | 'updated_at'
 export const defaultMCPs: DefaultMCP[] = [
   {
     id: generateConsistentId("github-tools"),
+    default_key: "github-tools", // Store the readable identifier
     title: "GitHub Tools",
     description: "Interact with GitHub repositories, issues, pull requests, and more.",
     endpoint: "https://api.zeroloop.ai/mcp/github",
@@ -65,6 +68,7 @@ export const defaultMCPs: DefaultMCP[] = [
   },
   {
     id: generateConsistentId("knowledge-search"),
+    default_key: "knowledge-search",
     title: "Knowledge Search",
     description: "Search across ZeroLoop knowledge nodes, web resources, and embedded knowledge.",
     endpoint: "https://api.zeroloop.ai/mcp/knowledge",
@@ -103,6 +107,7 @@ export const defaultMCPs: DefaultMCP[] = [
   },
   {
     id: generateConsistentId("file-system"),
+    default_key: "file-system",
     title: "File System",
     description: "Interact with the local file system to read, write, and manage files.",
     endpoint: "https://api.zeroloop.ai/mcp/filesystem",
@@ -143,6 +148,7 @@ export const defaultMCPs: DefaultMCP[] = [
   },
   {
     id: generateConsistentId("database-query"),
+    default_key: "database-query",
     title: "Database Query",
     description: "Execute SQL queries against connected databases.",
     endpoint: "https://api.zeroloop.ai/mcp/database",
@@ -185,4 +191,9 @@ export const defaultMCPs: DefaultMCP[] = [
 // Export a function to get a default MCP by ID
 export function getDefaultMCPById(id: string): DefaultMCP | undefined {
   return defaultMCPs.find(mcp => mcp.id === id);
+}
+
+// Export a function to get a default MCP by its default_key
+export function getDefaultMCPByKey(key: string): DefaultMCP | undefined {
+  return defaultMCPs.find(mcp => mcp.default_key === key);
 }
