@@ -51,6 +51,7 @@ const convertMCPParameterToJson = (param: MCPParameter): Json => {
 };
 
 // Helper function to safely convert status string to MCPExecution status type
+// Fixed to avoid excessive type instantiation
 const convertToMCPStatus = (status: string): "pending" | "running" | "completed" | "failed" => {
   switch (status) {
     case "pending": return "pending";
