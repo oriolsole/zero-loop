@@ -292,6 +292,7 @@ export type Database = {
           authType: string | null
           category: string | null
           created_at: string | null
+          default_key: string | null
           description: string
           endpoint: string
           icon: string | null
@@ -311,6 +312,7 @@ export type Database = {
           authType?: string | null
           category?: string | null
           created_at?: string | null
+          default_key?: string | null
           description: string
           endpoint: string
           icon?: string | null
@@ -330,6 +332,7 @@ export type Database = {
           authType?: string | null
           category?: string | null
           created_at?: string | null
+          default_key?: string | null
           description?: string
           endpoint?: string
           icon?: string | null
