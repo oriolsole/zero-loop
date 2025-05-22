@@ -8,6 +8,7 @@ interface AuthContextProps {
   session: Session | null;
   user: User | null;
   isLoading: boolean;
+  isInitialized: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -19,6 +20,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -41,6 +43,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
       setIsLoading(false);
+      setIsInitialized(true);
+      
+      if (currentSession?.user) {
+        console.log('User authenticated on init:', currentSession.user.id);
+      } else {
+        console.log('No user authenticated on init');
+      }
     });
 
     return () => {
@@ -100,6 +109,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     session,
     user,
     isLoading,
+    isInitialized,
     signIn,
     signUp,
     signOut

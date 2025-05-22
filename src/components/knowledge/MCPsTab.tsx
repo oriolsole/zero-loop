@@ -11,28 +11,50 @@ import MCPForm from './MCPForm';
 import MCPChatInterface from './MCPChatInterface';
 import { MCP } from '@/types/mcp';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/contexts/AuthContext';
 
 const MCPsTab: React.FC = () => {
   const [view, setView] = useState<'grid' | 'chat'>('grid');
   const [isCreating, setIsCreating] = useState(false);
   const [editingMCP, setEditingMCP] = useState<MCP | null>(null);
   const [filter, setFilter] = useState<'all' | 'default' | 'custom'>('all');
+  const { user } = useAuth();
 
   // Fetch MCPs using react-query
   const { data: mcps, isLoading, refetch } = useQuery({
     queryKey: ['mcps'],
-    queryFn: mcpService.fetchMCPs
+    queryFn: mcpService.fetchMCPs,
+    // Don't retry on error - we'll handle retries for seeding separately
+    retry: false
   });
 
-  // Seed default MCPs on component mount
+  // Seed default MCPs on component mount, but only if user is authenticated
   useEffect(() => {
     const seedDefaultTools = async () => {
-      await mcpService.seedDefaultMCPs();
-      refetch();
+      if (user) {
+        console.log('User authenticated, seeding default MCPs:', user.id);
+        try {
+          await mcpService.seedDefaultMCPs(user.id);
+          refetch();
+        } catch (error) {
+          console.error('Error in seedDefaultTools:', error);
+        }
+      } else {
+        console.log('User not authenticated yet, delaying MCP seeding');
+      }
     };
     
     seedDefaultTools();
-  }, [refetch]);
+  }, [user, refetch]);
+
+  // If user changes, attempt to seed MCPs again
+  useEffect(() => {
+    if (user) {
+      mcpService.seedDefaultMCPs(user.id)
+        .then(() => refetch())
+        .catch(error => console.error('Failed to seed MCPs on user change:', error));
+    }
+  }, [user?.id, refetch]);
 
   const handleCreateNew = () => {
     setEditingMCP(null);
@@ -157,13 +179,30 @@ const MCPsTab: React.FC = () => {
               <div className="flex justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            ) : (
+            ) : filteredMCPs.length > 0 ? (
               <MCPGrid 
                 mcps={filteredMCPs} 
                 onEdit={handleEditMCP} 
                 onDelete={handleDelete} 
                 onClone={handleCloneMCP}
               />
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                {user ? (
+                  <>
+                    <p>No MCPs found. {filter !== 'all' && 'Try changing the filter.'}</p>
+                    <Button 
+                      variant="outline" 
+                      className="mt-4"
+                      onClick={() => mcpService.seedDefaultMCPs(user.id).then(() => refetch())}
+                    >
+                      Retry Seeding Default MCPs
+                    </Button>
+                  </>
+                ) : (
+                  <p>Please sign in to view and manage MCPs</p>
+                )}
+              </div>
             )}
           </TabsContent>
           

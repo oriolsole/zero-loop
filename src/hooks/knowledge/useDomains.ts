@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface Domain {
   id: string;
@@ -13,15 +14,22 @@ export interface Domain {
  * Hook to fetch and manage domains for knowledge storage
  */
 export const useDomains = () => {
+  const { user, isInitialized } = useAuth();
+
   const {
     data: domains,
     isLoading,
     error,
     refetch
   } = useQuery({
-    queryKey: ['domains'],
+    queryKey: ['domains', user?.id],
     queryFn: async (): Promise<Domain[]> => {
       try {
+        if (!user) {
+          console.log('No user authenticated, cannot fetch domains');
+          return [];
+        }
+
         const { data, error } = await supabase
           .from('domains')
           .select('id, name, short_desc')
@@ -35,7 +43,8 @@ export const useDomains = () => {
         toast.error('Failed to load domains');
         return [];
       }
-    }
+    },
+    enabled: !!user && isInitialized, // Only run query when user is authenticated and auth is fully initialized
   });
 
   return {

@@ -61,16 +61,31 @@ const convertToMCPStatus = (status: string): "pending" | "running" | "completed"
 export const mcpService = {
   /**
    * Seed the default MCPs into the database if they don't exist already
+   * @param userId Optional user ID to associate with the seeded MCPs
    */
-  async seedDefaultMCPs(): Promise<void> {
+  async seedDefaultMCPs(userId?: string): Promise<void> {
     try {
+      // Check if user is authenticated
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUserId = userId || session?.user?.id;
+
+      // Log the authentication status for debugging
+      console.log('Seeding default MCPs. Authentication status:', {
+        hasSession: !!session,
+        userId: currentUserId
+      });
+
+      // Without authentication, we can only check if default MCPs exist, but not insert them
       // First, get all existing MCPs to check which default ones are missing
       const { data: existingMCPs, error: fetchError } = await supabase
         .from('mcps')
         .select('id')
         .eq('isDefault', true);
 
-      if (fetchError) throw fetchError;
+      if (fetchError) {
+        console.error('Error fetching existing MCPs:', fetchError);
+        throw fetchError;
+      }
 
       // Determine which default MCPs need to be created
       const existingIds = (existingMCPs || []).map(mcp => mcp.id);
@@ -81,7 +96,13 @@ export const mcpService = {
         return;
       }
 
-      // Prepare MCPs for insertion
+      // If we don't have a user ID, we can't create MCPs due to RLS restrictions
+      if (!currentUserId) {
+        console.warn('Cannot seed default MCPs: User not authenticated');
+        return; // Silently return instead of showing an error to avoid confusing users
+      }
+
+      // Prepare MCPs for insertion with the user_id field
       const mcpsForInsert = mcpsToCreate.map(mcp => ({
         id: mcp.id,
         title: mcp.title,
@@ -96,7 +117,8 @@ export const mcpService = {
         sampleUseCases: mcp.sampleUseCases,
         requiresAuth: mcp.requiresAuth,
         authType: mcp.authType,
-        authKeyName: mcp.authKeyName
+        authKeyName: mcp.authKeyName,
+        user_id: currentUserId // Set the user_id to the current authenticated user
       }));
 
       // Insert the missing default MCPs
@@ -104,16 +126,22 @@ export const mcpService = {
         .from('mcps')
         .insert(mcpsForInsert);
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error('Error inserting default MCPs:', insertError);
+        throw insertError;
+      }
 
-      console.log(`Seeded ${mcpsToCreate.length} default MCPs`);
+      console.log(`Successfully seeded ${mcpsToCreate.length} default MCPs`);
       
       if (mcpsToCreate.length > 0) {
         toast.success(`Added ${mcpsToCreate.length} pre-configured tools`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error seeding default MCPs:', error);
-      toast.error('Failed to seed default MCPs');
+      // Only show error toast if it's not an auth-related issue
+      if (error.message !== 'User not authenticated') {
+        toast.error(`Failed to seed default MCPs: ${error.message}`);
+      }
     }
   },
 
