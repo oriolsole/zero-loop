@@ -288,34 +288,58 @@ export type Database = {
       }
       mcps: {
         Row: {
+          authKeyName: string | null
+          authType: string | null
+          category: string | null
           created_at: string | null
           description: string
           endpoint: string
           icon: string | null
           id: string
+          isDefault: boolean | null
           parameters: Json
+          requiresAuth: boolean | null
+          sampleUseCases: Json | null
+          suggestedPrompt: string | null
+          tags: Json | null
           title: string
           updated_at: string | null
           user_id: string | null
         }
         Insert: {
+          authKeyName?: string | null
+          authType?: string | null
+          category?: string | null
           created_at?: string | null
           description: string
           endpoint: string
           icon?: string | null
           id?: string
+          isDefault?: boolean | null
           parameters?: Json
+          requiresAuth?: boolean | null
+          sampleUseCases?: Json | null
+          suggestedPrompt?: string | null
+          tags?: Json | null
           title: string
           updated_at?: string | null
           user_id?: string | null
         }
         Update: {
+          authKeyName?: string | null
+          authType?: string | null
+          category?: string | null
           created_at?: string | null
           description?: string
           endpoint?: string
           icon?: string | null
           id?: string
+          isDefault?: boolean | null
           parameters?: Json
+          requiresAuth?: boolean | null
+          sampleUseCases?: Json | null
+          suggestedPrompt?: string | null
+          tags?: Json | null
           title?: string
           updated_at?: string | null
           user_id?: string | null

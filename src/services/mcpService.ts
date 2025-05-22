@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPParameter } from '@/types/mcp';
 import { toast } from '@/components/ui/sonner';
@@ -6,7 +5,6 @@ import { Json } from '@/integrations/supabase/types';
 import { defaultMCPs } from '@/constants/defaultMCPs';
 
 // Helper function to convert a JSON parameter from Supabase to our frontend MCPParameter type
-// Modified to avoid excessive type instantiation
 const convertJsonToMCPParameter = (param: Json): MCPParameter => {
   if (typeof param === 'object' && param !== null && !Array.isArray(param)) {
     // Use type assertion to avoid deep type instantiation
@@ -37,7 +35,6 @@ const convertJsonToMCPParameter = (param: Json): MCPParameter => {
 };
 
 // Helper function to convert MCPParameter to Json for storage
-// Fixed to avoid excessive type instantiation
 const convertMCPParameterToJson = (param: MCPParameter): Json => {
   // Return a plain object without type recursion
   return {
@@ -51,7 +48,6 @@ const convertMCPParameterToJson = (param: MCPParameter): Json => {
 };
 
 // Helper function to safely convert status string to MCPExecution status type
-// Fixed to avoid excessive type instantiation
 const convertToMCPStatus = (status: string): "pending" | "running" | "completed" | "failed" => {
   switch (status) {
     case "pending": return "pending";
@@ -312,12 +308,27 @@ export const mcpService = {
       const startTime = Date.now();
       
       try {
+        // Check if the MCP requires authentication and handle it
+        let headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        // Add auth header if required
+        if (mcp.requiresAuth && mcp.authKeyName) {
+          const authKey = await this.getMCPAuthKey(mcp.authKeyName);
+          if (!authKey) {
+            throw new Error(`Authentication required for this MCP. Missing key: ${mcp.authKeyName}`);
+          }
+          
+          if (mcp.authType === 'api_key') {
+            headers['Authorization'] = `Bearer ${authKey}`;
+          }
+        }
+        
         // Execute the MCP by calling its endpoint
         const response = await fetch(mcp.endpoint, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers,
           body: JSON.stringify({
             action: mcp.id,
             parameters
@@ -510,6 +521,35 @@ export const mcpService = {
       console.error('Error cloning MCP:', error);
       toast.error('Failed to clone MCP');
       return null;
+    }
+  },
+
+  /**
+   * Get the authentication key for an MCP
+   */
+  async getMCPAuthKey(keyName: string): Promise<string | null> {
+    try {
+      // For now, we'll implement a simple version that returns null
+      // In a real implementation, this would fetch from a secure source
+      console.log(`Attempted to get auth key: ${keyName}`);
+      return null;
+    } catch (error) {
+      console.error('Error getting MCP auth key:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Save authentication credentials for MCPs
+   */
+  async saveMCPAuthKey(keyName: string, keyValue: string): Promise<boolean> {
+    try {
+      // In a real implementation, this would store in a secure location
+      console.log(`Saved auth key: ${keyName}`);
+      return true;
+    } catch (error) {
+      console.error('Error saving MCP auth key:', error);
+      return false;
     }
   }
 };
