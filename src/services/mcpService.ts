@@ -1,7 +1,15 @@
+
 import { supabase } from '@/integrations/supabase/client';
-import { MCP, MCPExecutionResult } from '@/types/mcp';
+import { MCP } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
 import { getTokenForProvider } from './tokenService';
+
+// Define the MCPExecutionResult type
+export interface MCPExecutionResult {
+  success: boolean;
+  data: any;
+  error: string | null;
+}
 
 /**
  * Generate a unique ID for each execution
@@ -36,7 +44,7 @@ async function recordExecution(executionId: string, mcpId: string, parameters: R
 /**
  * Execute an MCP with authorization if needed
  */
-export async function executeMCP(mcp: MCP, parameters: Record<string, any>): Promise<MCPExecutionResult> {
+async function executeMCP(mcp: MCP, parameters: Record<string, any>): Promise<MCPExecutionResult> {
   try {
     console.log('Executing MCP:', mcp.title, 'with parameters:', parameters);
     
@@ -142,3 +150,54 @@ export async function executeMCP(mcp: MCP, parameters: Record<string, any>): Pro
   }
 }
 
+/**
+ * Fetch a list of available MCPs from the database
+ */
+async function fetchMCPs(): Promise<MCP[]> {
+  try {
+    const { data, error } = await supabase
+      .from('mcps')
+      .select('*')
+      .order('title', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching MCPs:', error);
+      return [];
+    }
+    
+    return data as MCP[];
+  } catch (error) {
+    console.error('Error in fetchMCPs:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetch a single MCP by ID
+ */
+async function fetchMCPById(id: string): Promise<MCP | null> {
+  try {
+    const { data, error } = await supabase
+      .from('mcps')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      console.error('Error fetching MCP by ID:', error);
+      return null;
+    }
+    
+    return data as MCP;
+  } catch (error) {
+    console.error('Error in fetchMCPById:', error);
+    return null;
+  }
+}
+
+// Export the service methods as an object
+export const mcpService = {
+  executeMCP,
+  fetchMCPs,
+  fetchMCPById
+};
