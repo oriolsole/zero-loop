@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { mcpService } from '@/services/mcpService';
-import { Loader2, Save, ShieldAlert, Key, AlertTriangle } from 'lucide-react';
+import { Loader2, Save, ShieldAlert, Key, AlertTriangle, ExternalLink } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
@@ -118,6 +118,29 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     }
   }, [mcp.requiresToken, userSecrets, secretsLoading]);
 
+  // Display information about the endpoint being used
+  const getEndpointInfo = () => {
+    let endpoint = mcp.endpoint;
+    // Check if this is a local function or external API
+    const isLocalFunction = endpoint.includes('supabase') || 
+                            !endpoint.includes('://') || 
+                            endpoint.startsWith('/');
+    
+    return (
+      <div className="text-xs text-muted-foreground flex items-center mb-2">
+        <span className="mr-1">Endpoint:</span>
+        {isLocalFunction ? (
+          <Badge variant="outline" className="text-xs">Local Function</Badge>
+        ) : (
+          <div className="flex items-center">
+            <Badge variant="outline" className="text-xs mr-1">External API</Badge>
+            <ExternalLink className="h-3 w-3" />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     setError(null);
@@ -128,6 +151,11 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
         mcpId: mcp.id,
         parameters: values
       });
+      
+      if (!response) {
+        setError("No response received from MCP execution");
+        return;
+      }
       
       if (response.error) {
         setError(response.error);
@@ -146,6 +174,9 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
 
   return (
     <div className="space-y-4">
+      {/* Endpoint info */}
+      {getEndpointInfo()}
+      
       {/* Authentication warning */}
       {!isAuthenticated && (
         <Alert variant="warning">
@@ -164,7 +195,6 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
           <AlertTitle>API Key Required</AlertTitle>
           <AlertDescription className="space-y-2">
             <p>This MCP requires a {mcp.requiresToken} API key.</p>
-            {/* Fix: Make sure MCPAuthManager accepts a provider prop */}
             <MCPAuthManager 
               provider={mcp.requiresToken} 
               onCancel={() => {}} 
@@ -286,14 +316,11 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
         <Alert variant="destructive">
           <ShieldAlert className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="whitespace-pre-wrap">{error}</AlertDescription>
         </Alert>
       )}
     </div>
   );
 };
 
-// Add default export
 export default MCPExecutePanel;
-// Keep the named export as well for any existing imports
-export { MCPExecutePanel };

@@ -383,7 +383,8 @@ export const mcpService = {
       try {
         // Check if the MCP requires authentication and handle it
         let headers: Record<string, string> = {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Execution-ID': execution.id // Send the execution ID in the header
         };
         
         // Add auth header if required
@@ -409,8 +410,17 @@ export const mcpService = {
           headers['X-Provider-Token'] = token;
         }
         
+        // Special case for local function endpoints to properly form the URL
+        let endpoint = mcp.endpoint;
+        if (endpoint.startsWith('knowledge-search') || endpoint.includes('/knowledge-search')) {
+          // If this is a local knowledge search edge function
+          endpoint = `${supabase.functions.url}/knowledge-search`;
+        }
+        
+        console.log(`Executing MCP ${mcp.title} with endpoint: ${endpoint}`);
+        
         // Execute the MCP by calling its endpoint
-        const response = await fetch(mcp.endpoint, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -420,13 +430,16 @@ export const mcpService = {
         });
         
         if (!response.ok) {
-          throw new Error(`MCP execution failed with status ${response.status}`);
+          const errorText = await response.text();
+          console.error(`API error (${response.status}):`, errorText);
+          throw new Error(`MCP execution failed with status ${response.status}: ${errorText}`);
         }
         
         const result = await response.json();
         const executionTime = Date.now() - startTime;
         
         // Update execution record with results
+        // Use Supabase match to avoid the 406 error when no rows are found
         const { data: updatedExecution, error: updateError } = await supabase
           .from('mcp_executions')
           .update({
@@ -435,53 +448,64 @@ export const mcpService = {
             execution_time: executionTime
           })
           .eq('id', execution.id)
-          .select()
-          .single();
+          .select();
           
-        if (updateError) throw updateError;
+        if (updateError) {
+          // Log the error but don't throw - we still want to return the result
+          console.error('Error updating execution record:', updateError);
+          // Attempt a retry with insert if the record wasn't found (might have been deleted)
+          await supabase
+            .from('mcp_executions')
+            .upsert({
+              id: execution.id,
+              mcp_id: execution.mcp_id,
+              parameters: execution.parameters as unknown as Json,
+              result: result as Json,
+              status: 'completed',
+              execution_time: executionTime,
+              user_id: userId
+            }, { onConflict: 'id' })
+            .select();
+        }
         
         toast.success('MCP executed successfully');
         
-        // Convert for type safety
-        return updatedExecution ? {
-          id: updatedExecution.id,
-          mcp_id: updatedExecution.mcp_id || '',
-          parameters: updatedExecution.parameters as unknown as Record<string, any>,
-          result: updatedExecution.result as unknown as Record<string, any> || {},
-          status: convertToMCPStatus(updatedExecution.status),
-          error: updatedExecution.error || '',
-          execution_time: updatedExecution.execution_time || 0,
-          created_at: updatedExecution.created_at || '',
-          user_id: updatedExecution.user_id || ''
-        } as MCPExecution : null;
+        // Use the result directly even if the update failed
+        return {
+          ...execution,
+          result: result,
+          status: 'completed',
+          execution_time: executionTime
+        };
       } catch (error) {
         // Update execution record with error
-        const { data: failedExecution } = await supabase
+        // Use upsert instead of update to handle the case where the record might not exist
+        const { error: recordError } = await supabase
           .from('mcp_executions')
-          .update({
+          .upsert({
+            id: execution.id,
+            mcp_id: execution.mcp_id,
+            parameters: execution.parameters as unknown as Json,
             status: 'failed',
             error: error instanceof Error ? error.message : 'Unknown error',
-            execution_time: Date.now() - startTime
-          })
-          .eq('id', execution.id)
-          .select()
-          .single();
+            execution_time: Date.now() - startTime,
+            user_id: userId
+          }, { onConflict: 'id' });
+          
+        if (recordError) {
+          console.error('Error updating failed execution record:', recordError);
+        }
           
         console.error(`MCP execution failed:`, error);
-        toast.error('MCP execution failed');
+        toast.error('MCP execution failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
         
-        // Convert for type safety
-        return failedExecution ? {
-          id: failedExecution.id,
-          mcp_id: failedExecution.mcp_id || '',
-          parameters: failedExecution.parameters as unknown as Record<string, any>,
-          result: failedExecution.result as unknown as Record<string, any> || {},
-          status: convertToMCPStatus(failedExecution.status),
-          error: failedExecution.error || '',
-          execution_time: failedExecution.execution_time || 0,
-          created_at: failedExecution.created_at || '',
-          user_id: failedExecution.user_id || ''
-        } as MCPExecution : null;
+        // Return the execution with error info
+        return {
+          ...execution,
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          execution_time: Date.now() - startTime
+        };
       }
     } catch (error) {
       console.error('Error executing MCP:', error);
