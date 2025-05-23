@@ -332,18 +332,34 @@ export const mcpService = {
    */
   async executeMCP({ mcpId, parameters }: ExecuteMCPParams): Promise<MCPExecution | null> {
     try {
+      // Get the current user's session
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id;
+      
+      // Check if the user is authenticated
+      if (!userId) {
+        toast.error('You must be logged in to execute MCPs');
+        console.error('Authentication required: No user session found');
+        return null;
+      }
+
       // First create an execution record
       const { data: executionData, error: executionError } = await supabase
         .from('mcp_executions')
         .insert({
           mcp_id: mcpId,
           parameters: parameters as unknown as Json,
-          status: 'running'
+          status: 'running',
+          user_id: userId // Include the user_id in the record
         })
         .select()
         .single();
 
-      if (executionError) throw executionError;
+      if (executionError) {
+        console.error('Error creating execution record:', executionError);
+        toast.error('Failed to create execution record');
+        return null;
+      }
       
       // Handle the conversion properly for type safety
       const execution: MCPExecution = {
