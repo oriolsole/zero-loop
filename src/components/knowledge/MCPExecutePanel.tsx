@@ -52,7 +52,8 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     queryKey: ['userSecrets', mcp.requiresToken],
     queryFn: async () => {
       if (!mcp.requiresToken) return [];
-      const { data } = await userSecretService.getUserSecretsByProvider(mcp.requiresToken);
+      // Fix: Change getUserSecretsByProvider to fetchSecretsByProvider
+      const { data } = await userSecretService.fetchSecretsByProvider(mcp.requiresToken);
       return data || [];
     },
     enabled: !!mcp.requiresToken && isAuthenticated,
@@ -163,7 +164,13 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
           <AlertTitle>API Key Required</AlertTitle>
           <AlertDescription className="space-y-2">
             <p>This MCP requires a {mcp.requiresToken} API key.</p>
-            <MCPAuthManager provider={mcp.requiresToken} />
+            {/* Fix: Make sure MCPAuthManager accepts a provider prop */}
+            <MCPAuthManager 
+              provider={mcp.requiresToken} 
+              onCancel={() => {}} 
+              authKeyName={mcp.requiresToken} 
+              authType="api_key" 
+            />
           </AlertDescription>
         </Alert>
       )}

@@ -7,14 +7,17 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Shield, Key, Save, X } from 'lucide-react';
 import { mcpService } from '@/services/mcpService';
 import { toast } from '@/components/ui/sonner';
+import { userSecretService } from '@/services/userSecretService';
 
+// Update props interface to include provider
 interface MCPAuthManagerProps {
   authKeyName: string;
   authType: string;
+  provider: string; // Add provider to the props interface
   onCancel: () => void;
 }
 
-const MCPAuthManager = ({ authKeyName, authType, onCancel }: MCPAuthManagerProps) => {
+const MCPAuthManager = ({ authKeyName, authType, provider, onCancel }: MCPAuthManagerProps) => {
   const [keyValue, setKeyValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -26,12 +29,18 @@ const MCPAuthManager = ({ authKeyName, authType, onCancel }: MCPAuthManagerProps
 
     setIsSaving(true);
     try {
-      const success = await mcpService.saveMCPAuthKey(authKeyName, keyValue);
-      if (success) {
-        toast.success('Authentication key saved successfully');
+      // Create a new user secret with the provider name
+      const result = await userSecretService.createUserSecret({
+        provider: provider,
+        key: keyValue,
+        label: `${provider} API Key`
+      });
+      
+      if (result) {
+        toast.success('API key saved successfully');
         onCancel();
       } else {
-        toast.error('Failed to save authentication key');
+        toast.error('Failed to save API key');
       }
     } catch (error) {
       toast.error('An error occurred while saving the key');
@@ -49,7 +58,7 @@ const MCPAuthManager = ({ authKeyName, authType, onCancel }: MCPAuthManagerProps
           Configure Authentication
         </CardTitle>
         <CardDescription>
-          This MCP requires authentication. Please provide your {authKeyName}.
+          This MCP requires authentication. Please provide your {authKeyName || provider} API key.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -63,7 +72,7 @@ const MCPAuthManager = ({ authKeyName, authType, onCancel }: MCPAuthManagerProps
               <Input
                 id="auth-key"
                 type="password"
-                placeholder={`Enter your ${authKeyName}`}
+                placeholder={`Enter your ${authKeyName || provider} API key`}
                 value={keyValue}
                 onChange={(e) => setKeyValue(e.target.value)}
                 className="flex-1"
