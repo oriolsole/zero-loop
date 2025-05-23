@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
@@ -94,12 +93,18 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
       // It's an Edge Function
       try {
         const { data, error } = await supabase.functions.invoke(mcp.endpoint, {
-          body: { action: mcp.id, parameters: params.parameters },
+          body: { action: mcp.id, parameters: params.parameters, executionId },
           headers: headers
         });
         
         if (error) {
+          console.error('Edge function error:', error);
           throw new Error(`Edge function error: ${error.message}`);
+        }
+        
+        if (!data) {
+          console.warn('Edge function returned no data');
+          throw new Error('No data returned from edge function');
         }
         
         response = data;
@@ -110,14 +115,17 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
     } else {
       // It's an external API
       try {
+        console.log(`Calling external API: ${mcp.endpoint}`);
         const apiResponse = await fetch(mcp.endpoint, {
           method: 'POST',
           headers: headers,
-          body: JSON.stringify({ action: mcp.id, parameters: params.parameters }),
+          body: JSON.stringify({ action: mcp.id, parameters: params.parameters, executionId }),
         });
         
         if (!apiResponse.ok) {
-          throw new Error(`API error: ${apiResponse.status} ${apiResponse.statusText}`);
+          const errorText = await apiResponse.text();
+          console.error(`API error: ${apiResponse.status} ${apiResponse.statusText}`, errorText);
+          throw new Error(`API error: ${apiResponse.status} ${apiResponse.statusText}. ${errorText}`);
         }
         
         response = await apiResponse.json();

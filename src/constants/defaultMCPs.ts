@@ -172,12 +172,12 @@ export const defaultMCPs: MCP[] = [
     suggestedPrompt: "Explain this JavaScript function that calculates Fibonacci numbers",
     requiresAuth: false
   },
-  // Add a new knowledge search MCP that uses our edge function
+  // Knowledge search MCP with updated endpoint to use our Edge Function proxy
   {
     id: uuidv4(), // Generate a new UUID for this MCP
     title: "Knowledge Base Search",
     description: "Search across your knowledge base with semantic search",
-    endpoint: "knowledge-search", // This will be resolved to the proper URL in mcpService
+    endpoint: "knowledge-proxy", // Updated to use our new Edge Function
     icon: "search",
     default_key: "knowledge-search-v2",
     isDefault: true,

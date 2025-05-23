@@ -31,6 +31,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [authMissing, setAuthMissing] = useState(false);
+  const [requestInfo, setRequestInfo] = useState<string | null>(null);
 
   // Check for current user session
   const [session, setSession] = useState<any>(null);
@@ -128,7 +129,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
       <div className="text-xs text-muted-foreground flex items-center mb-2">
         <span className="mr-1">Endpoint:</span>
         {isLocalFunction ? (
-          <Badge variant="outline" className="text-xs">Local Function</Badge>
+          <Badge variant="outline" className="text-xs">Edge Function</Badge>
         ) : (
           <div className="flex items-center">
             <Badge variant="outline" className="text-xs mr-1">External API</Badge>
@@ -150,6 +151,15 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     setIsLoading(true);
     setError(null);
     setResult(null);
+    setRequestInfo(null);
+    
+    // Build debug info for the request
+    const debugInfo = {
+      endpoint: mcp.endpoint,
+      parameters: values,
+      requiresToken: mcp.requirestoken
+    };
+    setRequestInfo(JSON.stringify(debugInfo, null, 2));
     
     try {
       const response = await mcpService.executeMCP({
@@ -216,6 +226,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
         </Alert>
       )}
       
+      {/* Form */}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           {mcp.parameters.map((param, index) => (
@@ -307,6 +318,20 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
           </Button>
         </form>
       </Form>
+      
+      {/* Request info display - useful for debugging */}
+      {requestInfo && (
+        <Card className="mt-4">
+          <div className="p-4">
+            <h3 className="text-sm font-medium mb-2">Request details:</h3>
+            <ScrollArea className="h-[100px] rounded-md border p-2">
+              <pre className="text-xs font-mono whitespace-pre-wrap">
+                {requestInfo}
+              </pre>
+            </ScrollArea>
+          </div>
+        </Card>
+      )}
       
       {/* Results display */}
       {result && (
