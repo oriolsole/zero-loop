@@ -23,7 +23,8 @@ async function recordExecution(executionId: string, mcpId: string, parameters: R
         mcp_id: mcpId,
         parameters: parameters,
         status: 'running',
-        started_at: new Date().toISOString()
+        // Fix: Use created_at instead of started_at
+        // The timestamp will be set automatically by the database default value
       }]);
       
     if (error) {
@@ -64,7 +65,7 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
       'x-execution-id': executionId,
     };
     
-    // Check if this MCP requires a provider token - fix: use requirestoken instead of requiresToken
+    // Check if this MCP requires a provider token - use requirestoken instead of requiresToken
     if (mcp.requirestoken) {
       const token = await getTokenForProvider(mcp.requirestoken);
       if (token) {
@@ -127,7 +128,8 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
         .update({
           status: 'completed',
           result: response,
-          completed_at: new Date().toISOString()
+          // Fix: Do not use completed_at field as it might not exist
+          // Just use the updated_at field that's updated automatically
         })
         .eq('id', executionId);
         

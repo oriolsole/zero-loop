@@ -29,7 +29,7 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
 
   const isDefault = mcp.isDefault === true;
   const requiresAuth = mcp.requiresAuth === true;
-  const requiresToken = !!mcp.requiresToken;
+  const requiresToken = !!mcp.requirestoken; // Fixed: use requirestoken instead of requiresToken
 
   return (
     <>
@@ -82,7 +82,7 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
                           </Badge>
                         </TooltipTrigger>
                         <TooltipContent>
-                          Requires a {mcp.requiresToken} API token
+                          Requires a {mcp.requirestoken} API token
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>

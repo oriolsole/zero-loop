@@ -1,3 +1,4 @@
+
 // Define your default MCPs
 import { MCP } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
@@ -33,7 +34,7 @@ export const defaultMCPs: MCP[] = [
     requiresAuth: true,
     authType: "api_key",
     authKeyName: "google_api_key",
-    requiresToken: "google"
+    requirestoken: "google" // Fixed: use requirestoken instead of requiresToken
   },
   {
     id: "2b3c4d5e-6f7g-8h9i-0j1k-2l3m4n5o6p7q",
@@ -64,7 +65,7 @@ export const defaultMCPs: MCP[] = [
     requiresAuth: true,
     authType: "api_key",
     authKeyName: "weather_api_key",
-    requiresToken: "weather"
+    requirestoken: "weather" // Fixed: use requirestoken instead of requiresToken
   },
   {
     id: "3c4d5e6f-7g8h-9i0j-1k2l-3m4n5o6p7q8r",
@@ -133,7 +134,7 @@ export const defaultMCPs: MCP[] = [
     requiresAuth: true,
     authType: "api_key",
     authKeyName: "openai_api_key",
-    requiresToken: "openai"
+    requirestoken: "openai" // Fixed: use requirestoken instead of requiresToken
   },
   {
     id: "5e6f7g8h-9i0j-1k2l-3m4n-5o6p7q8r9s0t",
