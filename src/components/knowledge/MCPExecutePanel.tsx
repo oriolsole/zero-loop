@@ -49,13 +49,13 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
 
   // Check if required API key is available for this MCP
   const { data: userSecrets, isLoading: secretsLoading } = useQuery({
-    queryKey: ['userSecrets', mcp.requiresToken],
+    queryKey: ['userSecrets', mcp.requirestoken],
     queryFn: async () => {
-      if (!mcp.requiresToken) return [];
+      if (!mcp.requirestoken) return [];
       // Fix: The fetchSecretsByProvider function returns UserSecret[] directly, not {data: UserSecret[]}
-      return await userSecretService.fetchSecretsByProvider(mcp.requiresToken);
+      return await userSecretService.fetchSecretsByProvider(mcp.requirestoken);
     },
-    enabled: !!mcp.requiresToken && isAuthenticated,
+    enabled: !!mcp.requirestoken && isAuthenticated,
   });
 
   // Create a dynamic form schema based on the MCP parameters
@@ -110,12 +110,12 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
 
   // Check if token is available
   useEffect(() => {
-    if (mcp.requiresToken && userSecrets && userSecrets.length === 0 && !secretsLoading) {
+    if (mcp.requirestoken && userSecrets && userSecrets.length === 0 && !secretsLoading) {
       setAuthMissing(true);
     } else {
       setAuthMissing(false);
     }
-  }, [mcp.requiresToken, userSecrets, secretsLoading]);
+  }, [mcp.requirestoken, userSecrets, secretsLoading]);
 
   // Display information about the endpoint being used
   const getEndpointInfo = () => {
@@ -193,11 +193,11 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
           <Key className="h-4 w-4" />
           <AlertTitle>API Key Required</AlertTitle>
           <AlertDescription className="space-y-2">
-            <p>This MCP requires a {mcp.requiresToken} API key.</p>
+            <p>This MCP requires a {mcp.requirestoken} API key.</p>
             <MCPAuthManager 
-              provider={mcp.requiresToken} 
+              provider={mcp.requirestoken} 
               onCancel={() => {}} 
-              authKeyName={mcp.requiresToken} 
+              authKeyName={mcp.requirestoken} 
               authType="api_key" 
             />
           </AlertDescription>

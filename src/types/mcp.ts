@@ -28,8 +28,8 @@ export interface MCP {
   requiresAuth?: boolean;
   authType?: 'api_key' | 'oauth' | 'basic';
   authKeyName?: string;
-  // New field for token requirements
-  requiresToken?: string; // e.g., 'github', 'openai'
+  // Fix: The database field is actually "requirestoken" (lowercase t)
+  requirestoken?: string; // e.g., 'github', 'openai'
 }
 
 export interface MCPExecution {

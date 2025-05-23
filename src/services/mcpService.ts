@@ -64,14 +64,14 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
       'x-execution-id': executionId,
     };
     
-    // Check if this MCP requires a provider token
-    if (mcp.requiresToken) {
-      const token = await getTokenForProvider(mcp.requiresToken);
+    // Check if this MCP requires a provider token - fix: use requirestoken instead of requiresToken
+    if (mcp.requirestoken) {
+      const token = await getTokenForProvider(mcp.requirestoken);
       if (token) {
         headers['x-provider-token'] = token;
-        console.log(`Using token for provider: ${mcp.requiresToken}`);
+        console.log(`Using token for provider: ${mcp.requirestoken}`);
       } else {
-        console.warn(`Token required for ${mcp.requiresToken} but not found`);
+        console.warn(`Token required for ${mcp.requirestoken} but not found`);
       }
     }
     
@@ -173,7 +173,13 @@ async function fetchMCPs(): Promise<MCP[]> {
       return [];
     }
     
-    return data as unknown as MCP[];
+    // Parse JSON strings to objects if they're stored as strings
+    return (data as any[]).map(item => ({
+      ...item,
+      parameters: typeof item.parameters === 'string' ? JSON.parse(item.parameters) : item.parameters,
+      tags: typeof item.tags === 'string' ? JSON.parse(item.tags) : item.tags,
+      sampleUseCases: typeof item.sampleUseCases === 'string' ? JSON.parse(item.sampleUseCases) : item.sampleUseCases
+    })) as MCP[];
   } catch (error) {
     console.error('Error in fetchMCPs:', error);
     return [];
@@ -196,7 +202,13 @@ async function fetchMCPById(id: string): Promise<MCP | null> {
       return null;
     }
     
-    return data as unknown as MCP;
+    // Parse JSON strings to objects if they're stored as strings
+    return {
+      ...data,
+      parameters: typeof data.parameters === 'string' ? JSON.parse(data.parameters) : data.parameters,
+      tags: typeof data.tags === 'string' ? JSON.parse(data.tags) : data.tags,
+      sampleUseCases: typeof data.sampleUseCases === 'string' ? JSON.parse(data.sampleUseCases) : data.sampleUseCases
+    } as MCP;
   } catch (error) {
     console.error('Error in fetchMCPById:', error);
     return null;
@@ -208,12 +220,28 @@ async function fetchMCPById(id: string): Promise<MCP | null> {
  */
 async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
   try {
+    // Fix: Make sure required fields are present
+    if (!mcp.title || !mcp.description || !mcp.endpoint) {
+      throw new Error('Missing required fields: title, description, and endpoint are required');
+    }
+    
     // Convert parameters to a stringified JSON before sending to DB
     const mcpForDb = {
-      ...mcp,
+      title: mcp.title,
+      description: mcp.description,
+      endpoint: mcp.endpoint,
+      icon: mcp.icon || 'terminal',
       parameters: JSON.stringify(mcp.parameters || []),
       tags: JSON.stringify(mcp.tags || []),
-      sampleUseCases: JSON.stringify(mcp.sampleUseCases || [])
+      sampleUseCases: JSON.stringify(mcp.sampleUseCases || []),
+      isDefault: mcp.isDefault || false,
+      category: mcp.category || null,
+      default_key: mcp.default_key || null,
+      requiresAuth: mcp.requiresAuth || false,
+      authType: mcp.authType || null,
+      authKeyName: mcp.authKeyName || null,
+      requirestoken: mcp.requirestoken || null, // Fix: use requirestoken
+      user_id: mcp.user_id || null
     };
     
     const { data, error } = await supabase
@@ -248,12 +276,25 @@ async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
 async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null> {
   try {
     // Convert complex objects to JSON strings
-    const updatesForDb = {
-      ...updates,
-      parameters: updates.parameters ? JSON.stringify(updates.parameters) : undefined,
-      tags: updates.tags ? JSON.stringify(updates.tags) : undefined,
-      sampleUseCases: updates.sampleUseCases ? JSON.stringify(updates.sampleUseCases) : undefined
-    };
+    const updatesForDb: Record<string, any> = {};
+    
+    // Only include fields that are actually being updated
+    if (updates.title !== undefined) updatesForDb.title = updates.title;
+    if (updates.description !== undefined) updatesForDb.description = updates.description;
+    if (updates.endpoint !== undefined) updatesForDb.endpoint = updates.endpoint;
+    if (updates.icon !== undefined) updatesForDb.icon = updates.icon;
+    if (updates.isDefault !== undefined) updatesForDb.isDefault = updates.isDefault;
+    if (updates.category !== undefined) updatesForDb.category = updates.category;
+    if (updates.default_key !== undefined) updatesForDb.default_key = updates.default_key;
+    if (updates.requiresAuth !== undefined) updatesForDb.requiresAuth = updates.requiresAuth;
+    if (updates.authType !== undefined) updatesForDb.authType = updates.authType;
+    if (updates.authKeyName !== undefined) updatesForDb.authKeyName = updates.authKeyName;
+    if (updates.requirestoken !== undefined) updatesForDb.requirestoken = updates.requirestoken; // Fix: use requirestoken
+    
+    // Convert objects to JSON strings
+    if (updates.parameters !== undefined) updatesForDb.parameters = JSON.stringify(updates.parameters);
+    if (updates.tags !== undefined) updatesForDb.tags = JSON.stringify(updates.tags);
+    if (updates.sampleUseCases !== undefined) updatesForDb.sampleUseCases = JSON.stringify(updates.sampleUseCases);
     
     const { data, error } = await supabase
       .from('mcps')
@@ -317,13 +358,22 @@ async function cloneMCP(id: string): Promise<MCP | null> {
     }
     
     // Create a new MCP based on the original
-    const clone = {
-      ...original,
-      id: undefined, // Let Supabase generate a new ID
+    const clone: Partial<MCP> = {
       title: `Copy of ${original.title}`,
+      description: original.description,
+      endpoint: original.endpoint,
+      icon: original.icon,
+      parameters: original.parameters,
+      tags: original.tags,
+      sampleUseCases: original.sampleUseCases,
       isDefault: false, // Never clone as a default
-      created_at: undefined, // Let Supabase set this
-      updated_at: undefined,
+      category: original.category,
+      default_key: original.default_key,
+      requiresAuth: original.requiresAuth,
+      authType: original.authType,
+      authKeyName: original.authKeyName,
+      requirestoken: original.requirestoken, // Fix: use requirestoken
+      user_id: original.user_id
     };
     
     return await createMCP(clone);
@@ -361,20 +411,35 @@ async function seedDefaultMCPs(userId?: string): Promise<boolean> {
     // Import default MCPs from constants
     const { defaultMCPs: mcpsToSeed } = await import('@/constants/defaultMCPs');
     
-    // Process MCPs for database insertion
-    const processedMcps = mcpsToSeed.map(mcp => ({
-      ...mcp,
-      parameters: JSON.stringify(mcp.parameters || []),
-      tags: JSON.stringify(mcp.tags || []),
-      sampleUseCases: JSON.stringify(mcp.sampleUseCases || []),
-      user_id: userId
-    }));
-    
-    // Insert all default MCPs
-    for (const mcp of processedMcps) {
+    // Process MCPs for database insertion - insert one by one to ensure schema compliance
+    for (const mcp of mcpsToSeed) {
+      // Make sure the MCP has all required fields
+      if (!mcp.title || !mcp.description || !mcp.endpoint) {
+        console.error('Skipping MCP due to missing required fields:', mcp);
+        continue;
+      }
+      
+      const mcpForDb = {
+        title: mcp.title,
+        description: mcp.description,
+        endpoint: mcp.endpoint,
+        icon: mcp.icon || 'terminal',
+        parameters: JSON.stringify(mcp.parameters || []),
+        tags: JSON.stringify(mcp.tags || []),
+        sampleUseCases: JSON.stringify(mcp.sampleUseCases || []),
+        isDefault: true,
+        category: mcp.category || null,
+        default_key: mcp.default_key || null,
+        requiresAuth: mcp.requiresAuth || false,
+        authType: mcp.authType || null,
+        authKeyName: mcp.authKeyName || null,
+        requirestoken: mcp.requirestoken || null, // Fix: use requirestoken
+        user_id: userId || null
+      };
+      
       const { error: insertError } = await supabase
         .from('mcps')
-        .insert(mcp);
+        .insert(mcpForDb);
         
       if (insertError) {
         console.error('Error inserting default MCP:', insertError);
