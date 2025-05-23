@@ -49,9 +49,24 @@ export async function fetchSecretsByProvider(provider: string): Promise<UserSecr
  */
 export async function createUserSecret(secret: CreateUserSecretParams): Promise<UserSecret | null> {
   try {
+    // Get the user's ID from the current session
+    const session = await supabase.auth.getSession();
+    const userId = session?.data?.session?.user?.id;
+    
+    if (!userId) {
+      toast.error('You must be logged in to add an API token');
+      return null;
+    }
+    
+    // Add the user_id to the secret data
+    const secretWithUserId = {
+      ...secret,
+      user_id: userId
+    };
+    
     const { data, error } = await supabase
       .from('user_secrets')
-      .insert(secret)
+      .insert(secretWithUserId)
       .select()
       .single();
       

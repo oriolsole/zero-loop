@@ -1,5 +1,4 @@
 
-
 // Re-export all supabase utility functions for easier imports
 
 export * from './loopOperations';

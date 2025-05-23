@@ -65,6 +65,7 @@ export interface CreateUserSecretParams {
   provider: string;
   key: string;
   label?: string;
+  user_id?: string; // Made optional since it will be set by the service
 }
 
 export interface UpdateUserSecretParams {
