@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -52,9 +53,8 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     queryKey: ['userSecrets', mcp.requiresToken],
     queryFn: async () => {
       if (!mcp.requiresToken) return [];
-      // Fix: Change getUserSecretsByProvider to fetchSecretsByProvider
-      const { data } = await userSecretService.fetchSecretsByProvider(mcp.requiresToken);
-      return data || [];
+      // Fix: The fetchSecretsByProvider function returns UserSecret[] directly, not {data: UserSecret[]}
+      return await userSecretService.fetchSecretsByProvider(mcp.requiresToken);
     },
     enabled: !!mcp.requiresToken && isAuthenticated,
   });
