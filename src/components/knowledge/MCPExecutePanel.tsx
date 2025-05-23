@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
-import { MCP, MCPExecution, MCPParameter } from '@/types/mcp';
+import { MCP } from '@/types/mcp';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
@@ -52,7 +52,6 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     queryKey: ['userSecrets', mcp.requirestoken],
     queryFn: async () => {
       if (!mcp.requirestoken) return [];
-      // Fix: The fetchSecretsByProvider function returns UserSecret[] directly, not {data: UserSecret[]}
       return await userSecretService.fetchSecretsByProvider(mcp.requirestoken);
     },
     enabled: !!mcp.requirestoken && isAuthenticated,
@@ -141,6 +140,13 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
   };
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (!isAuthenticated) {
+      toast.error("Authentication required", {
+        description: "You must be logged in to execute MCPs"
+      });
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
     setResult(null);
@@ -158,8 +164,14 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
       
       if (response.error) {
         setError(response.error);
+        toast.error("Execution failed", {
+          description: response.error
+        });
       } else {
         setResult(response.data || response.result || { message: "Execution completed successfully" });
+        toast.success("Execution completed", {
+          description: "The MCP executed successfully"
+        });
       }
     } catch (err: any) {
       setError(err.message || "An error occurred during execution");

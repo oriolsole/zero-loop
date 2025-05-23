@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
 import { getTokenForProvider } from '@/services/tokenService';
+import { toast } from '@/components/ui/sonner';
 
 /**
  * Generate a unique ID for each execution
@@ -14,7 +15,7 @@ function generateExecutionId(): string {
 /**
  * Record the start of an MCP execution in the database
  */
-async function recordExecution(executionId: string, mcpId: string, parameters: Record<string, any>) {
+async function recordExecution(executionId: string, mcpId: string, parameters: Record<string, any>, userId?: string) {
   try {
     const { error } = await supabase
       .from('mcp_executions')
@@ -23,15 +24,18 @@ async function recordExecution(executionId: string, mcpId: string, parameters: R
         mcp_id: mcpId,
         parameters: parameters,
         status: 'running',
-        // Fix: Use created_at instead of started_at
-        // The timestamp will be set automatically by the database default value
+        user_id: userId // Include the user_id for RLS compliance
+        // The created_at timestamp will be set automatically by the database default value
       }]);
       
     if (error) {
       console.warn('Failed to record execution:', error);
+      toast.error('Failed to record execution start');
+      throw error;
     }
   } catch (e) {
     console.error('Error recording execution:', e);
+    throw e;
   }
 }
 
@@ -40,6 +44,10 @@ async function recordExecution(executionId: string, mcpId: string, parameters: R
  */
 async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult> {
   try {
+    // Get the current authenticated user
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    
     // First, we need to get the MCP details
     const { data: mcp, error: fetchError } = await supabase
       .from('mcps')
@@ -56,8 +64,8 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
     // Generate a unique ID for this execution
     const executionId = generateExecutionId();
     
-    // Record the execution start in the database
-    await recordExecution(executionId, params.mcpId, params.parameters);
+    // Record the execution start in the database, passing the user ID
+    await recordExecution(executionId, params.mcpId, params.parameters, userId);
     
     // Prepare request headers
     const headers: Record<string, string> = {
@@ -128,13 +136,13 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
         .update({
           status: 'completed',
           result: response,
-          // Fix: Do not use completed_at field as it might not exist
-          // Just use the updated_at field that's updated automatically
+          // Use the updated_at field that's updated automatically
         })
         .eq('id', executionId);
         
       if (error) {
         console.warn('Failed to update execution record:', error);
+        toast.error('Failed to update execution record');
       }
     } catch (updateError) {
       console.warn('Error updating execution record:', updateError);
