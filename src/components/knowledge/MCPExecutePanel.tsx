@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -160,7 +159,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
       if (response.error) {
         setError(response.error);
       } else {
-        setResult(response.result || { message: "Execution completed successfully" });
+        setResult(response.data || response.result || { message: "Execution completed successfully" });
       }
     } catch (err: any) {
       setError(err.message || "An error occurred during execution");

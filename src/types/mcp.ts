@@ -49,6 +49,15 @@ export interface ExecuteMCPParams {
   parameters: Record<string, any>;
 }
 
+// Added interface for MCP execution results
+export interface MCPExecutionResult {
+  success: boolean;
+  data: any;
+  error: string | null;
+  status?: string;
+  result?: Record<string, any>;
+}
+
 // User secret types for token management
 export interface UserSecret {
   id: string;

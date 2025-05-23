@@ -1,15 +1,8 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { MCP } from '@/types/mcp';
+import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
-import { getTokenForProvider } from './tokenService';
-
-// Define the MCPExecutionResult type
-export interface MCPExecutionResult {
-  success: boolean;
-  data: any;
-  error: string | null;
-}
+import { getTokenForProvider } from '@/services/tokenService';
 
 /**
  * Generate a unique ID for each execution
@@ -44,15 +37,26 @@ async function recordExecution(executionId: string, mcpId: string, parameters: R
 /**
  * Execute an MCP with authorization if needed
  */
-async function executeMCP(mcp: MCP, parameters: Record<string, any>): Promise<MCPExecutionResult> {
+async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult> {
   try {
-    console.log('Executing MCP:', mcp.title, 'with parameters:', parameters);
+    // First, we need to get the MCP details
+    const { data: mcp, error: fetchError } = await supabase
+      .from('mcps')
+      .select('*')
+      .eq('id', params.mcpId)
+      .single();
+    
+    if (fetchError || !mcp) {
+      throw new Error(`Failed to fetch MCP: ${fetchError?.message || 'MCP not found'}`);
+    }
+    
+    console.log('Executing MCP:', mcp.title, 'with parameters:', params.parameters);
     
     // Generate a unique ID for this execution
     const executionId = generateExecutionId();
     
     // Record the execution start in the database
-    await recordExecution(executionId, mcp.id, parameters);
+    await recordExecution(executionId, params.mcpId, params.parameters);
     
     // Prepare request headers
     const headers: Record<string, string> = {
@@ -81,7 +85,7 @@ async function executeMCP(mcp: MCP, parameters: Record<string, any>): Promise<MC
       // It's an Edge Function
       try {
         const { data, error } = await supabase.functions.invoke(mcp.endpoint, {
-          body: { action: mcp.id, parameters },
+          body: { action: mcp.id, parameters: params.parameters },
           headers: headers
         });
         
@@ -100,7 +104,7 @@ async function executeMCP(mcp: MCP, parameters: Record<string, any>): Promise<MC
         const apiResponse = await fetch(mcp.endpoint, {
           method: 'POST',
           headers: headers,
-          body: JSON.stringify({ action: mcp.id, parameters }),
+          body: JSON.stringify({ action: mcp.id, parameters: params.parameters }),
         });
         
         if (!apiResponse.ok) {
@@ -137,6 +141,8 @@ async function executeMCP(mcp: MCP, parameters: Record<string, any>): Promise<MC
     return {
       success: true,
       data: response,
+      status: 'completed',
+      result: response,
       error: null
     };
   } catch (error) {
@@ -145,6 +151,8 @@ async function executeMCP(mcp: MCP, parameters: Record<string, any>): Promise<MC
     return {
       success: false,
       data: null,
+      status: 'failed',
+      result: null,
       error: error.message || 'Unknown error occurred during execution'
     };
   }
@@ -200,9 +208,17 @@ async function fetchMCPById(id: string): Promise<MCP | null> {
  */
 async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
   try {
+    // Convert parameters to a stringified JSON before sending to DB
+    const mcpForDb = {
+      ...mcp,
+      parameters: JSON.stringify(mcp.parameters || []),
+      tags: JSON.stringify(mcp.tags || []),
+      sampleUseCases: JSON.stringify(mcp.sampleUseCases || [])
+    };
+    
     const { data, error } = await supabase
       .from('mcps')
-      .insert([mcp])
+      .insert(mcpForDb)
       .select()
       .single();
     
@@ -211,7 +227,15 @@ async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
       return null;
     }
     
-    return data as unknown as MCP;
+    // Convert stringified JSON back to objects
+    const result = {
+      ...data,
+      parameters: typeof data.parameters === 'string' ? JSON.parse(data.parameters) : data.parameters,
+      tags: typeof data.tags === 'string' ? JSON.parse(data.tags) : data.tags,
+      sampleUseCases: typeof data.sampleUseCases === 'string' ? JSON.parse(data.sampleUseCases) : data.sampleUseCases
+    } as MCP;
+    
+    return result;
   } catch (error) {
     console.error('Error in createMCP:', error);
     return null;
@@ -223,9 +247,17 @@ async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
  */
 async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null> {
   try {
+    // Convert complex objects to JSON strings
+    const updatesForDb = {
+      ...updates,
+      parameters: updates.parameters ? JSON.stringify(updates.parameters) : undefined,
+      tags: updates.tags ? JSON.stringify(updates.tags) : undefined,
+      sampleUseCases: updates.sampleUseCases ? JSON.stringify(updates.sampleUseCases) : undefined
+    };
+    
     const { data, error } = await supabase
       .from('mcps')
-      .update(updates)
+      .update(updatesForDb)
       .eq('id', id)
       .select()
       .single();
@@ -235,7 +267,15 @@ async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null>
       return null;
     }
     
-    return data as unknown as MCP;
+    // Convert JSON strings back to objects
+    const result = {
+      ...data,
+      parameters: typeof data.parameters === 'string' ? JSON.parse(data.parameters) : data.parameters,
+      tags: typeof data.tags === 'string' ? JSON.parse(data.tags) : data.tags,
+      sampleUseCases: typeof data.sampleUseCases === 'string' ? JSON.parse(data.sampleUseCases) : data.sampleUseCases
+    } as MCP;
+    
+    return result;
   } catch (error) {
     console.error('Error in updateMCP:', error);
     return null;
@@ -296,8 +336,10 @@ async function cloneMCP(id: string): Promise<MCP | null> {
 /**
  * Seed default MCPs if they don't exist
  */
-async function seedDefaultMCPs(): Promise<boolean> {
+async function seedDefaultMCPs(userId?: string): Promise<boolean> {
   try {
+    console.log('Seeding default MCPs for user:', userId);
+    
     // Check if any default MCPs exist
     const { data: defaultMCPs, error } = await supabase
       .from('mcps')
@@ -319,14 +361,25 @@ async function seedDefaultMCPs(): Promise<boolean> {
     // Import default MCPs from constants
     const { defaultMCPs: mcpsToSeed } = await import('@/constants/defaultMCPs');
     
+    // Process MCPs for database insertion
+    const processedMcps = mcpsToSeed.map(mcp => ({
+      ...mcp,
+      parameters: JSON.stringify(mcp.parameters || []),
+      tags: JSON.stringify(mcp.tags || []),
+      sampleUseCases: JSON.stringify(mcp.sampleUseCases || []),
+      user_id: userId
+    }));
+    
     // Insert all default MCPs
-    const { error: insertError } = await supabase
-      .from('mcps')
-      .insert(mcpsToSeed);
-      
-    if (insertError) {
-      console.error('Error seeding default MCPs:', insertError);
-      return false;
+    for (const mcp of processedMcps) {
+      const { error: insertError } = await supabase
+        .from('mcps')
+        .insert(mcp);
+        
+      if (insertError) {
+        console.error('Error inserting default MCP:', insertError);
+        return false;
+      }
     }
     
     console.log('Successfully seeded default MCPs.');

@@ -72,7 +72,7 @@ const MCPsTab: React.FC = () => {
     if ('id' in mcp) {
       await mcpService.updateMCP(mcp.id, mcp);
     } else {
-      await mcpService.createMCP(mcp);
+      await mcpService.createMCP(mcp as Partial<MCP>);
     }
     setIsCreating(false);
     setEditingMCP(null);

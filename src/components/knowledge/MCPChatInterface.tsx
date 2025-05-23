@@ -101,14 +101,14 @@ const MCPChatInterface: React.FC<MCPChatInterfaceProps> = ({ mcps }) => {
         
         let responseContent = "";
         
-        if (result && result.status === 'completed') {
+        if (result && result.success) {
           responseContent = `I executed ${mcpIntent.mcp.title} successfully. Here's what I found:\n\n`;
           
-          if (result.result && typeof result.result === 'object') {
-            if (result.result.content) {
-              responseContent += result.result.content;
+          if (result.data && typeof result.data === 'object') {
+            if (result.data.content) {
+              responseContent += result.data.content;
             } else {
-              responseContent += JSON.stringify(result.result, null, 2);
+              responseContent += JSON.stringify(result.data, null, 2);
             }
           }
         } else {
