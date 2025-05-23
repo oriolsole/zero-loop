@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,6 +9,7 @@ import { mcpService } from '@/services/mcpService';
 import MCPGrid from './MCPGrid';
 import MCPForm from './MCPForm';
 import MCPChatInterface from './MCPChatInterface';
+import TokenManager from './TokenManager';
 import { MCP } from '@/types/mcp';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,6 +21,7 @@ const MCPsTab: React.FC = () => {
   const [editingMCP, setEditingMCP] = useState<MCP | null>(null);
   const [filter, setFilter] = useState<'all' | 'default' | 'custom'>('all');
   const [seedingAttempted, setSeedingAttempted] = useState(false);
+  const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const { user, isInitialized } = useAuth();
 
   // Fetch MCPs using react-query
@@ -145,90 +147,103 @@ const MCPsTab: React.FC = () => {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Model Context Protocol (MCP) Tools</CardTitle>
-          <CardDescription>
-            Connect LLMs to external tools like databases, APIs, and more
-          </CardDescription>
-        </div>
-        <Button onClick={handleCreateNew}>
-          <Plus className="mr-2 h-4 w-4" />
-          New MCP
-        </Button>
-      </CardHeader>
-      
-      <CardContent>
-        <Tabs defaultValue="grid" value={view} onValueChange={(v) => setView(v as 'grid' | 'chat')}>
-          <TabsList className="mb-4">
-            <TabsTrigger value="grid">Tools Gallery</TabsTrigger>
-            <TabsTrigger value="chat">Chat with Tools</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="grid">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="text-sm font-medium">Filter:</div>
-              <Badge 
-                variant={filter === 'all' ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => setFilter('all')}
-              >
-                All
-              </Badge>
-              <Badge 
-                variant={filter === 'default' ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => setFilter('default')}
-              >
-                Default
-              </Badge>
-              <Badge 
-                variant={filter === 'custom' ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => setFilter('custom')}
-              >
-                Custom
-              </Badge>
-            </div>
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Model Context Protocol (MCP) Tools</CardTitle>
+            <CardDescription>
+              Connect LLMs to external tools like databases, APIs, and more
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setTokenDialogOpen(true)}>
+              <Shield className="mr-2 h-4 w-4" />
+              Manage API Tokens
+            </Button>
+            <Button onClick={handleCreateNew}>
+              <Plus className="mr-2 h-4 w-4" />
+              New MCP
+            </Button>
+          </div>
+        </CardHeader>
+        
+        <CardContent>
+          <Tabs defaultValue="grid" value={view} onValueChange={(v) => setView(v as 'grid' | 'chat')}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="grid">Tools Gallery</TabsTrigger>
+              <TabsTrigger value="chat">Chat with Tools</TabsTrigger>
+            </TabsList>
             
-            {isLoading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <TabsContent value="grid">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="text-sm font-medium">Filter:</div>
+                <Badge 
+                  variant={filter === 'all' ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setFilter('all')}
+                >
+                  All
+                </Badge>
+                <Badge 
+                  variant={filter === 'default' ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setFilter('default')}
+                >
+                  Default
+                </Badge>
+                <Badge 
+                  variant={filter === 'custom' ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setFilter('custom')}
+                >
+                  Custom
+                </Badge>
               </div>
-            ) : filteredMCPs.length > 0 ? (
-              <MCPGrid 
-                mcps={filteredMCPs} 
-                onEdit={handleEditMCP} 
-                onDelete={handleDelete} 
-                onClone={handleCloneMCP}
-              />
-            ) : (
-              <div className="text-center py-12 text-muted-foreground">
-                {user ? (
-                  <>
-                    <p>No MCPs found. {filter !== 'all' && 'Try changing the filter.'}</p>
-                    <Button 
-                      variant="outline" 
-                      className="mt-4"
-                      onClick={handleRetrySeed}
-                    >
-                      Retry Seeding Default MCPs
-                    </Button>
-                  </>
-                ) : (
-                  <p>Please sign in to view and manage MCPs</p>
-                )}
-              </div>
-            )}
-          </TabsContent>
-          
-          <TabsContent value="chat">
-            <MCPChatInterface mcps={mcps || []} />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+              
+              {isLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredMCPs.length > 0 ? (
+                <MCPGrid 
+                  mcps={filteredMCPs} 
+                  onEdit={handleEditMCP} 
+                  onDelete={handleDelete} 
+                  onClone={handleCloneMCP}
+                />
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  {user ? (
+                    <>
+                      <p>No MCPs found. {filter !== 'all' && 'Try changing the filter.'}</p>
+                      <Button 
+                        variant="outline" 
+                        className="mt-4"
+                        onClick={handleRetrySeed}
+                      >
+                        Retry Seeding Default MCPs
+                      </Button>
+                    </>
+                  ) : (
+                    <p>Please sign in to view and manage MCPs</p>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="chat">
+              <MCPChatInterface mcps={mcps || []} />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+      
+      <TokenManager
+        open={tokenDialogOpen}
+        onOpenChange={setTokenDialogOpen}
+      />
+    </>
   );
 };
 

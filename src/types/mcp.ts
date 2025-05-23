@@ -28,6 +28,8 @@ export interface MCP {
   requiresAuth?: boolean;
   authType?: 'api_key' | 'oauth' | 'basic';
   authKeyName?: string;
+  // New field for token requirements
+  requiresToken?: string; // e.g., 'github', 'openai'
 }
 
 export interface MCPExecution {
@@ -45,4 +47,30 @@ export interface MCPExecution {
 export interface ExecuteMCPParams {
   mcpId: string;
   parameters: Record<string, any>;
+}
+
+// User secret types for token management
+export interface UserSecret {
+  id: string;
+  user_id: string;
+  provider: string;
+  key: string;
+  label?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CreateUserSecretParams {
+  provider: string;
+  key: string;
+  label?: string;
+}
+
+export interface UpdateUserSecretParams {
+  id: string;
+  provider?: string;
+  key?: string;
+  label?: string;
+  is_active?: boolean;
 }

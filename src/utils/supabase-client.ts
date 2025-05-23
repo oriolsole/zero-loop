@@ -1,4 +1,5 @@
 
+
 import { createClient } from '@supabase/supabase-js';
 import { toast } from '@/components/ui/sonner';
 import { supabase as configuredSupabase } from '@/integrations/supabase/client';
@@ -16,3 +17,6 @@ export const handleSupabaseError = (error: any, defaultMessage: string = 'An err
   console.error('Supabase error:', error);
   toast.error(defaultMessage);
 };
+
+// Export everything from utils/supabase directory
+export * from '@/utils/supabase';

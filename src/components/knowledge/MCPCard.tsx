@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { MCP } from '@/types/mcp';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Trash2, Edit2, PlayCircle, Zap, Copy, Shield, Info } from 'lucide-react';
+import { Trash2, Edit2, PlayCircle, Zap, Copy, Shield, Info, Key } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; 
@@ -29,6 +29,7 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
 
   const isDefault = mcp.isDefault === true;
   const requiresAuth = mcp.requiresAuth === true;
+  const requiresToken = !!mcp.requiresToken;
 
   return (
     <>
@@ -67,6 +68,21 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
                         </TooltipTrigger>
                         <TooltipContent>
                           Requires authentication: {mcp.authKeyName || "API key"}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  {requiresToken && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="outline" className="text-xs border-blue-300 bg-blue-50/50">
+                            <Key className="h-3 w-3 mr-1" />
+                            Token
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Requires a {mcp.requiresToken} API token
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>

@@ -382,6 +382,17 @@ export const mcpService = {
           }
         }
         
+        // Add token if required
+        if (mcp.requiresToken) {
+          const token = await this.getMCPToken(mcp.requiresToken);
+          if (!token) {
+            throw new Error(`Token required for this MCP. Missing token for provider: ${mcp.requiresToken}`);
+          }
+          
+          // Add token to the headers or parameters based on the provider
+          headers['X-Provider-Token'] = token;
+        }
+        
         // Execute the MCP by calling its endpoint
         const response = await fetch(mcp.endpoint, {
           method: 'POST',
@@ -592,6 +603,30 @@ export const mcpService = {
       return null;
     } catch (error) {
       console.error('Error getting MCP auth key:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get a token for a specific provider
+   */
+  async getMCPToken(provider: string): Promise<string | null> {
+    try {
+      // Fetch the active tokens for this provider
+      const { data, error } = await supabase
+        .from('user_secrets')
+        .select('key')
+        .eq('provider', provider)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      // Return the first token or null if none found
+      return data && data.length > 0 ? data[0].key : null;
+    } catch (error) {
+      console.error(`Error getting token for provider ${provider}:`, error);
       return null;
     }
   },

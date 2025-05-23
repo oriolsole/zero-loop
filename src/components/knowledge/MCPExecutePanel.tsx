@@ -11,12 +11,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { mcpService } from '@/services/mcpService';
-import { Loader2, Save, ShieldAlert } from 'lucide-react';
+import { Loader2, Save, ShieldAlert, Key, AlertTriangle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import MCPAuthManager from './MCPAuthManager';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { userSecretService } from '@/services/userSecretService';
+import { useQuery } from '@tanstack/react-query';
 
 interface MCPExecutePanelProps {
   mcp: MCP;
@@ -29,6 +32,24 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
   const [nodeName, setNodeName] = useState('');
   const [selectedDomain, setSelectedDomain] = useState('');
   const [showAuthForm, setShowAuthForm] = useState(false);
+  const [showTokenWarning, setShowTokenWarning] = useState(false);
+  
+  // Query for token if required by MCP
+  const { 
+    data: tokenData, 
+    isLoading: tokenLoading 
+  } = useQuery({
+    queryKey: ['token', mcp.requiresToken],
+    queryFn: () => userSecretService.fetchSecretsByProvider(mcp.requiresToken || ''),
+    enabled: !!mcp.requiresToken,
+  });
+
+  // Check if the required token is missing
+  useEffect(() => {
+    if (mcp.requiresToken && !tokenLoading) {
+      setShowTokenWarning(!tokenData || tokenData.length === 0);
+    }
+  }, [mcp.requiresToken, tokenData, tokenLoading]);
   
   // Dynamically build a zod schema based on MCP parameters
   const buildFormSchema = (parameters: MCPParameter[]) => {
@@ -111,6 +132,14 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
             result.error.includes('Authentication required') && 
             mcp.requiresAuth) {
           setShowAuthForm(true);
+        }
+        
+        // If execution failed because of missing token, show token warning
+        if (result.status === 'failed' && 
+            result.error && 
+            result.error.includes('Token required') && 
+            mcp.requiresToken) {
+          setShowTokenWarning(true);
         }
       }
     } catch (error) {
@@ -233,21 +262,40 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
   const renderAuthBanner = () => {
     if (mcp.requiresAuth && mcp.authKeyName) {
       return (
-        <div className="mb-4 p-3 border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 rounded-md flex items-center gap-2">
-          <ShieldAlert className="h-5 w-5 text-yellow-500" />
-          <div className="text-sm">
+        <Alert variant="warning" className="mb-4">
+          <ShieldAlert className="h-5 w-5" />
+          <AlertTitle>Authentication Required</AlertTitle>
+          <AlertDescription>
             This MCP requires authentication using <span className="font-semibold">{mcp.authKeyName}</span>.
             {mcp.authType === 'api_key' && " Please ensure you've configured your API key."}
-          </div>
-        </div>
+          </AlertDescription>
+        </Alert>
       );
     }
     return null;
   };
   
+  // If MCP requires a token and it's missing, show token warning
+  const renderTokenBanner = () => {
+    if (showTokenWarning && mcp.requiresToken) {
+      return (
+        <Alert variant="warning" className="mb-4">
+          <Key className="h-5 w-5" />
+          <AlertTitle>API Token Required</AlertTitle>
+          <AlertDescription>
+            This MCP requires a <span className="font-semibold">{mcp.requiresToken}</span> API token. 
+            Please add your token in the API Token Manager before executing.
+          </AlertDescription>
+        </Alert>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-4">
       {renderAuthBanner()}
+      {renderTokenBanner()}
       
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleExecute)} className="space-y-4">
@@ -298,7 +346,10 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
           ))}
           
           <div className="flex justify-end">
-            <Button type="submit" disabled={isExecuting}>
+            <Button 
+              type="submit" 
+              disabled={isExecuting || (mcp.requiresToken && showTokenWarning)}
+            >
               {isExecuting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 

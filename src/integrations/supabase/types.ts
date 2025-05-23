@@ -300,6 +300,7 @@ export type Database = {
           isDefault: boolean | null
           parameters: Json
           requiresAuth: boolean | null
+          requirestoken: string | null
           sampleUseCases: Json | null
           suggestedPrompt: string | null
           tags: Json | null
@@ -320,6 +321,7 @@ export type Database = {
           isDefault?: boolean | null
           parameters?: Json
           requiresAuth?: boolean | null
+          requirestoken?: string | null
           sampleUseCases?: Json | null
           suggestedPrompt?: string | null
           tags?: Json | null
@@ -340,12 +342,46 @@ export type Database = {
           isDefault?: boolean | null
           parameters?: Json
           requiresAuth?: boolean | null
+          requirestoken?: string | null
           sampleUseCases?: Json | null
           suggestedPrompt?: string | null
           tags?: Json | null
           title?: string
           updated_at?: string | null
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_secrets: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          key: string
+          label: string | null
+          provider: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key: string
+          label?: string | null
+          provider: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key?: string
+          label?: string | null
+          provider?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
