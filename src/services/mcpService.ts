@@ -165,7 +165,7 @@ async function fetchMCPs(): Promise<MCP[]> {
       return [];
     }
     
-    return data as MCP[];
+    return data as unknown as MCP[];
   } catch (error) {
     console.error('Error in fetchMCPs:', error);
     return [];
@@ -188,10 +188,152 @@ async function fetchMCPById(id: string): Promise<MCP | null> {
       return null;
     }
     
-    return data as MCP;
+    return data as unknown as MCP;
   } catch (error) {
     console.error('Error in fetchMCPById:', error);
     return null;
+  }
+}
+
+/**
+ * Create a new MCP
+ */
+async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
+  try {
+    const { data, error } = await supabase
+      .from('mcps')
+      .insert([mcp])
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error creating MCP:', error);
+      return null;
+    }
+    
+    return data as unknown as MCP;
+  } catch (error) {
+    console.error('Error in createMCP:', error);
+    return null;
+  }
+}
+
+/**
+ * Update an existing MCP
+ */
+async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null> {
+  try {
+    const { data, error } = await supabase
+      .from('mcps')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error updating MCP:', error);
+      return null;
+    }
+    
+    return data as unknown as MCP;
+  } catch (error) {
+    console.error('Error in updateMCP:', error);
+    return null;
+  }
+}
+
+/**
+ * Delete an MCP
+ */
+async function deleteMCP(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('mcps')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      console.error('Error deleting MCP:', error);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error in deleteMCP:', error);
+    return false;
+  }
+}
+
+/**
+ * Clone an existing MCP
+ */
+async function cloneMCP(id: string): Promise<MCP | null> {
+  try {
+    // First, get the MCP to clone
+    const original = await fetchMCPById(id);
+    
+    if (!original) {
+      throw new Error('MCP not found');
+    }
+    
+    // Create a new MCP based on the original
+    const clone = {
+      ...original,
+      id: undefined, // Let Supabase generate a new ID
+      title: `Copy of ${original.title}`,
+      isDefault: false, // Never clone as a default
+      created_at: undefined, // Let Supabase set this
+      updated_at: undefined,
+    };
+    
+    return await createMCP(clone);
+  } catch (error) {
+    console.error('Error in cloneMCP:', error);
+    return null;
+  }
+}
+
+/**
+ * Seed default MCPs if they don't exist
+ */
+async function seedDefaultMCPs(): Promise<boolean> {
+  try {
+    // Check if any default MCPs exist
+    const { data: defaultMCPs, error } = await supabase
+      .from('mcps')
+      .select('id')
+      .eq('isDefault', true)
+      .limit(1);
+      
+    if (error) {
+      console.error('Error checking for default MCPs:', error);
+      return false;
+    }
+    
+    // If we already have default MCPs, don't seed
+    if (defaultMCPs && defaultMCPs.length > 0) {
+      console.log('Default MCPs already exist, skipping seed.');
+      return true;
+    }
+    
+    // Import default MCPs from constants
+    const { defaultMCPs: mcpsToSeed } = await import('@/constants/defaultMCPs');
+    
+    // Insert all default MCPs
+    const { error: insertError } = await supabase
+      .from('mcps')
+      .insert(mcpsToSeed);
+      
+    if (insertError) {
+      console.error('Error seeding default MCPs:', insertError);
+      return false;
+    }
+    
+    console.log('Successfully seeded default MCPs.');
+    return true;
+  } catch (error) {
+    console.error('Error in seedDefaultMCPs:', error);
+    return false;
   }
 }
 
@@ -199,5 +341,10 @@ async function fetchMCPById(id: string): Promise<MCP | null> {
 export const mcpService = {
   executeMCP,
   fetchMCPs,
-  fetchMCPById
+  fetchMCPById,
+  createMCP,
+  updateMCP,
+  deleteMCP,
+  cloneMCP,
+  seedDefaultMCPs
 };

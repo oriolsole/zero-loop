@@ -2,7 +2,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "./cors.ts";
-import { processQuery } from "../query-knowledge-base/queryProcessor.ts";
+import { processQuery } from "./queryProcessor.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -34,7 +34,7 @@ serve(async (req) => {
     }
 
     try {
-      // Use the existing processQuery function from query-knowledge-base
+      // Use our local processQuery function
       const results = await processQuery({
         query,
         limit: Number(limit),
@@ -55,7 +55,6 @@ serve(async (req) => {
       
       if (logError) {
         console.log('Non-critical error logging execution:', logError);
-        // Continue anyway since this is non-critical
       }
 
       return new Response(
