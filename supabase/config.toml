@@ -81,3 +81,5 @@ vector_port = 54328
 [functions]
 [functions.knowledge-search]
 verify_jwt = true
+[functions.query-knowledge-base]
+verify_jwt = true
