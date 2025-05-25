@@ -242,6 +242,9 @@ async function fetchMCPs(): Promise<MCP[]> {
     
     if (error) {
       console.error('Error fetching MCPs:', error);
+      toast.error('Failed to fetch MCPs', {
+        description: error.message
+      });
       return [];
     }
     
@@ -254,6 +257,7 @@ async function fetchMCPs(): Promise<MCP[]> {
     })) as MCP[];
   } catch (error) {
     console.error('Error in fetchMCPs:', error);
+    toast.error('Failed to fetch MCPs');
     return [];
   }
 }
@@ -271,6 +275,7 @@ async function fetchMCPById(id: string): Promise<MCP | null> {
     
     if (error) {
       console.error('Error fetching MCP by ID:', error);
+      toast.error('Failed to fetch MCP');
       return null;
     }
     
@@ -283,6 +288,7 @@ async function fetchMCPById(id: string): Promise<MCP | null> {
     } as MCP;
   } catch (error) {
     console.error('Error in fetchMCPById:', error);
+    toast.error('Failed to fetch MCP');
     return null;
   }
 }
@@ -292,8 +298,22 @@ async function fetchMCPById(id: string): Promise<MCP | null> {
  */
 async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
   try {
+    // Get current user session
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    
+    if (!userId) {
+      toast.error('Authentication required', {
+        description: 'You must be signed in to create MCPs'
+      });
+      return null;
+    }
+    
     // Fix: Make sure required fields are present
     if (!mcp.title || !mcp.description || !mcp.endpoint) {
+      toast.error('Missing required fields', {
+        description: 'Title, description, and endpoint are required'
+      });
       throw new Error('Missing required fields: title, description, and endpoint are required');
     }
     
@@ -313,7 +333,7 @@ async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
       authType: mcp.authType || null,
       authKeyName: mcp.authKeyName || null,
       requirestoken: mcp.requirestoken || null,
-      user_id: mcp.user_id || null
+      user_id: userId // Ensure user_id is set to current user
     };
     
     const { data, error } = await supabase
@@ -324,6 +344,9 @@ async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
     
     if (error) {
       console.error('Error creating MCP:', error);
+      toast.error('Failed to create MCP', {
+        description: error.message
+      });
       return null;
     }
     
@@ -335,9 +358,14 @@ async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
       sampleUseCases: typeof data.sampleUseCases === 'string' ? JSON.parse(data.sampleUseCases) : data.sampleUseCases
     } as MCP;
     
+    toast.success('MCP created successfully', {
+      description: `"${result.title}" has been added to your tools`
+    });
+    
     return result;
   } catch (error) {
     console.error('Error in createMCP:', error);
+    toast.error('Failed to create MCP');
     return null;
   }
 }
@@ -347,6 +375,17 @@ async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
  */
 async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null> {
   try {
+    // Get current user session
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    
+    if (!userId) {
+      toast.error('Authentication required', {
+        description: 'You must be signed in to update MCPs'
+      });
+      return null;
+    }
+    
     // Convert complex objects to JSON strings
     const updatesForDb: Record<string, any> = {};
     
@@ -377,6 +416,9 @@ async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null>
     
     if (error) {
       console.error('Error updating MCP:', error);
+      toast.error('Failed to update MCP', {
+        description: error.message
+      });
       return null;
     }
     
@@ -388,9 +430,14 @@ async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null>
       sampleUseCases: typeof data.sampleUseCases === 'string' ? JSON.parse(data.sampleUseCases) : data.sampleUseCases
     } as MCP;
     
+    toast.success('MCP updated successfully', {
+      description: `"${result.title}" has been updated`
+    });
+    
     return result;
   } catch (error) {
     console.error('Error in updateMCP:', error);
+    toast.error('Failed to update MCP');
     return null;
   }
 }
@@ -400,6 +447,17 @@ async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null>
  */
 async function deleteMCP(id: string): Promise<boolean> {
   try {
+    // Get current user session
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    
+    if (!userId) {
+      toast.error('Authentication required', {
+        description: 'You must be signed in to delete MCPs'
+      });
+      return false;
+    }
+    
     const { error } = await supabase
       .from('mcps')
       .delete()
@@ -407,12 +465,17 @@ async function deleteMCP(id: string): Promise<boolean> {
     
     if (error) {
       console.error('Error deleting MCP:', error);
+      toast.error('Failed to delete MCP', {
+        description: error.message
+      });
       return false;
     }
     
+    toast.success('MCP deleted successfully');
     return true;
   } catch (error) {
     console.error('Error in deleteMCP:', error);
+    toast.error('Failed to delete MCP');
     return false;
   }
 }
@@ -422,10 +485,24 @@ async function deleteMCP(id: string): Promise<boolean> {
  */
 async function cloneMCP(id: string): Promise<MCP | null> {
   try {
+    // Get current user session
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    
+    if (!userId) {
+      toast.error('Authentication required', {
+        description: 'You must be signed in to clone MCPs'
+      });
+      return null;
+    }
+    
     // First, get the MCP to clone
     const original = await fetchMCPById(id);
     
     if (!original) {
+      toast.error('MCP not found', {
+        description: 'The MCP you want to clone could not be found'
+      });
       throw new Error('MCP not found');
     }
     
@@ -445,12 +522,21 @@ async function cloneMCP(id: string): Promise<MCP | null> {
       authType: original.authType,
       authKeyName: original.authKeyName,
       requirestoken: original.requirestoken,
-      user_id: original.user_id
+      user_id: userId
     };
     
-    return await createMCP(clone);
+    const result = await createMCP(clone);
+    
+    if (result) {
+      toast.success('MCP cloned successfully', {
+        description: `"${result.title}" has been created as a copy`
+      });
+    }
+    
+    return result;
   } catch (error) {
     console.error('Error in cloneMCP:', error);
+    toast.error('Failed to clone MCP');
     return null;
   }
 }
