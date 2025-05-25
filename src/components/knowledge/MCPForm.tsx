@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
 import { Icons } from '@/components/icons';
 import { MCP, MCPParameter } from '@/types/mcp';
 
@@ -22,10 +22,22 @@ const parameterSchema = z.object({
   default: z.any().optional(),
 });
 
+// Updated form schema with more flexible endpoint validation
 const formSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().min(1, 'Description is required'),
-  endpoint: z.string().url('Endpoint must be a valid URL'),
+  endpoint: z.string().min(1, 'Endpoint is required').refine(
+    (value) => {
+      // Allow edge function names (simple strings without special chars except hyphens/underscores)
+      const edgeFunctionPattern = /^[a-zA-Z0-9_-]+$/;
+      // Allow full URLs
+      const urlPattern = /^https?:\/\/.+/;
+      return edgeFunctionPattern.test(value) || urlPattern.test(value);
+    },
+    {
+      message: "Endpoint must be either a valid URL (https://...) or an edge function name (e.g., 'google-search')",
+    }
+  ),
   icon: z.string().default('terminal'),
   parameters: z.array(parameterSchema).default([]),
 });
@@ -52,13 +64,13 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
     },
   });
   
-  // We need to use useFieldArray from react-hook-form for the parameters array
-  const { fields, append, remove } = form.control._formValues.parameters 
-    ? form.control._formValues.parameters
-    : { fields: [], append: () => {}, remove: () => {} };
+  // Properly implement useFieldArray for parameters
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "parameters",
+  });
 
   const handleSubmit = (values: FormValues) => {
-    // Make sure all required fields are populated
     const validMcp: Omit<MCP, 'id' | 'created_at' | 'updated_at'> = {
       title: values.title,
       description: values.description,
@@ -105,7 +117,7 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                 <FormItem>
                   <FormLabel>Title</FormLabel>
                   <FormControl>
-                    <Input placeholder="Weather API" {...field} />
+                    <Input placeholder="Web Search" {...field} />
                   </FormControl>
                   <FormDescription>
                     A descriptive name for your MCP tool
@@ -123,7 +135,7 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                   <FormLabel>Description</FormLabel>
                   <FormControl>
                     <Textarea 
-                      placeholder="Get current weather for a location" 
+                      placeholder="Search the web using Google Custom Search API" 
                       {...field} 
                     />
                   </FormControl>
@@ -140,15 +152,15 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
               name="endpoint"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Endpoint URL</FormLabel>
+                  <FormLabel>Endpoint</FormLabel>
                   <FormControl>
                     <Input 
-                      placeholder="https://your-mcp-server.com/api/weather" 
+                      placeholder="google-search or https://api.example.com/endpoint" 
                       {...field} 
                     />
                   </FormControl>
                   <FormDescription>
-                    The URL of your MCP server endpoint
+                    Edge function name (e.g., 'google-search') or full URL to your MCP server
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -198,30 +210,32 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
             />
 
             <div>
-              <div className="flex justify-between mb-2">
+              <div className="flex justify-between items-center mb-4">
                 <FormLabel>Parameters</FormLabel>
                 <Button 
                   type="button" 
                   variant="outline" 
                   size="sm" 
                   onClick={addParameter}
+                  className="flex items-center gap-2"
                 >
+                  <Plus className="h-4 w-4" />
                   Add Parameter
                 </Button>
               </div>
               
               <div className="space-y-4">
-                {fields && fields.length > 0 ? (
-                  fields.map((field: any, index: number) => (
-                    <div key={field.id || index} className="border p-4 rounded-md">
-                      <div className="flex justify-between mb-2">
+                {fields.length > 0 ? (
+                  fields.map((field, index) => (
+                    <div key={field.id} className="border p-4 rounded-md">
+                      <div className="flex justify-between items-center mb-3">
                         <h4 className="text-sm font-medium">Parameter {index + 1}</h4>
                         <Button 
                           type="button" 
                           variant="ghost" 
                           size="sm" 
                           onClick={() => remove(index)}
-                          className="h-6 w-6 p-0"
+                          className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -235,7 +249,7 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                             <FormItem>
                               <FormLabel className="text-xs">Name</FormLabel>
                               <FormControl>
-                                <Input placeholder="city" {...field} />
+                                <Input placeholder="query" {...field} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -275,10 +289,10 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                         control={form.control}
                         name={`parameters.${index}.description`}
                         render={({ field }) => (
-                          <FormItem className="mt-2">
+                          <FormItem className="mt-3">
                             <FormLabel className="text-xs">Description</FormLabel>
                             <FormControl>
-                              <Input placeholder="The city to get weather for" {...field} />
+                              <Input placeholder="The search query to find relevant web results" {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -289,14 +303,14 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                         control={form.control}
                         name={`parameters.${index}.required`}
                         render={({ field }) => (
-                          <FormItem className="mt-2 flex items-center space-x-2">
+                          <FormItem className="mt-3 flex items-center space-x-3 space-y-0">
                             <FormControl>
                               <Switch 
                                 checked={field.value} 
                                 onCheckedChange={field.onChange}
                               />
                             </FormControl>
-                            <FormLabel className="text-xs">Required</FormLabel>
+                            <FormLabel className="text-xs font-normal">Required parameter</FormLabel>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -304,16 +318,17 @@ const MCPForm: React.FC<MCPFormProps> = ({ mcp, onSave, onCancel }) => {
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-4 border-2 border-dashed rounded-md">
-                    <p className="text-sm text-muted-foreground">No parameters added yet</p>
+                  <div className="text-center py-8 border-2 border-dashed rounded-md">
+                    <p className="text-sm text-muted-foreground mb-2">No parameters added yet</p>
                     <Button 
                       type="button" 
                       variant="outline" 
                       size="sm" 
                       onClick={addParameter}
-                      className="mt-2"
+                      className="flex items-center gap-2"
                     >
-                      Add a parameter
+                      <Plus className="h-4 w-4" />
+                      Add your first parameter
                     </Button>
                   </div>
                 )}
