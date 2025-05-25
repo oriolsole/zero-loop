@@ -548,6 +548,33 @@ async function seedDefaultMCPs(userId?: string): Promise<boolean> {
   try {
     console.log('Seeding default MCPs for user:', userId);
     
+    // Always check if we need to update the web search MCP endpoint
+    const { data: webSearchMCP, error: webSearchError } = await supabase
+      .from('mcps')
+      .select('id, endpoint')
+      .eq('default_key', 'web-search')
+      .eq('isDefault', true)
+      .single();
+    
+    // If web search MCP exists but has wrong endpoint, update it
+    if (webSearchMCP && webSearchMCP.endpoint !== 'google-search') {
+      console.log('Updating web search MCP endpoint to use google-search edge function');
+      const { error: updateError } = await supabase
+        .from('mcps')
+        .update({ 
+          endpoint: 'google-search',
+          title: 'Web Search',
+          description: 'Search the web using Google Custom Search API to find relevant information across the internet'
+        })
+        .eq('id', webSearchMCP.id);
+        
+      if (updateError) {
+        console.error('Error updating web search MCP:', updateError);
+      } else {
+        console.log('Successfully updated web search MCP');
+      }
+    }
+    
     // Check if any default MCPs exist
     const { data: defaultMCPs, error } = await supabase
       .from('mcps')
