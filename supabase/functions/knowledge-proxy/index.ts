@@ -293,11 +293,13 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Initialize bodyText variable at function scope
+  let bodyText = '';
+  let requestBody: any = {};
+
   try {
-    let requestBody;
-    
     try {
-      const bodyText = await req.text();
+      bodyText = await req.text();
       console.log('Raw request body length:', bodyText.length);
       console.log('Raw request body content:', bodyText.substring(0, 500)); // First 500 chars
       
@@ -404,7 +406,12 @@ serve(async (req) => {
     const errorResponse = { 
       error: error.message || 'An error occurred during knowledge request',
       status: 'failed',
-      data: null 
+      data: null,
+      debug: {
+        bodyReceived: !!bodyText,
+        bodyLength: bodyText?.length || 0,
+        bodyContent: bodyText?.substring(0, 100) || 'N/A'
+      }
     };
     
     console.log('Sending error response:', errorResponse);
