@@ -90,10 +90,25 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
     if (mcp.endpoint.indexOf('http') !== 0) {
       console.log('Executing as Supabase Edge Function:', mcp.endpoint);
       
-      // It's an Edge Function - use the correct method for the knowledge-proxy
+      // Special handling for knowledge-proxy - send parameters directly
+      let requestBody;
+      if (mcp.endpoint === 'knowledge-proxy') {
+        requestBody = {
+          ...params.parameters,
+          executionId: executionId
+        };
+      } else {
+        // For other functions, use the original format
+        requestBody = { 
+          action: mcp.default_key || mcp.id, 
+          parameters: params.parameters, 
+          executionId 
+        };
+      }
+      
       try {
         const { data, error } = await supabase.functions.invoke(mcp.endpoint, {
-          body: { action: mcp.default_key || mcp.id, parameters: params.parameters, executionId },
+          body: requestBody,
           headers: headers
         });
         

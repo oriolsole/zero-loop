@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -288,41 +287,52 @@ serve(async (req) => {
   }
 
   try {
-    // Parse the request body
-    const requestBody = await req.json();
-    console.log('Received request body:', JSON.stringify(requestBody));
+    let requestBody;
     
-    // Handle both formats: direct parameters or nested action/parameters structure
-    let parameters;
-    if (requestBody.parameters) {
-      // New format from mcpService
-      parameters = requestBody.parameters;
-    } else {
-      // Direct format - use the entire body as parameters
-      parameters = requestBody;
+    try {
+      const bodyText = await req.text();
+      console.log('Raw request body:', bodyText);
+      
+      if (!bodyText || bodyText.trim() === '') {
+        throw new Error('Empty request body');
+      }
+      
+      requestBody = JSON.parse(bodyText);
+      console.log('Parsed request body:', JSON.stringify(requestBody));
+    } catch (parseError) {
+      console.error('JSON parsing error:', parseError);
+      return new Response(
+        JSON.stringify({ 
+          error: `Invalid JSON in request body: ${parseError.message}`,
+          status: 'failed',
+          data: null 
+        }),
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
     
-    const executionId = requestBody.executionId;
-    
-    console.log(`Processing knowledge request`);
-    console.log(`Execution ID: ${executionId}`);
-    console.log(`Parameters:`, JSON.stringify(parameters));
-    
-    // Extract parameters for knowledge search
+    // Extract parameters - expect them directly in the request body
     const { 
       query, 
       sources = [],
       limit = 5,
       includeNodes = true,
       matchThreshold = 0.5,
-      useEmbeddings = true
-    } = parameters;
+      useEmbeddings = true,
+      executionId
+    } = requestBody;
+    
+    console.log(`Processing knowledge request`);
+    console.log(`Execution ID: ${executionId}`);
+    console.log(`Query: "${query}"`);
+    console.log(`Parameters: limit=${limit}, includeNodes=${includeNodes}, useEmbeddings=${useEmbeddings}`);
     
     if (!query) {
       throw new Error('Query parameter is required');
     }
-
-    console.log(`Searching for: "${query}" with limit: ${limit}, includeNodes: ${includeNodes}, useEmbeddings: ${useEmbeddings}`);
 
     // Process the knowledge search using our local implementation
     const results = await processKnowledgeQuery({
