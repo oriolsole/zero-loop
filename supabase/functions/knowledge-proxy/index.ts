@@ -1,5 +1,4 @@
 
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -289,9 +288,23 @@ serve(async (req) => {
   }
 
   try {
-    const { action, parameters, executionId } = await req.json();
+    // Parse the request body
+    const requestBody = await req.json();
+    console.log('Received request body:', JSON.stringify(requestBody));
     
-    console.log(`Processing knowledge request for action: ${action}`);
+    // Handle both formats: direct parameters or nested action/parameters structure
+    let parameters;
+    if (requestBody.parameters) {
+      // New format from mcpService
+      parameters = requestBody.parameters;
+    } else {
+      // Direct format - use the entire body as parameters
+      parameters = requestBody;
+    }
+    
+    const executionId = requestBody.executionId;
+    
+    console.log(`Processing knowledge request`);
     console.log(`Execution ID: ${executionId}`);
     console.log(`Parameters:`, JSON.stringify(parameters));
     
@@ -360,4 +373,3 @@ serve(async (req) => {
     );
   }
 });
-
