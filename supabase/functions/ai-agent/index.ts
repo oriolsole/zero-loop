@@ -25,19 +25,36 @@ serve(async (req) => {
       throw new Error('OpenAI API key not configured');
     }
 
-    const { message, conversationHistory = [] } = await req.json();
+    const { message, conversationHistory = [], userId, sessionId, streaming = false } = await req.json();
     
     if (!message) {
       throw new Error('Message is required');
     }
 
-    console.log('AI Agent request:', { message, historyLength: conversationHistory.length });
+    console.log('AI Agent request:', { 
+      message, 
+      historyLength: conversationHistory.length, 
+      userId, 
+      sessionId,
+      streaming 
+    });
+
+    // Store conversation in database if userId and sessionId provided
+    if (userId && sessionId) {
+      await supabase.from('agent_conversations').insert({
+        user_id: userId,
+        session_id: sessionId,
+        role: 'user',
+        content: message,
+        created_at: new Date().toISOString()
+      });
+    }
 
     // Fetch available MCPs from the database
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
       .select('*')
-      .eq('isDefault', true); // Only use default MCPs for now
+      .eq('isDefault', true);
 
     if (mcpError) {
       console.error('Error fetching MCPs:', mcpError);
@@ -51,7 +68,6 @@ serve(async (req) => {
       const properties: Record<string, any> = {};
       const required: string[] = [];
 
-      // Parse parameters if they're stored as JSON strings
       let parameters;
       try {
         parameters = typeof mcp.parameters === 'string' 
@@ -93,19 +109,35 @@ serve(async (req) => {
 
     console.log('Generated tools:', tools.length);
 
+    // Enhanced system prompt with self-reflection capabilities
+    const systemPrompt = `You are an advanced AI agent with access to various tools and self-reflection capabilities. You can help users by:
+
+1. **Tool Usage**: Search the web, access knowledge bases, and use specialized tools
+2. **Self-Reflection**: After using tools, analyze the results and determine if they meet the user's needs
+3. **Task Planning**: Break down complex requests into manageable steps
+4. **Error Recovery**: If a tool fails, try alternative approaches or explain limitations
+
+**Available tools**: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}
+
+**Self-Reflection Protocol**:
+- After using tools, assess if the results answer the user's question
+- If results are incomplete, suggest follow-up actions
+- If tools fail, explain what went wrong and offer alternatives
+- Always explain your reasoning when choosing tools
+
+**Communication Style**:
+- Be conversational and helpful
+- Explain what you're doing when using tools
+- Provide context for your decisions
+- Ask clarifying questions when needed
+
+Remember: You can use multiple tools in sequence and should reflect on their outputs to provide the best possible assistance.`;
+
     // Prepare messages for OpenAI
     const messages = [
       {
         role: 'system',
-        content: `You are an AI agent with access to various tools. You can help users by:
-1. Searching the web for information
-2. Searching the knowledge base
-3. Using other available tools
-
-When you need to use a tool, call the appropriate function. You can use multiple tools in sequence if needed.
-Be conversational and helpful. Explain what you're doing when you use tools.
-
-Available tools: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}`
+        content: systemPrompt
       },
       ...conversationHistory,
       {
@@ -127,7 +159,8 @@ Available tools: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}`
         tools: tools.length > 0 ? tools : undefined,
         tool_choice: 'auto',
         temperature: 0.7,
-        max_tokens: 1500
+        max_tokens: 2000,
+        stream: streaming
       }),
     });
 
@@ -137,10 +170,26 @@ Available tools: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}`
       throw new Error(`OpenAI API error: ${response.status}`);
     }
 
+    if (streaming) {
+      // Handle streaming response
+      return new Response(response.body, {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
     const data = await response.json();
     const assistantMessage = data.choices[0].message;
 
     console.log('OpenAI response:', assistantMessage);
+
+    let finalResponse = assistantMessage.content;
+    let toolsUsed: any[] = [];
+    let selfReflection = '';
 
     // Check if OpenAI wants to call any tools
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
@@ -166,11 +215,9 @@ Available tools: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}`
         }
 
         try {
-          // Execute the MCP
           let mcpResult;
           
           if (targetMcp.endpoint.indexOf('http') !== 0) {
-            // It's a Supabase Edge Function
             const { data: edgeResult, error: edgeError } = await supabase.functions.invoke(targetMcp.endpoint, {
               body: parameters
             });
@@ -181,7 +228,6 @@ Available tools: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}`
             
             mcpResult = edgeResult;
           } else {
-            // It's an external API
             const apiResponse = await fetch(targetMcp.endpoint, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -200,22 +246,48 @@ Available tools: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}`
             role: 'tool',
             content: JSON.stringify(mcpResult)
           });
+
+          toolsUsed.push({
+            name: functionName,
+            parameters,
+            result: mcpResult,
+            success: true
+          });
           
         } catch (error) {
           console.error('Tool execution error:', error);
+          const errorResult = { error: error.message };
+          
           toolResults.push({
             tool_call_id: toolCall.id,
             role: 'tool',
-            content: JSON.stringify({ error: error.message })
+            content: JSON.stringify(errorResult)
+          });
+
+          toolsUsed.push({
+            name: functionName,
+            parameters,
+            result: errorResult,
+            success: false
           });
         }
       }
       
-      // Make another OpenAI call with the tool results
+      // Make another OpenAI call with the tool results and self-reflection
       const followUpMessages = [
         ...messages,
         assistantMessage,
-        ...toolResults
+        ...toolResults,
+        {
+          role: 'system',
+          content: `Now reflect on the tool results. Assess:
+1. Did the tools provide useful information for the user's request?
+2. Are there any gaps or issues with the results?
+3. Should you recommend additional actions or tools?
+4. Provide a clear, helpful response based on all available information.
+
+Be transparent about any limitations or failures.`
+        }
       ];
       
       const followUpResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -228,7 +300,7 @@ Available tools: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}`
           model: 'gpt-4o-mini',
           messages: followUpMessages,
           temperature: 0.7,
-          max_tokens: 1500
+          max_tokens: 2000
         }),
       });
       
@@ -237,27 +309,36 @@ Available tools: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}`
       }
       
       const followUpData = await followUpResponse.json();
-      const finalMessage = followUpData.choices[0].message;
+      finalResponse = followUpData.choices[0].message.content;
       
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: finalMessage.content,
-          toolsUsed: assistantMessage.tool_calls?.map(tc => ({
-            name: tc.function.name,
-            parameters: JSON.parse(tc.function.arguments)
-          })) || []
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      // Generate self-reflection summary
+      selfReflection = `Used ${toolsUsed.length} tool(s). ${toolsUsed.filter(t => t.success).length} succeeded, ${toolsUsed.filter(t => !t.success).length} failed.`;
     }
 
-    // No tools were called, return the assistant's message directly
+    // Store assistant response in database
+    if (userId && sessionId) {
+      await supabase.from('agent_conversations').insert({
+        user_id: userId,
+        session_id: sessionId,
+        role: 'assistant',
+        content: finalResponse,
+        tools_used: toolsUsed,
+        self_reflection: selfReflection,
+        created_at: new Date().toISOString()
+      });
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        message: assistantMessage.content,
-        toolsUsed: []
+        message: finalResponse,
+        toolsUsed: toolsUsed.map(t => ({
+          name: t.name,
+          parameters: t.parameters,
+          success: t.success
+        })),
+        selfReflection,
+        sessionId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
