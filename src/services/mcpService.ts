@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
@@ -23,8 +24,7 @@ async function recordExecution(executionId: string, mcpId: string, parameters: R
         mcp_id: mcpId,
         parameters: parameters,
         status: 'running',
-        user_id: userId // Include the user_id for RLS compliance
-        // The created_at timestamp will be set automatically by the database default value
+        user_id: userId
       }]);
       
     if (error) {
@@ -72,7 +72,7 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
       'x-execution-id': executionId,
     };
     
-    // Check if this MCP requires a provider token - use requirestoken instead of requiresToken
+    // Check if this MCP requires a provider token
     if (mcp.requirestoken) {
       const token = await getTokenForProvider(mcp.requirestoken);
       if (token) {
@@ -90,10 +90,10 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
     if (mcp.endpoint.indexOf('http') !== 0) {
       console.log('Executing as Supabase Edge Function:', mcp.endpoint);
       
-      // It's an Edge Function
+      // It's an Edge Function - use the correct method for the knowledge-proxy
       try {
         const { data, error } = await supabase.functions.invoke(mcp.endpoint, {
-          body: { action: mcp.id, parameters: params.parameters, executionId },
+          body: { action: mcp.default_key || mcp.id, parameters: params.parameters, executionId },
           headers: headers
         });
         
@@ -105,6 +105,12 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
         if (!data) {
           console.warn('Edge function returned no data');
           throw new Error('No data returned from edge function');
+        }
+        
+        // Handle the response from knowledge-proxy
+        if (data.error) {
+          console.error('Knowledge proxy returned error:', data.error);
+          throw new Error(`Knowledge search error: ${data.error}`);
         }
         
         response = data;
@@ -144,7 +150,6 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
         .update({
           status: 'completed',
           result: response,
-          // Use the updated_at field that's updated automatically
         })
         .eq('id', executionId);
         
@@ -258,7 +263,7 @@ async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
       requiresAuth: mcp.requiresAuth || false,
       authType: mcp.authType || null,
       authKeyName: mcp.authKeyName || null,
-      requirestoken: mcp.requirestoken || null, // Fix: use requirestoken
+      requirestoken: mcp.requirestoken || null,
       user_id: mcp.user_id || null
     };
     
@@ -307,7 +312,7 @@ async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null>
     if (updates.requiresAuth !== undefined) updatesForDb.requiresAuth = updates.requiresAuth;
     if (updates.authType !== undefined) updatesForDb.authType = updates.authType;
     if (updates.authKeyName !== undefined) updatesForDb.authKeyName = updates.authKeyName;
-    if (updates.requirestoken !== undefined) updatesForDb.requirestoken = updates.requirestoken; // Fix: use requirestoken
+    if (updates.requirestoken !== undefined) updatesForDb.requirestoken = updates.requirestoken;
     
     // Convert objects to JSON strings
     if (updates.parameters !== undefined) updatesForDb.parameters = JSON.stringify(updates.parameters);
@@ -390,7 +395,7 @@ async function cloneMCP(id: string): Promise<MCP | null> {
       requiresAuth: original.requiresAuth,
       authType: original.authType,
       authKeyName: original.authKeyName,
-      requirestoken: original.requirestoken, // Fix: use requirestoken
+      requirestoken: original.requirestoken,
       user_id: original.user_id
     };
     
@@ -420,9 +425,23 @@ async function seedDefaultMCPs(userId?: string): Promise<boolean> {
       return false;
     }
     
-    // If we already have default MCPs, don't seed
+    // If we already have default MCPs, check if we need to update the knowledge search endpoint
     if (defaultMCPs && defaultMCPs.length > 0) {
-      console.log('Default MCPs already exist, skipping seed.');
+      console.log('Default MCPs already exist, checking for knowledge search updates...');
+      
+      // Update the knowledge search MCP to use the correct endpoint
+      const { error: updateError } = await supabase
+        .from('mcps')
+        .update({ endpoint: 'knowledge-proxy' })
+        .eq('default_key', 'knowledge-search-v2')
+        .eq('isDefault', true);
+        
+      if (updateError) {
+        console.error('Error updating knowledge search MCP:', updateError);
+      } else {
+        console.log('Successfully updated knowledge search MCP endpoint to use knowledge-proxy');
+      }
+      
       return true;
     }
     
@@ -451,7 +470,7 @@ async function seedDefaultMCPs(userId?: string): Promise<boolean> {
         requiresAuth: mcp.requiresAuth || false,
         authType: mcp.authType || null,
         authKeyName: mcp.authKeyName || null,
-        requirestoken: mcp.requirestoken || null, // Fix: use requirestoken
+        requirestoken: mcp.requirestoken || null,
         user_id: userId || null
       };
       
