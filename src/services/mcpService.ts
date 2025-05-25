@@ -97,6 +97,7 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
           ...params.parameters,
           executionId: executionId
         };
+        console.log('Knowledge-proxy request body:', JSON.stringify(requestBody, null, 2));
       } else {
         // For other functions, use the original format
         requestBody = { 
@@ -104,31 +105,64 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
           parameters: params.parameters, 
           executionId 
         };
+        console.log('Standard edge function request body:', JSON.stringify(requestBody, null, 2));
       }
       
+      console.log('About to invoke edge function with:', {
+        endpoint: mcp.endpoint,
+        bodySize: JSON.stringify(requestBody).length,
+        headers: headers
+      });
+      
       try {
+        // Try the Supabase client method first
         const { data, error } = await supabase.functions.invoke(mcp.endpoint, {
           body: requestBody,
           headers: headers
         });
         
+        console.log('Edge function response:', { data, error });
+        
         if (error) {
           console.error('Edge function error:', error);
-          throw new Error(`Edge function error: ${error.message}`);
+          // If the client method fails, try a direct fetch as fallback
+          console.log('Falling back to direct fetch...');
+          
+          const directResponse = await fetch(`https://dwescgkujhhizyrokuiv.supabase.co/functions/v1/${mcp.endpoint}`, {
+            method: 'POST',
+            headers: {
+              ...headers,
+              'Authorization': `Bearer ${supabase.supabaseKey}`,
+              'apikey': supabase.supabaseKey,
+            },
+            body: JSON.stringify(requestBody)
+          });
+          
+          console.log('Direct fetch response status:', directResponse.status);
+          
+          if (!directResponse.ok) {
+            const errorText = await directResponse.text();
+            console.error('Direct fetch error:', errorText);
+            throw new Error(`Direct fetch error: ${directResponse.status} ${directResponse.statusText}. ${errorText}`);
+          }
+          
+          response = await directResponse.json();
+          console.log('Direct fetch response data:', response);
+        } else {
+          response = data;
         }
         
-        if (!data) {
+        if (!response) {
           console.warn('Edge function returned no data');
           throw new Error('No data returned from edge function');
         }
         
         // Handle the response from knowledge-proxy
-        if (data.error) {
-          console.error('Knowledge proxy returned error:', data.error);
-          throw new Error(`Knowledge search error: ${data.error}`);
+        if (response.error) {
+          console.error('Knowledge proxy returned error:', response.error);
+          throw new Error(`Knowledge search error: ${response.error}`);
         }
         
-        response = data;
       } catch (e) {
         console.error('Edge function execution error:', e);
         throw new Error(`Failed to execute edge function: ${e.message}`);

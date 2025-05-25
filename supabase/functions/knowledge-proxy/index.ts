@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -281,8 +282,14 @@ async function processKnowledgeQuery(options: {
 }
 
 serve(async (req) => {
+  console.log(`=== Knowledge Proxy Request ===`);
+  console.log(`Method: ${req.method}`);
+  console.log(`URL: ${req.url}`);
+  console.log(`Headers:`, Object.fromEntries(req.headers.entries()));
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
+    console.log('Handling CORS preflight request');
     return new Response(null, { headers: corsHeaders });
   }
 
@@ -291,21 +298,35 @@ serve(async (req) => {
     
     try {
       const bodyText = await req.text();
-      console.log('Raw request body:', bodyText);
+      console.log('Raw request body length:', bodyText.length);
+      console.log('Raw request body content:', bodyText.substring(0, 500)); // First 500 chars
       
       if (!bodyText || bodyText.trim() === '') {
-        throw new Error('Empty request body');
+        console.error('Request body is empty or whitespace only');
+        throw new Error('Empty request body received from client');
       }
       
       requestBody = JSON.parse(bodyText);
-      console.log('Parsed request body:', JSON.stringify(requestBody));
+      console.log('Successfully parsed JSON. Keys:', Object.keys(requestBody));
+      console.log('Parsed request body:', JSON.stringify(requestBody, null, 2));
     } catch (parseError) {
-      console.error('JSON parsing error:', parseError);
+      console.error('JSON parsing failed:', parseError);
+      console.error('Parse error details:', {
+        name: parseError.name,
+        message: parseError.message,
+        stack: parseError.stack
+      });
+      
       return new Response(
         JSON.stringify({ 
           error: `Invalid JSON in request body: ${parseError.message}`,
           status: 'failed',
-          data: null 
+          data: null,
+          debug: {
+            receivedContentType: req.headers.get('content-type'),
+            bodyReceived: !!bodyText,
+            bodyLength: bodyText?.length || 0
+          }
         }),
         { 
           status: 400,
@@ -331,6 +352,7 @@ serve(async (req) => {
     console.log(`Parameters: limit=${limit}, includeNodes=${includeNodes}, useEmbeddings=${useEmbeddings}`);
     
     if (!query) {
+      console.error('Missing query parameter');
       throw new Error('Query parameter is required');
     }
 
@@ -360,22 +382,35 @@ serve(async (req) => {
       }
     }
 
+    const successResponse = { 
+      success: true, 
+      results: results
+    };
+    
+    console.log('Sending success response with', results.length, 'results');
+    
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        results: results
-      }),
+      JSON.stringify(successResponse),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Error in knowledge-proxy function:', error);
+    console.error('=== Knowledge Proxy Error ===');
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    
+    const errorResponse = { 
+      error: error.message || 'An error occurred during knowledge request',
+      status: 'failed',
+      data: null 
+    };
+    
+    console.log('Sending error response:', errorResponse);
     
     return new Response(
-      JSON.stringify({ 
-        error: error.message || 'An error occurred during knowledge request',
-        status: 'failed',
-        data: null 
-      }),
+      JSON.stringify(errorResponse),
       { 
         status: 200, // Return 200 even for errors to allow client-side handling
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
