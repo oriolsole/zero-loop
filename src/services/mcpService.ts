@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
@@ -116,15 +115,16 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
       
       try {
         // Try the Supabase client method first
+        console.log('Attempting Supabase client invoke...');
         const { data, error } = await supabase.functions.invoke(mcp.endpoint, {
           body: requestBody,
           headers: headers
         });
         
-        console.log('Edge function response:', { data, error });
+        console.log('Edge function client response:', { data, error });
         
         if (error) {
-          console.error('Edge function error:', error);
+          console.error('Edge function client error:', error);
           // If the client method fails, try a direct fetch as fallback
           console.log('Falling back to direct fetch...');
           
@@ -132,8 +132,8 @@ async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult>
             method: 'POST',
             headers: {
               ...headers,
-              'Authorization': `Bearer ${supabase.supabaseKey}`,
-              'apikey': supabase.supabaseKey,
+              'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3ZXNjZ2t1amhoaXp5cm9rdWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY4ODMwNjYsImV4cCI6MjA2MjQ1OTA2Nn0.tktvFI92_RhKWtOtP3yv5TEgN7ATopSgNBNuQ_vbsSI`,
+              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3ZXNjZ2t1amhoaXp5cm9rdWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY4ODMwNjYsImV4cCI6MjA2MjQ1OTA2Nn0.tktvFI92_RhKWtOtP3yv5TEgN7ATopSgNBNuQ_vbsSI',
             },
             body: JSON.stringify(requestBody)
           });
