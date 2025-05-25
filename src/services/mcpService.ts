@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
@@ -575,7 +576,50 @@ async function seedDefaultMCPs(userId?: string): Promise<boolean> {
       }
     }
     
-    // Check if any default MCPs exist
+    // Import default MCPs from constants
+    const { defaultMCPs: mcpsToSeed } = await import('@/constants/defaultMCPs');
+    
+    // Check if Web Search MCP is missing and add it specifically
+    if (!webSearchMCP && !webSearchError) {
+      console.log('Web Search MCP not found, adding it...');
+      
+      // Find the Web Search MCP from our defaults
+      const webSearchDefault = mcpsToSeed.find(mcp => mcp.default_key === 'web-search');
+      
+      if (webSearchDefault) {
+        const mcpForDb = {
+          title: webSearchDefault.title,
+          description: webSearchDefault.description,
+          endpoint: webSearchDefault.endpoint,
+          icon: webSearchDefault.icon || 'search',
+          parameters: JSON.stringify(webSearchDefault.parameters || []),
+          tags: JSON.stringify(webSearchDefault.tags || []),
+          sampleUseCases: JSON.stringify(webSearchDefault.sampleUseCases || []),
+          isDefault: true,
+          category: webSearchDefault.category || null,
+          default_key: webSearchDefault.default_key || null,
+          requiresAuth: webSearchDefault.requiresAuth || false,
+          authType: webSearchDefault.authType || null,
+          authKeyName: webSearchDefault.authKeyName || null,
+          requirestoken: webSearchDefault.requirestoken || null,
+          suggestedPrompt: webSearchDefault.suggestedPrompt || null,
+          user_id: null // Default MCPs are global
+        };
+        
+        const { error: insertError } = await supabase
+          .from('mcps')
+          .insert(mcpForDb);
+          
+        if (insertError) {
+          console.error('Error inserting Web Search MCP:', insertError);
+        } else {
+          console.log('Successfully added Web Search MCP');
+          toast.success('Web Search MCP added successfully');
+        }
+      }
+    }
+    
+    // Check if any other default MCPs exist
     const { data: defaultMCPs, error } = await supabase
       .from('mcps')
       .select('id')
@@ -607,11 +651,13 @@ async function seedDefaultMCPs(userId?: string): Promise<boolean> {
       return true;
     }
     
-    // Import default MCPs from constants
-    const { defaultMCPs: mcpsToSeed } = await import('@/constants/defaultMCPs');
-    
-    // Process MCPs for database insertion - insert one by one to ensure schema compliance
+    // Process remaining MCPs for database insertion - insert one by one to ensure schema compliance
     for (const mcp of mcpsToSeed) {
+      // Skip Web Search MCP as we handled it separately above
+      if (mcp.default_key === 'web-search') {
+        continue;
+      }
+      
       // Make sure the MCP has all required fields
       if (!mcp.title || !mcp.description || !mcp.endpoint) {
         console.error('Skipping MCP due to missing required fields:', mcp);
@@ -633,7 +679,8 @@ async function seedDefaultMCPs(userId?: string): Promise<boolean> {
         authType: mcp.authType || null,
         authKeyName: mcp.authKeyName || null,
         requirestoken: mcp.requirestoken || null,
-        user_id: userId || null
+        suggestedPrompt: mcp.suggestedPrompt || null,
+        user_id: null // Default MCPs are global
       };
       
       const { error: insertError } = await supabase
