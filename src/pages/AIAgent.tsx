@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { MainLayout } from '@/components/layouts/MainLayout';
+import MainLayout from '@/components/layouts/MainLayout';
 import AIAgentChat from '@/components/knowledge/AIAgentChat';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Bot, Cpu, Search, Database } from 'lucide-react';
