@@ -19,10 +19,10 @@ export const mcpDataTransformer = {
   },
 
   /**
-   * Convert MCP from application format to database format
+   * Convert MCP from application format to database format for updates
    */
-  toDatabase(mcp: Partial<MCP>): Record<string, any> {
-    const dbMcp: Record<string, any> = {};
+  toDatabase(mcp: Partial<MCP>) {
+    const dbMcp: any = {};
     
     // Only include fields that are actually being updated
     if (mcp.title !== undefined) dbMcp.title = mcp.title;
@@ -47,9 +47,9 @@ export const mcpDataTransformer = {
   },
 
   /**
-   * Convert MCP for database creation
+   * Convert MCP for database creation with proper typing
    */
-  forCreation(mcp: Partial<MCP>): Record<string, any> {
+  forCreation(mcp: Partial<MCP>) {
     if (!mcp.title || !mcp.description || !mcp.endpoint) {
       throw new Error('Missing required fields: title, description, and endpoint are required');
     }
