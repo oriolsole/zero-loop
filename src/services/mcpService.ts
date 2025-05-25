@@ -1,225 +1,29 @@
+
 import { supabase } from '@/integrations/supabase/client';
-import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult } from '@/types/mcp';
-import { v4 as uuidv4 } from 'uuid';
-import { getTokenForProvider } from '@/services/tokenService';
-import { toast } from '@/components/ui/sonner';
+import { MCP, ExecuteMCPParams, MCPExecutionResult } from '@/types/mcp';
+import { mcpDataTransformer } from './mcpDataTransformer';
+import { mcpExecutor } from './mcpExecutor';
 
 /**
- * Generate a unique ID for each execution
+ * Simplified MCP service focusing on CRUD operations and delegation
  */
-function generateExecutionId(): string {
-  return uuidv4();
-}
 
 /**
- * Record the start of an MCP execution in the database
- */
-async function recordExecution(executionId: string, mcpId: string, parameters: Record<string, any>, userId?: string) {
-  try {
-    const { error } = await supabase
-      .from('mcp_executions')
-      .insert([{
-        id: executionId,
-        mcp_id: mcpId,
-        parameters: parameters,
-        status: 'running',
-        user_id: userId
-      }]);
-      
-    if (error) {
-      console.warn('Failed to record execution:', error);
-      toast.error('Failed to record execution start');
-      throw error;
-    }
-  } catch (e) {
-    console.error('Error recording execution:', e);
-    throw e;
-  }
-}
-
-/**
- * Execute an MCP with authorization if needed
+ * Execute an MCP by delegating to the executor service
  */
 async function executeMCP(params: ExecuteMCPParams): Promise<MCPExecutionResult> {
   try {
-    // Get the current authenticated user
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData?.session?.user?.id;
+    // First, get the MCP details
+    const mcp = await fetchMCPById(params.mcpId);
     
-    // First, we need to get the MCP details
-    const { data: mcp, error: fetchError } = await supabase
-      .from('mcps')
-      .select('*')
-      .eq('id', params.mcpId)
-      .single();
-    
-    if (fetchError || !mcp) {
-      throw new Error(`Failed to fetch MCP: ${fetchError?.message || 'MCP not found'}`);
+    if (!mcp) {
+      throw new Error(`Failed to fetch MCP: MCP not found`);
     }
     
-    console.log('Executing MCP:', mcp.title, 'with parameters:', params.parameters);
-    
-    // Generate a unique ID for this execution
-    const executionId = generateExecutionId();
-    
-    // Record the execution start in the database, passing the user ID
-    await recordExecution(executionId, params.mcpId, params.parameters, userId);
-    
-    // Prepare request headers
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'x-execution-id': executionId,
-    };
-    
-    // Check if this MCP requires a provider token
-    if (mcp.requirestoken) {
-      const token = await getTokenForProvider(mcp.requirestoken);
-      if (token) {
-        headers['x-provider-token'] = token;
-        console.log(`Using token for provider: ${mcp.requirestoken}`);
-      } else {
-        console.warn(`Token required for ${mcp.requirestoken} but not found`);
-      }
-    }
-    
-    // Execute the API call based on the endpoint type
-    let response;
-    
-    // Is this a Supabase Edge Function?
-    if (mcp.endpoint.indexOf('http') !== 0) {
-      console.log('Executing as Supabase Edge Function:', mcp.endpoint);
-      
-      // Special handling for knowledge-proxy - send parameters directly
-      let requestBody;
-      if (mcp.endpoint === 'knowledge-proxy') {
-        requestBody = {
-          ...params.parameters,
-          executionId: executionId
-        };
-        console.log('Knowledge-proxy request body:', JSON.stringify(requestBody, null, 2));
-      } else {
-        // For other functions, use the original format
-        requestBody = { 
-          action: mcp.default_key || mcp.id, 
-          parameters: params.parameters, 
-          executionId 
-        };
-        console.log('Standard edge function request body:', JSON.stringify(requestBody, null, 2));
-      }
-      
-      console.log('About to invoke edge function with:', {
-        endpoint: mcp.endpoint,
-        bodySize: JSON.stringify(requestBody).length,
-        headers: headers
-      });
-      
-      try {
-        // Try the Supabase client method first
-        console.log('Attempting Supabase client invoke...');
-        const { data, error } = await supabase.functions.invoke(mcp.endpoint, {
-          body: requestBody,
-          headers: headers
-        });
-        
-        console.log('Edge function client response:', { data, error });
-        
-        if (error) {
-          console.error('Edge function client error:', error);
-          // If the client method fails, try a direct fetch as fallback
-          console.log('Falling back to direct fetch...');
-          
-          const directResponse = await fetch(`https://dwescgkujhhizyrokuiv.supabase.co/functions/v1/${mcp.endpoint}`, {
-            method: 'POST',
-            headers: {
-              ...headers,
-              'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3ZXNjZ2t1amhoaXp5cm9rdWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY4ODMwNjYsImV4cCI6MjA2MjQ1OTA2Nn0.tktvFI92_RhKWtOtP3yv5TEgN7ATopSgNBNuQ_vbsSI`,
-              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3ZXNjZ2t1amhoaXp5cm9rdWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY4ODMwNjYsImV4cCI6MjA2MjQ1OTA2Nn0.tktvFI92_RhKWtOtP3yv5TEgN7ATopSgNBNuQ_vbsSI',
-            },
-            body: JSON.stringify(requestBody)
-          });
-          
-          console.log('Direct fetch response status:', directResponse.status);
-          
-          if (!directResponse.ok) {
-            const errorText = await directResponse.text();
-            console.error('Direct fetch error:', errorText);
-            throw new Error(`Direct fetch error: ${directResponse.status} ${directResponse.statusText}. ${errorText}`);
-          }
-          
-          response = await directResponse.json();
-          console.log('Direct fetch response data:', response);
-        } else {
-          response = data;
-        }
-        
-        if (!response) {
-          console.warn('Edge function returned no data');
-          throw new Error('No data returned from edge function');
-        }
-        
-        // Handle the response from knowledge-proxy
-        if (response.error) {
-          console.error('Knowledge proxy returned error:', response.error);
-          throw new Error(`Knowledge search error: ${response.error}`);
-        }
-        
-      } catch (e) {
-        console.error('Edge function execution error:', e);
-        throw new Error(`Failed to execute edge function: ${e.message}`);
-      }
-    } else {
-      // It's an external API
-      try {
-        console.log(`Calling external API: ${mcp.endpoint}`);
-        const apiResponse = await fetch(mcp.endpoint, {
-          method: 'POST',
-          headers: headers,
-          body: JSON.stringify({ action: mcp.id, parameters: params.parameters, executionId }),
-        });
-        
-        if (!apiResponse.ok) {
-          const errorText = await apiResponse.text();
-          console.error(`API error: ${apiResponse.status} ${apiResponse.statusText}`, errorText);
-          throw new Error(`API error: ${apiResponse.status} ${apiResponse.statusText}. ${errorText}`);
-        }
-        
-        response = await apiResponse.json();
-      } catch (e) {
-        console.error('API execution error:', e);
-        throw new Error(`Failed to call API: ${e.message}`);
-      }
-    }
-    
-    console.log('MCP execution response:', response);
-    
-    // Update the execution record with success
-    try {
-      const { error } = await supabase
-        .from('mcp_executions')
-        .update({
-          status: 'completed',
-          result: response,
-        })
-        .eq('id', executionId);
-        
-      if (error) {
-        console.warn('Failed to update execution record:', error);
-        toast.error('Failed to update execution record');
-      }
-    } catch (updateError) {
-      console.warn('Error updating execution record:', updateError);
-    }
-    
-    return {
-      success: true,
-      data: response,
-      status: 'completed',
-      result: response,
-      error: null
-    };
+    // Delegate to the executor service
+    return await mcpExecutor.execute(params, mcp);
   } catch (error) {
     console.error('MCP execution error:', error);
-    
     return {
       success: false,
       data: null,
@@ -245,13 +49,7 @@ async function fetchMCPs(): Promise<MCP[]> {
       return [];
     }
     
-    // Parse JSON strings to objects if they're stored as strings
-    return (data as any[]).map(item => ({
-      ...item,
-      parameters: typeof item.parameters === 'string' ? JSON.parse(item.parameters) : item.parameters,
-      tags: typeof item.tags === 'string' ? JSON.parse(item.tags) : item.tags,
-      sampleUseCases: typeof item.sampleUseCases === 'string' ? JSON.parse(item.sampleUseCases) : item.sampleUseCases
-    })) as MCP[];
+    return (data as any[]).map(item => mcpDataTransformer.fromDatabase(item));
   } catch (error) {
     console.error('Error in fetchMCPs:', error);
     return [];
@@ -274,13 +72,7 @@ async function fetchMCPById(id: string): Promise<MCP | null> {
       return null;
     }
     
-    // Parse JSON strings to objects if they're stored as strings
-    return {
-      ...data,
-      parameters: typeof data.parameters === 'string' ? JSON.parse(data.parameters) : data.parameters,
-      tags: typeof data.tags === 'string' ? JSON.parse(data.tags) : data.tags,
-      sampleUseCases: typeof data.sampleUseCases === 'string' ? JSON.parse(data.sampleUseCases) : data.sampleUseCases
-    } as MCP;
+    return mcpDataTransformer.fromDatabase(data);
   } catch (error) {
     console.error('Error in fetchMCPById:', error);
     return null;
@@ -292,29 +84,7 @@ async function fetchMCPById(id: string): Promise<MCP | null> {
  */
 async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
   try {
-    // Fix: Make sure required fields are present
-    if (!mcp.title || !mcp.description || !mcp.endpoint) {
-      throw new Error('Missing required fields: title, description, and endpoint are required');
-    }
-    
-    // Convert parameters to a stringified JSON before sending to DB
-    const mcpForDb = {
-      title: mcp.title,
-      description: mcp.description,
-      endpoint: mcp.endpoint,
-      icon: mcp.icon || 'terminal',
-      parameters: JSON.stringify(mcp.parameters || []),
-      tags: JSON.stringify(mcp.tags || []),
-      sampleUseCases: JSON.stringify(mcp.sampleUseCases || []),
-      isDefault: mcp.isDefault || false,
-      category: mcp.category || null,
-      default_key: mcp.default_key || null,
-      requiresAuth: mcp.requiresAuth || false,
-      authType: mcp.authType || null,
-      authKeyName: mcp.authKeyName || null,
-      requirestoken: mcp.requirestoken || null,
-      user_id: mcp.user_id || null
-    };
+    const mcpForDb = mcpDataTransformer.forCreation(mcp);
     
     const { data, error } = await supabase
       .from('mcps')
@@ -327,15 +97,7 @@ async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
       return null;
     }
     
-    // Convert stringified JSON back to objects
-    const result = {
-      ...data,
-      parameters: typeof data.parameters === 'string' ? JSON.parse(data.parameters) : data.parameters,
-      tags: typeof data.tags === 'string' ? JSON.parse(data.tags) : data.tags,
-      sampleUseCases: typeof data.sampleUseCases === 'string' ? JSON.parse(data.sampleUseCases) : data.sampleUseCases
-    } as MCP;
-    
-    return result;
+    return mcpDataTransformer.fromDatabase(data);
   } catch (error) {
     console.error('Error in createMCP:', error);
     return null;
@@ -347,26 +109,7 @@ async function createMCP(mcp: Partial<MCP>): Promise<MCP | null> {
  */
 async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null> {
   try {
-    // Convert complex objects to JSON strings
-    const updatesForDb: Record<string, any> = {};
-    
-    // Only include fields that are actually being updated
-    if (updates.title !== undefined) updatesForDb.title = updates.title;
-    if (updates.description !== undefined) updatesForDb.description = updates.description;
-    if (updates.endpoint !== undefined) updatesForDb.endpoint = updates.endpoint;
-    if (updates.icon !== undefined) updatesForDb.icon = updates.icon;
-    if (updates.isDefault !== undefined) updatesForDb.isDefault = updates.isDefault;
-    if (updates.category !== undefined) updatesForDb.category = updates.category;
-    if (updates.default_key !== undefined) updatesForDb.default_key = updates.default_key;
-    if (updates.requiresAuth !== undefined) updatesForDb.requiresAuth = updates.requiresAuth;
-    if (updates.authType !== undefined) updatesForDb.authType = updates.authType;
-    if (updates.authKeyName !== undefined) updatesForDb.authKeyName = updates.authKeyName;
-    if (updates.requirestoken !== undefined) updatesForDb.requirestoken = updates.requirestoken;
-    
-    // Convert objects to JSON strings
-    if (updates.parameters !== undefined) updatesForDb.parameters = JSON.stringify(updates.parameters);
-    if (updates.tags !== undefined) updatesForDb.tags = JSON.stringify(updates.tags);
-    if (updates.sampleUseCases !== undefined) updatesForDb.sampleUseCases = JSON.stringify(updates.sampleUseCases);
+    const updatesForDb = mcpDataTransformer.toDatabase(updates);
     
     const { data, error } = await supabase
       .from('mcps')
@@ -380,15 +123,7 @@ async function updateMCP(id: string, updates: Partial<MCP>): Promise<MCP | null>
       return null;
     }
     
-    // Convert JSON strings back to objects
-    const result = {
-      ...data,
-      parameters: typeof data.parameters === 'string' ? JSON.parse(data.parameters) : data.parameters,
-      tags: typeof data.tags === 'string' ? JSON.parse(data.tags) : data.tags,
-      sampleUseCases: typeof data.sampleUseCases === 'string' ? JSON.parse(data.sampleUseCases) : data.sampleUseCases
-    } as MCP;
-    
-    return result;
+    return mcpDataTransformer.fromDatabase(data);
   } catch (error) {
     console.error('Error in updateMCP:', error);
     return null;
@@ -499,37 +234,24 @@ async function seedDefaultMCPs(userId?: string): Promise<boolean> {
     
     // Process MCPs for database insertion - insert one by one to ensure schema compliance
     for (const mcp of mcpsToSeed) {
-      // Make sure the MCP has all required fields
-      if (!mcp.title || !mcp.description || !mcp.endpoint) {
-        console.error('Skipping MCP due to missing required fields:', mcp);
-        continue;
-      }
-      
-      const mcpForDb = {
-        title: mcp.title,
-        description: mcp.description,
-        endpoint: mcp.endpoint,
-        icon: mcp.icon || 'terminal',
-        parameters: JSON.stringify(mcp.parameters || []),
-        tags: JSON.stringify(mcp.tags || []),
-        sampleUseCases: JSON.stringify(mcp.sampleUseCases || []),
-        isDefault: true,
-        category: mcp.category || null,
-        default_key: mcp.default_key || null,
-        requiresAuth: mcp.requiresAuth || false,
-        authType: mcp.authType || null,
-        authKeyName: mcp.authKeyName || null,
-        requirestoken: mcp.requirestoken || null,
-        user_id: userId || null
-      };
-      
-      const { error: insertError } = await supabase
-        .from('mcps')
-        .insert(mcpForDb);
+      try {
+        const mcpForDb = mcpDataTransformer.forCreation({
+          ...mcp,
+          isDefault: true,
+          user_id: userId || null
+        });
         
-      if (insertError) {
-        console.error('Error inserting default MCP:', insertError);
-        return false;
+        const { error: insertError } = await supabase
+          .from('mcps')
+          .insert(mcpForDb);
+          
+        if (insertError) {
+          console.error('Error inserting default MCP:', insertError);
+          return false;
+        }
+      } catch (mcpError) {
+        console.error('Skipping MCP due to validation error:', mcpError);
+        continue;
       }
     }
     
