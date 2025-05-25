@@ -113,10 +113,12 @@ async function processKnowledgeQuery(options: {
         );
     
         if (vectorError) {
+          console.error('Vector search error:', vectorError);
           throw vectorError;
         }
     
         chunksData = vectorResults || [];
+        console.log(`Vector search found ${chunksData.length} results`);
         
         if (chunksData.length === 0) {
           console.log(`No vector results found, falling back to text search for: ${query}`);
@@ -132,6 +134,9 @@ async function processKnowledgeQuery(options: {
         
             if (!textError) {
               chunksData = textResults || [];
+              console.log(`Text search found ${chunksData.length} results`);
+            } else {
+              console.error('Text search error:', textError);
             }
           }
         }
@@ -149,6 +154,9 @@ async function processKnowledgeQuery(options: {
 
           if (!textError) {
             chunksData = textResults || [];
+            console.log(`Fallback text search found ${chunksData.length} results`);
+          } else {
+            console.error('Fallback text search error:', textError);
           }
         }
       }
@@ -164,6 +172,9 @@ async function processKnowledgeQuery(options: {
 
         if (!textError) {
           chunksData = textResults || [];
+          console.log(`Direct text search found ${chunksData.length} results`);
+        } else {
+          console.error('Direct text search error:', textError);
         }
       }
     }
@@ -252,6 +263,9 @@ async function processKnowledgeQuery(options: {
               }
             };
           });
+          console.log(`Knowledge nodes search found ${nodeResults.length} results`);
+        } else if (error) {
+          console.error("Error searching knowledge nodes:", error);
         }
       }
     } catch (error) {
@@ -263,6 +277,7 @@ async function processKnowledgeQuery(options: {
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
     .slice(0, limit * 2);
 
+  console.log(`Total combined results: ${combinedResults.length}`);
   return combinedResults;
 }
 
@@ -275,11 +290,8 @@ serve(async (req) => {
   try {
     const { action, parameters, executionId } = await req.json();
     
-    if (!action) {
-      throw new Error('Action ID is required');
-    }
-
     console.log(`Processing knowledge request for action: ${action}`);
+    console.log(`Execution ID: ${executionId}`);
     console.log(`Parameters:`, JSON.stringify(parameters));
     
     // Extract parameters for knowledge search
@@ -296,6 +308,8 @@ serve(async (req) => {
       throw new Error('Query parameter is required');
     }
 
+    console.log(`Searching for: "${query}" with limit: ${limit}, includeNodes: ${includeNodes}, useEmbeddings: ${useEmbeddings}`);
+
     // Process the knowledge search using our local implementation
     const results = await processKnowledgeQuery({
       query,
@@ -305,18 +319,21 @@ serve(async (req) => {
       includeNodes
     });
 
+    console.log(`Knowledge search completed. Found ${results.length} results.`);
+
     // Record this execution for analytics
-    const { error: logError } = await supabase.from('mcp_executions')
-      .update({
-        status: 'completed',
-        result: { results },
-        execution_time: new Date().getTime() - new Date().getTime() // placeholder
-      })
-      .eq('id', executionId || '')
-      .is('error', null);
-    
-    if (logError) {
-      console.log('Non-critical error logging execution:', logError);
+    if (executionId) {
+      const { error: logError } = await supabase.from('mcp_executions')
+        .update({
+          status: 'completed',
+          result: { results },
+          execution_time: Date.now() - Date.now() // placeholder - would need start time
+        })
+        .eq('id', executionId);
+      
+      if (logError) {
+        console.log('Non-critical error logging execution:', logError);
+      }
     }
 
     return new Response(
