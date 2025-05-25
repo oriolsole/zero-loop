@@ -34,7 +34,7 @@ export const defaultMCPs: MCP[] = [
     requiresAuth: true,
     authType: "api_key",
     authKeyName: "google_api_key",
-    requirestoken: "google" // Fixed: use requirestoken instead of requiresToken
+    requirestoken: "google"
   },
   {
     id: "2b3c4d5e-6f7g-8h9i-0j1k-2l3m4n5o6p7q",
@@ -65,7 +65,7 @@ export const defaultMCPs: MCP[] = [
     requiresAuth: true,
     authType: "api_key",
     authKeyName: "weather_api_key",
-    requirestoken: "weather" // Fixed: use requirestoken instead of requiresToken
+    requirestoken: "weather"
   },
   {
     id: "3c4d5e6f-7g8h-9i0j-1k2l-3m4n5o6p7q8r",
@@ -134,7 +134,7 @@ export const defaultMCPs: MCP[] = [
     requiresAuth: true,
     authType: "api_key",
     authKeyName: "openai_api_key",
-    requirestoken: "openai" // Fixed: use requirestoken instead of requiresToken
+    requirestoken: "openai"
   },
   {
     id: "5e6f7g8h-9i0j-1k2l-3m4n-5o6p7q8r9s0t",
@@ -172,12 +172,12 @@ export const defaultMCPs: MCP[] = [
     suggestedPrompt: "Explain this JavaScript function that calculates Fibonacci numbers",
     requiresAuth: false
   },
-  // Knowledge search MCP with updated endpoint to use our Edge Function proxy
+  // Updated Knowledge search MCP to use the correct Edge Function
   {
-    id: uuidv4(), // Generate a new UUID for this MCP
+    id: uuidv4(),
     title: "Knowledge Base Search",
     description: "Search across your knowledge base with semantic search",
-    endpoint: "knowledge-proxy", // Updated to use our new Edge Function
+    endpoint: "knowledge-proxy", // Using our Edge Function instead of direct API
     icon: "search",
     default_key: "knowledge-search-v2",
     isDefault: true,
@@ -205,6 +205,13 @@ export const defaultMCPs: MCP[] = [
         description: "Include knowledge nodes in search results",
         required: false,
         default: true
+      },
+      {
+        name: "sources",
+        type: "array",
+        description: "Specific sources to search within",
+        required: false,
+        default: []
       }
     ]
   }

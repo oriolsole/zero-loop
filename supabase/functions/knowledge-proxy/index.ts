@@ -49,21 +49,21 @@ serve(async (req) => {
       apiHeaders['x-provider-token'] = providerTokenHeader;
     }
 
-    // Construct proper sources parameter if needed
-    if (parameters.sources === "") {
-      // If sources is an empty string, replace with empty array or remove
-      delete parameters.sources;
+    // Clean up parameters - convert empty sources string to empty array
+    const cleanedParameters = { ...parameters };
+    if (cleanedParameters.sources === "") {
+      cleanedParameters.sources = [];
     }
     
     console.log(`Calling external API with headers:`, JSON.stringify(apiHeaders, null, 2));
     
-    // Make the actual API call to the external service
-    const apiResponse = await fetch('https://api.zeroloop.ai/mcp/knowledge', {
+    // Make the actual API call to the CORRECT external service
+    const apiResponse = await fetch('https://zero-loop.lovable.app/mcp/knowledge', {
       method: 'POST',
       headers: apiHeaders,
       body: JSON.stringify({ 
         action,
-        parameters
+        parameters: cleanedParameters
       }),
     });
     
