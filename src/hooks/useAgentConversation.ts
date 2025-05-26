@@ -1,5 +1,8 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 
 export interface ConversationMessage {
   id: string;
@@ -79,7 +82,11 @@ export function useAgentConversation() {
       setCurrentSessionId(sessionId);
     } catch (error) {
       console.error('Error loading session:', error);
-      toast.error('Failed to load conversation history');
+      toast({
+        title: "Error",
+        description: "Failed to load conversation history",
+        variant: "destructive"
+      });
     } finally {
       setIsLoading(false);
     }
@@ -122,7 +129,11 @@ export function useAgentConversation() {
       setSessions(Array.from(sessionMap.values()));
     } catch (error) {
       console.error('Error loading sessions:', error);
-      toast.error('Failed to load conversation sessions');
+      toast({
+        title: "Error",
+        description: "Failed to load conversation sessions",
+        variant: "destructive"
+      });
     }
   };
 
@@ -158,10 +169,17 @@ export function useAgentConversation() {
         startNewSession();
       }
 
-      toast.success('Conversation deleted');
+      toast({
+        title: "Success",
+        description: "Conversation deleted"
+      });
     } catch (error) {
       console.error('Error deleting session:', error);
-      toast.error('Failed to delete conversation');
+      toast({
+        title: "Error",
+        description: "Failed to delete conversation",
+        variant: "destructive"
+      });
     }
   };
 
