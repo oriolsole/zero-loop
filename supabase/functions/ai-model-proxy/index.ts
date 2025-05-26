@@ -178,6 +178,13 @@ serve(async (req) => {
         temperature: requestData.temperature || 0.7,
         max_tokens: requestData.max_tokens || 1000
       };
+
+      // Add tools support for local models if provided
+      if (requestData.tools && requestData.tools.length > 0) {
+        requestBody.tools = requestData.tools;
+        requestBody.tool_choice = requestData.tool_choice || 'auto';
+        console.log(`Local model: forwarding ${requestData.tools.length} tools with tool_choice: ${requestBody.tool_choice}`);
+      }
     } else {
       // OpenAI API (default)
       apiUrl = 'https://api.openai.com/v1/chat/completions';
@@ -188,6 +195,16 @@ serve(async (req) => {
         temperature: requestData.temperature || 0.7,
         max_tokens: requestData.max_tokens || 1000
       };
+
+      // CRITICAL FIX: Add tools and tool_choice for OpenAI
+      if (requestData.tools && requestData.tools.length > 0) {
+        requestBody.tools = requestData.tools;
+        requestBody.tool_choice = requestData.tool_choice || 'auto';
+        console.log(`OpenAI: forwarding ${requestData.tools.length} tools with tool_choice: ${requestBody.tool_choice}`);
+        console.log('Tool names:', requestData.tools.map(t => t.function?.name || 'unknown'));
+      } else {
+        console.log('OpenAI: no tools provided in request');
+      }
     }
       
     console.log(`Calling ${provider} API at: ${apiUrl}`);
@@ -269,18 +286,26 @@ serve(async (req) => {
         if (provider === 'npaw') {
           console.log('NPAW completely failed, falling back to OpenAI...');
           
+          const fallbackRequestBody = {
+            model: 'gpt-4o-mini',
+            messages: requestData.messages,
+            temperature: requestData.temperature || 0.7,
+            max_tokens: requestData.max_tokens || 1000
+          };
+
+          // Include tools in fallback if they were provided
+          if (requestData.tools && requestData.tools.length > 0) {
+            fallbackRequestBody.tools = requestData.tools;
+            fallbackRequestBody.tool_choice = requestData.tool_choice || 'auto';
+          }
+          
           const fallbackResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${openaiApiKey}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: requestData.messages,
-              temperature: requestData.temperature || 0.7,
-              max_tokens: requestData.max_tokens || 1000
-            })
+            body: JSON.stringify(fallbackRequestBody)
           });
           
           if (fallbackResponse.ok) {
@@ -310,6 +335,13 @@ serve(async (req) => {
       const data = await response.json();
       console.log(`${provider} API response received successfully`);
       
+      // Log if tools were used in the response
+      if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.tool_calls) {
+        console.log(`${provider} model used ${data.choices[0].message.tool_calls.length} tools`);
+      } else {
+        console.log(`${provider} model did not use any tools`);
+      }
+      
       return new Response(
         JSON.stringify(data),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -326,18 +358,26 @@ serve(async (req) => {
           console.log('NPAW timed out, falling back to OpenAI...');
           
           try {
+            const fallbackRequestBody = {
+              model: 'gpt-4o-mini',
+              messages: requestData.messages,
+              temperature: requestData.temperature || 0.7,
+              max_tokens: requestData.max_tokens || 1000
+            };
+
+            // Include tools in fallback if they were provided
+            if (requestData.tools && requestData.tools.length > 0) {
+              fallbackRequestBody.tools = requestData.tools;
+              fallbackRequestBody.tool_choice = requestData.tool_choice || 'auto';
+            }
+            
             const fallbackResponse = await fetch('https://api.openai.com/v1/chat/completions', {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${openaiApiKey}`,
                 'Content-Type': 'application/json'
               },
-              body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: requestData.messages,
-                temperature: requestData.temperature || 0.7,
-                max_tokens: requestData.max_tokens || 1000
-              })
+              body: JSON.stringify(fallbackRequestBody)
             });
             
             if (fallbackResponse.ok) {
@@ -370,18 +410,26 @@ serve(async (req) => {
         console.log('NPAW connection failed, falling back to OpenAI...');
         
         try {
+          const fallbackRequestBody = {
+            model: 'gpt-4o-mini',
+            messages: requestData.messages,
+            temperature: requestData.temperature || 0.7,
+            max_tokens: requestData.max_tokens || 1000
+          };
+
+          // Include tools in fallback if they were provided
+          if (requestData.tools && requestData.tools.length > 0) {
+            fallbackRequestBody.tools = requestData.tools;
+            fallbackRequestBody.tool_choice = requestData.tool_choice || 'auto';
+          }
+          
           const fallbackResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${openaiApiKey}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: requestData.messages,
-              temperature: requestData.temperature || 0.7,
-              max_tokens: requestData.max_tokens || 1000
-            })
+            body: JSON.stringify(fallbackRequestBody)
           });
           
           if (fallbackResponse.ok) {
