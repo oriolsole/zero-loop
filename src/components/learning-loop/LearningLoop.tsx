@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useLoopStore } from '../../store/useLoopStore';
 import LearningStep from './LearningStep';
@@ -63,24 +62,25 @@ const LearningLoop: React.FC = () => {
   // Initialize currentLoop outside conditionals to prevent issues
   const currentLoop: LearningStepType[] = activeDomain?.currentLoop || [];
   
-  const completedSteps = currentLoop.filter(step => step.status === 'success');
-  const pendingSteps = currentLoop.filter(step => step.status === 'pending');
+  // Add null checks to prevent "Cannot read properties of null" errors
+  const completedSteps = currentLoop.filter(step => step && step.status === 'success');
+  const pendingSteps = currentLoop.filter(step => step && step.status === 'pending');
   
   const hasCompletedAllStepTypes = 
-    currentLoop.some(step => step.type === 'task') &&
-    currentLoop.some(step => step.type === 'solution') &&
-    currentLoop.some(step => step.type === 'verification') &&
-    currentLoop.some(step => step.type === 'reflection') &&
-    currentLoop.some(step => step.type === 'mutation');
+    currentLoop.some(step => step && step.type === 'task') &&
+    currentLoop.some(step => step && step.type === 'solution') &&
+    currentLoop.some(step => step && step.type === 'verification') &&
+    currentLoop.some(step => step && step.type === 'reflection') &&
+    currentLoop.some(step => step && step.type === 'mutation');
   
   const allStepsComplete = hasCompletedAllStepTypes && completedSteps.length === currentLoop.length;
-  const hasInProgressStep = currentLoop.some(step => step.status !== 'success' && step.status !== 'pending');
-  const isLastStepPending = currentLoop.length > 0 ? currentLoop[currentLoop.length - 1].status === 'pending' : false;
+  const hasInProgressStep = currentLoop.some(step => step && step.status !== 'success' && step.status !== 'pending');
+  const isLastStepPending = currentLoop.length > 0 && currentLoop[currentLoop.length - 1] ? currentLoop[currentLoop.length - 1].status === 'pending' : false;
   
-  const firstStepIsSuccess = currentLoop.length > 0 && currentLoop[0].status === 'success';
+  const firstStepIsSuccess = currentLoop.length > 0 && currentLoop[0] && currentLoop[0].status === 'success';
   const canAdvance = !isLastStepPending && !hasInProgressStep && firstStepIsSuccess && !hasCompletedAllStepTypes;
   
-  const currentStepType = currentLoop.length > 0 ? currentLoop[currentLoop.length - 1].type : null;
+  const currentStepType = currentLoop.length > 0 && currentLoop[currentLoop.length - 1] ? currentLoop[currentLoop.length - 1].type : null;
   const nextStepType = currentStepType ? getNextStepType(currentStepType) : null;
   
   const isLoopFinished = allStepsComplete && !hasInProgressStep && !isLastStepPending;
@@ -351,9 +351,16 @@ const LearningLoop: React.FC = () => {
       <Separator />
       
       <div className="space-y-4">
-        {Array.isArray(currentLoop) && currentLoop.map((step, index) => (
-          <LearningStep key={index} step={step} index={index} />
-        ))}
+        {Array.isArray(currentLoop) && currentLoop.map((step, index) => {
+          // Add null check before rendering each step
+          if (!step) {
+            console.warn(`Null step found at index ${index}`);
+            return null;
+          }
+          return (
+            <LearningStep key={index} step={step} index={index} />
+          );
+        })}
       </div>
     </div>
   );
