@@ -62,6 +62,18 @@ export function extractAssistantMessage(data: any): { content: string; role: str
     assistantMessage.content = '';
   }
 
+  // Handle code-block-wrapped output for synthesis responses
+  if (assistantMessage.content && typeof assistantMessage.content === 'string') {
+    const match = assistantMessage.content.match(/```(?:json|text)?\s*([\s\S]*?)```/);
+    if (match) {
+      const cleanText = match[1].trim();
+      if (cleanText.length > 0) {
+        assistantMessage.content = cleanText;
+        console.log('Extracted content from code block wrapper');
+      }
+    }
+  }
+
   return assistantMessage;
 }
 

@@ -261,7 +261,7 @@ Continue until you have enough information to provide a comprehensive answer.`;
 
   // 4. Synthesize final response with all accumulated context
   if (accumulatedContext.length > 1) {
-    console.log('Synthesizing final response from', accumulatedContext.length, 'iterations');
+    console.log('🧠 Synthesizing learning loop results from', accumulatedContext.length, 'iterations');
     
     const synthesisResponse = await synthesizeIterativeResults(
       message,
@@ -272,7 +272,28 @@ Continue until you have enough information to provide a comprehensive answer.`;
     
     if (synthesisResponse) {
       finalResponse = synthesisResponse;
+    } else {
+      console.warn('⚠️ Synthesis failed. Using fallback strategy.');
+      
+      // Fallback strategy: Use the last tool result or iteration response
+      const lastContext = accumulatedContext[accumulatedContext.length - 1];
+      if (lastContext?.toolResults && lastContext.toolResults.length > 0) {
+        const lastToolResult = lastContext.toolResults[lastContext.toolResults.length - 1];
+        finalResponse = typeof lastToolResult === 'string' ? lastToolResult : 
+                      lastToolResult?.content || lastToolResult?.result || 
+                      'Learning loop completed successfully, but synthesis failed.';
+      } else if (lastContext?.response) {
+        finalResponse = lastContext.response;
+      } else {
+        finalResponse = 'I was able to process your request through multiple steps, but encountered an issue creating the final summary.';
+      }
     }
+  }
+
+  // Ensure we have a meaningful response
+  if (!finalResponse || finalResponse.trim().length === 0) {
+    console.warn('⚠️ No final response generated. Using emergency fallback.');
+    finalResponse = 'I processed your request but encountered an issue generating the response. Please try again.';
   }
 
   // 5. Persist valuable insights as knowledge nodes
@@ -295,11 +316,13 @@ Continue until you have enough information to provide a comprehensive answer.`;
       role: 'assistant',
       content: finalResponse,
       tools_used: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
+      ai_reasoning: complexityDecision.reasoning,
       created_at: new Date().toISOString()
     });
   }
 
   console.log('Learning loop completed after', iteration, 'iterations');
+  console.log('Final response length:', finalResponse.length);
 
   return new Response(
     JSON.stringify({
@@ -538,9 +561,13 @@ async function synthesizeIterativeResults(
   supabase: any
 ): Promise<string | null> {
   try {
+    console.log('🧠 Starting synthesis with context:', accumulatedContext.length, 'iterations');
+    
     const contextSummary = accumulatedContext.map((ctx, idx) => 
       `Iteration ${ctx.iteration}: ${ctx.response}\nTools used: ${ctx.toolsUsed?.map(t => t.name).join(', ') || 'none'}`
     ).join('\n\n');
+
+    console.log('📝 Context summary prepared, length:', contextSummary.length);
 
     const synthesisMessages = [
       {
@@ -551,7 +578,9 @@ async function synthesizeIterativeResults(
         1. Directly answers the original question
         2. Integrates insights from all iterations
         3. Provides clear, actionable information
-        4. Maintains a helpful, professional tone`
+        4. Maintains a helpful, professional tone
+
+        IMPORTANT: Respond with plain text only, no code blocks or markdown formatting.`
       },
       {
         role: 'user',
@@ -563,6 +592,8 @@ async function synthesizeIterativeResults(
         Please provide a comprehensive final answer.`
       }
     ];
+
+    console.log('🤖 Calling AI model for synthesis...');
 
     const response = await supabase.functions.invoke('ai-model-proxy', {
       body: {
@@ -578,15 +609,24 @@ async function synthesizeIterativeResults(
     });
 
     if (response.error) {
-      console.error('Error in synthesis:', response.error);
+      console.error('❌ Error in synthesis AI call:', response.error);
       return null;
     }
 
+    console.log('📥 Synthesis response received:', response.data ? 'Success' : 'No data');
+
     const synthesisMessage = extractAssistantMessage(response.data);
-    return synthesisMessage?.content || null;
+    
+    if (synthesisMessage?.content) {
+      console.log('✅ Synthesis successful, content length:', synthesisMessage.content.length);
+      return synthesisMessage.content;
+    } else {
+      console.warn('⚠️ No content in synthesis message:', synthesisMessage);
+      return null;
+    }
 
   } catch (error) {
-    console.error('Error in synthesizeIterativeResults:', error);
+    console.error('❌ Error in synthesizeIterativeResults:', error);
     return null;
   }
 }
