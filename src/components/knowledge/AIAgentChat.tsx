@@ -83,7 +83,6 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
   const [currentToolProgress, setCurrentToolProgress] = useState<any[]>([]);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -216,8 +215,13 @@ const AIAgentChat: React.FC = () => {
         }
         
         if (failCount > 0) {
-          toast.error(`${failCount} tool(s) failed`, {
-            description: 'Check the conversation for details'
+          const failedTools = data.toolsUsed
+            .filter((tool: any) => !tool.success)
+            .map((tool: any) => tool.name.replace('execute_', ''))
+            .join(', ');
+          
+          toast.error(`${failCount} tool(s) failed: ${failedTools}`, {
+            description: 'Check your API tokens in settings or see the conversation for details'
           });
         }
       }
@@ -231,7 +235,7 @@ const AIAgentChat: React.FC = () => {
       const errorMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'I apologize, but I encountered an error processing your request. Please try again.',
+        content: 'I apologize, but I encountered an error processing your request. Please try again, or check if any required API tokens are configured in the settings.',
         timestamp: new Date()
       };
 
@@ -377,10 +381,10 @@ const AIAgentChat: React.FC = () => {
                 <div className="text-center py-12 text-muted-foreground">
                   <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <h3 className="text-lg font-medium mb-2">Start a conversation</h3>
-                  <p className="text-sm mb-2">
-                    I'm your AI agent. I can search the web, access your knowledge base, and use various tools to help you.
+                  <p className="text-sm mb-4">
+                    I'm your AI agent with access to various tools including GitHub, web search, and knowledge base search.
                   </p>
-                  <div className="flex items-center justify-center gap-2 text-xs">
+                  <div className="flex items-center justify-center gap-2 text-xs mb-2">
                     <span>Currently using:</span>
                     <Badge variant="secondary" className="flex items-center gap-1">
                       {getProviderIcon(modelSettings.provider)}
@@ -390,6 +394,9 @@ const AIAgentChat: React.FC = () => {
                       </span>
                     </Badge>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    💡 Tip: For GitHub access, make sure to configure your GitHub token in Settings
+                  </p>
                 </div>
               )}
 
@@ -488,7 +495,7 @@ const AIAgentChat: React.FC = () => {
         <CardFooter className="border-t p-4">
           <div className="flex w-full gap-2">
             <Input
-              placeholder={`Ask me anything... I can search the web, access your knowledge base, and more! (Using ${modelSettings.provider.toUpperCase()})`}
+              placeholder={`Ask me anything... I can search GitHub, the web, and access your knowledge base! (Using ${modelSettings.provider.toUpperCase()})`}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyPress}

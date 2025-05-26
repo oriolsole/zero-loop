@@ -169,7 +169,6 @@ Remember: You can use multiple tools in sequence and should reflect on their out
 
     const data = response.data;
     console.log('AI Model response received');
-    console.log('Response structure:', JSON.stringify(data, null, 2));
 
     if (streaming) {
       // Handle streaming response
@@ -254,10 +253,12 @@ Remember: You can use multiple tools in sequence and should reflect on their out
         
         if (!targetMcp) {
           console.error('Tool not found:', mcpKey);
+          const errorResult = { error: 'Tool not found', toolName: functionName };
+          
           toolResults.push({
             tool_call_id: toolCall.id,
             role: 'tool',
-            content: JSON.stringify({ error: 'Tool not found' })
+            content: JSON.stringify(errorResult)
           });
           
           toolProgressItem.status = 'failed';
@@ -266,7 +267,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
           toolsUsed.push({
             name: functionName,
             parameters,
-            result: { error: 'Tool not found' },
+            result: errorResult,
             success: false
           });
           continue;
@@ -276,11 +277,17 @@ Remember: You can use multiple tools in sequence and should reflect on their out
           console.log('Using MCP endpoint:', targetMcp.endpoint);
           let mcpResult;
           
+          // Add userId to parameters for tools that need it
+          const toolParameters = {
+            ...parameters,
+            userId: userId
+          };
+          
           // Check if endpoint looks like an Edge Function name (no protocol)
           if (targetMcp.endpoint.indexOf('http') !== 0) {
             console.log('Calling Edge Function:', targetMcp.endpoint);
             const { data: edgeResult, error: edgeError } = await supabase.functions.invoke(targetMcp.endpoint, {
-              body: parameters
+              body: toolParameters
             });
             
             if (edgeError) {
@@ -295,36 +302,51 @@ Remember: You can use multiple tools in sequence and should reflect on their out
             const apiResponse = await fetch(targetMcp.endpoint, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(parameters),
+              body: JSON.stringify(toolParameters),
             });
             
             if (!apiResponse.ok) {
-              throw new Error(`API error: ${apiResponse.status}`);
+              const errorText = await apiResponse.text();
+              throw new Error(`API error: ${apiResponse.status} - ${errorText}`);
             }
             
             mcpResult = await apiResponse.json();
           }
           
+          // Handle different response formats
+          let processedResult = mcpResult;
+          if (mcpResult && mcpResult.success === false) {
+            throw new Error(mcpResult.error || 'Tool execution failed');
+          }
+          
+          if (mcpResult && mcpResult.data) {
+            processedResult = mcpResult.data;
+          }
+          
           toolResults.push({
             tool_call_id: toolCall.id,
             role: 'tool',
-            content: JSON.stringify(mcpResult)
+            content: JSON.stringify(processedResult)
           });
 
           toolProgressItem.status = 'completed';
           toolProgressItem.endTime = new Date().toISOString();
-          toolProgressItem.result = mcpResult;
+          toolProgressItem.result = processedResult;
 
           toolsUsed.push({
             name: functionName,
             parameters,
-            result: mcpResult,
+            result: processedResult,
             success: true
           });
           
         } catch (error) {
           console.error('Tool execution error:', error);
-          const errorResult = { error: error.message };
+          const errorResult = { 
+            error: error.message,
+            toolName: functionName,
+            details: 'Check if required API tokens are configured and valid'
+          };
           
           toolResults.push({
             tool_call_id: toolCall.id,
@@ -356,9 +378,10 @@ Remember: You can use multiple tools in sequence and should reflect on their out
 1. Did the tools provide useful information for the user's request?
 2. Are there any gaps or issues with the results?
 3. Should you recommend additional actions or tools?
-4. Provide a clear, helpful response based on all available information.
+4. If tools failed, explain what went wrong and suggest alternatives
+5. Provide a clear, helpful response based on all available information.
 
-Be transparent about any limitations or failures.`
+Be transparent about any limitations or failures. If GitHub tools failed, mention that the user should check their GitHub token configuration.`
         }
       ];
       
@@ -405,7 +428,14 @@ Be transparent about any limitations or failures.`
       }
       
       // Generate self-reflection summary
-      selfReflection = `Used ${toolsUsed.length} tool(s). ${toolsUsed.filter(t => t.success).length} succeeded, ${toolsUsed.filter(t => !t.success).length} failed.`;
+      const successfulTools = toolsUsed.filter(t => t.success).length;
+      const failedTools = toolsUsed.filter(t => !t.success).length;
+      selfReflection = `Used ${toolsUsed.length} tool(s): ${successfulTools} succeeded, ${failedTools} failed.`;
+      
+      if (failedTools > 0) {
+        const failedToolNames = toolsUsed.filter(t => !t.success).map(t => t.name).join(', ');
+        selfReflection += ` Failed tools: ${failedToolNames}`;
+      }
     }
 
     // Store assistant response in database

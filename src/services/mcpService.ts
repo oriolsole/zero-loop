@@ -134,13 +134,20 @@ export const mcpService = {
         throw new Error('MCP not found');
       }
 
+      // Get current user for token-based MCPs
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Authentication required');
+      }
+
       // Log the execution attempt
       const { data: execution, error: executionError } = await supabase
         .from('mcp_executions')
         .insert([{
           mcp_id: mcpId,
           parameters,
-          status: 'pending'
+          status: 'pending',
+          user_id: user.id
         }])
         .select()
         .single();
@@ -153,17 +160,24 @@ export const mcpService = {
       let result: any;
       let success = false;
 
+      // Add userId to parameters for tools that need it
+      const enhancedParameters = {
+        ...parameters,
+        userId: user.id
+      };
+
       // Execute based on endpoint type
       if (mcp.endpoint.startsWith('http')) {
         // External API call
         const response = await fetch(mcp.endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(parameters)
+          body: JSON.stringify(enhancedParameters)
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
 
         result = await response.json();
@@ -171,14 +185,19 @@ export const mcpService = {
       } else {
         // Edge function call
         const { data, error } = await supabase.functions.invoke(mcp.endpoint, {
-          body: parameters
+          body: enhancedParameters
         });
 
         if (error) {
           throw new Error(error.message || 'Edge function execution failed');
         }
 
-        result = data;
+        // Handle different response formats
+        if (data && data.success === false) {
+          throw new Error(data.error || 'Tool execution failed');
+        }
+
+        result = data && data.data ? data.data : data;
         success = true;
       }
 
@@ -246,46 +265,12 @@ export const mcpService = {
 
       // Process each MCP individually to ensure proper typing
       for (const mcp of mcpsToCreate) {
-        let correctedEndpoint = mcp.endpoint;
-        
-        // Fix endpoints that point to external APIs
-        switch (mcp.default_key) {
-          case 'github':
-            correctedEndpoint = 'github-tools'; // This would need to be created
-            break;
-          case 'filesystem':
-            correctedEndpoint = 'file-system'; // This would need to be created
-            break;
-          case 'database':
-            correctedEndpoint = 'database-query'; // This would need to be created
-            break;
-          case 'knowledge-search':
-            correctedEndpoint = 'knowledge-proxy'; // This already exists
-            break;
-          case 'google-search':
-            correctedEndpoint = 'google-search'; // This already exists
-            break;
-        }
-
         // Ensure all required fields are present and properly typed
-        const mcpToInsert = {
-          title: mcp.title || 'Untitled MCP',
-          description: mcp.description || 'No description available',
-          endpoint: correctedEndpoint,
-          icon: mcp.icon || 'terminal',
-          parameters: JSON.stringify(mcp.parameters || []),
-          tags: JSON.stringify(mcp.tags || []),
-          sampleUseCases: JSON.stringify(mcp.sampleUseCases || []),
+        const mcpToInsert = convertMCPForDatabase({
+          ...mcp,
           user_id: userId,
-          isDefault: true,
-          default_key: mcp.default_key,
-          category: mcp.category || null,
-          suggestedPrompt: mcp.suggestedPrompt || null,
-          requiresAuth: mcp.requiresAuth || false,
-          authType: mcp.authType || null,
-          authKeyName: mcp.authKeyName || null,
-          requirestoken: mcp.requirestoken || null
-        };
+          isDefault: true
+        });
 
         // Insert the MCP
         const { error: insertError } = await supabase
