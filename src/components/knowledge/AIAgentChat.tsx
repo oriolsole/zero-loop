@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardHeader } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
@@ -98,21 +99,29 @@ const AIAgentChat: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading || !user || !currentSessionId) return;
+  const handleFollowUpAction = async (action: string) => {
+    if (!user || !currentSessionId) return;
 
-    const contextualMessage = getContextForMessage(input);
-    const enhancedMessage = contextualMessage ? `${input}\n\nContext: ${contextualMessage}` : input;
-
-    const userMessage: ConversationMessage = {
+    const followUpMessage: ConversationMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: action,
       timestamp: new Date()
     };
 
-    addMessage(userMessage);
+    addMessage(followUpMessage);
+    setInput('');
     
+    // Process the follow-up action the same way as a regular message
+    await processMessage(action);
+  };
+
+  const processMessage = async (message: string) => {
+    if (!user || !currentSessionId) return;
+
+    const contextualMessage = getContextForMessage(message);
+    const enhancedMessage = contextualMessage ? `${message}\n\nContext: ${contextualMessage}` : message;
+
     setPhase('analyzing', 'AI is analyzing your request...', 10);
     
     const analysisMessage: ConversationMessage = {
@@ -125,7 +134,6 @@ const AIAgentChat: React.FC = () => {
     
     addMessage(analysisMessage);
     
-    setInput('');
     setIsLoading(true);
     clearTools();
 
@@ -157,12 +165,17 @@ const AIAgentChat: React.FC = () => {
         
         setPhase('executing', `Executing ${plan.steps.length} AI-generated steps...`, plan.steps.length * 8);
 
-        // Execute the dynamic plan
+        // Execute the dynamic plan with real-time updates
         await executeDynamicPlan(
           plan,
           enhancedMessage,
           (step) => {
             console.log('AI Plan step updated:', step);
+            // Update the planning message with step progress
+            updateMessage(`planning-${Date.now()}`, {
+              content: `🤖 AI Plan Progress: Step ${plan.currentStepIndex + 1}/${plan.steps.length}\n\n${step.progressUpdate || step.description}`,
+              messageType: 'execution'
+            });
           },
           (result) => {
             const assistantMessage: ConversationMessage = {
@@ -252,6 +265,23 @@ const AIAgentChat: React.FC = () => {
     }
   };
 
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading || !user || !currentSessionId) return;
+
+    const userMessage: ConversationMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input,
+      timestamp: new Date()
+    };
+
+    addMessage(userMessage);
+    const messageToProcess = input;
+    setInput('');
+    
+    await processMessage(messageToProcess);
+  };
+
   return (
     <div className="flex h-[700px] gap-4">
       {showSessions && (
@@ -281,7 +311,11 @@ const AIAgentChat: React.FC = () => {
         <div className="flex-1 flex flex-col overflow-hidden">
           {currentPlan && (
             <div className="px-6 pb-0">
-              <PlanExecutionProgress plan={currentPlan} progress={getProgress()} />
+              <PlanExecutionProgress 
+                plan={currentPlan} 
+                progress={getProgress()}
+                onFollowUpAction={handleFollowUpAction}
+              />
             </div>
           )}
           

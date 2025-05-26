@@ -3,16 +3,22 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, Clock, AlertCircle, Loader2, Brain, Zap, Eye } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { CheckCircle, Clock, AlertCircle, Loader2, Brain, Zap, Eye, ArrowRight, Lightbulb } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DynamicExecutionPlan, DynamicPlanStep } from '@/hooks/useDynamicPlanOrchestrator';
 
 interface PlanExecutionProgressProps {
   plan: DynamicExecutionPlan;
   progress: { current: number; total: number; percentage: number };
+  onFollowUpAction?: (action: string) => void;
 }
 
-const PlanExecutionProgress: React.FC<PlanExecutionProgressProps> = ({ plan, progress }) => {
+const PlanExecutionProgress: React.FC<PlanExecutionProgressProps> = ({ 
+  plan, 
+  progress, 
+  onFollowUpAction 
+}) => {
   const [expandedSteps, setExpandedSteps] = React.useState<Set<string>>(new Set());
 
   const toggleStepExpansion = (stepId: string) => {
@@ -114,22 +120,31 @@ const PlanExecutionProgress: React.FC<PlanExecutionProgressProps> = ({ plan, pro
                     <Badge variant="outline" className="text-xs bg-white/60 text-gray-700 border-gray-300">
                       {getToolIcon(step.tool)} {step.tool.replace('execute_', '')}
                     </Badge>
-                    {step.extractedContent && (
+                    {(step.extractedContent || step.aiInsight) && (
                       <button
                         onClick={() => toggleStepExpansion(step.id)}
                         className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
                       >
                         <Eye className="h-3 w-3" />
-                        View Results
+                        View Details
                       </button>
                     )}
                   </div>
                 </div>
                 
-                {step.status === 'executing' && (
-                  <div className="flex items-center gap-2 text-sm text-blue-600">
+                {/* AI Progress Update */}
+                {step.status === 'executing' && step.progressUpdate && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600 mb-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    AI is processing this step...
+                    <span className="italic">{step.progressUpdate}</span>
+                  </div>
+                )}
+                
+                {/* AI Insight */}
+                {step.status === 'completed' && step.aiInsight && (
+                  <div className="flex items-start gap-2 text-sm text-purple-600 mb-2">
+                    <Lightbulb className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <span className="italic">{step.aiInsight}</span>
                   </div>
                 )}
                 
@@ -155,22 +170,61 @@ const PlanExecutionProgress: React.FC<PlanExecutionProgressProps> = ({ plan, pro
               </div>
             </div>
             
-            {step.extractedContent && (
+            {/* Collapsible Details */}
+            {(step.extractedContent || step.aiInsight) && (
               <Collapsible open={expandedSteps.has(step.id)}>
                 <CollapsibleContent className="px-4 pb-4">
-                  <div className="bg-white/80 rounded-lg p-3 border border-gray-200 max-h-48 overflow-y-auto">
-                    <div className="text-xs font-medium text-gray-500 mb-2">Extracted Content:</div>
-                    <div className="text-sm text-gray-700 whitespace-pre-wrap">
-                      {step.extractedContent.length > 500 
-                        ? `${step.extractedContent.substring(0, 500)}...` 
-                        : step.extractedContent}
-                    </div>
+                  <div className="bg-white/80 rounded-lg p-3 border border-gray-200">
+                    {step.extractedContent && (
+                      <div className="mb-3">
+                        <div className="text-xs font-medium text-gray-500 mb-2">Extracted Content:</div>
+                        <div className="text-sm text-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                          {step.extractedContent.length > 1000 
+                            ? `${step.extractedContent.substring(0, 1000)}...` 
+                            : step.extractedContent}
+                        </div>
+                      </div>
+                    )}
+                    {step.aiInsight && (
+                      <div>
+                        <div className="text-xs font-medium text-purple-600 mb-2 flex items-center gap-1">
+                          <Lightbulb className="h-3 w-3" />
+                          AI Analysis:
+                        </div>
+                        <div className="text-sm text-purple-700 italic">
+                          {step.aiInsight}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CollapsibleContent>
               </Collapsible>
             )}
           </div>
         ))}
+        
+        {/* Follow-up Suggestions */}
+        {plan.status === 'completed' && plan.followUpSuggestions && plan.followUpSuggestions.length > 0 && (
+          <div className="mt-6 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-200">
+            <div className="flex items-center gap-2 mb-3">
+              <ArrowRight className="h-5 w-5 text-indigo-600" />
+              <span className="font-semibold text-indigo-800">What's next?</span>
+            </div>
+            <div className="space-y-2">
+              {plan.followUpSuggestions.map((suggestion, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onFollowUpAction?.(suggestion)}
+                  className="mr-2 mb-2 bg-white/60 hover:bg-white border-indigo-300 text-indigo-700 hover:text-indigo-800"
+                >
+                  {suggestion}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
