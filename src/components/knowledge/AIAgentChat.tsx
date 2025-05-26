@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -582,9 +581,9 @@ Please try again, or check the edge function logs in the Supabase dashboard if y
                   >
                     <div className="whitespace-pre-wrap text-sm">{message.content}</div>
                     
-                    {/* Enhanced Tool Decision Display */}
+                    {/* Enhanced Tool Decision Display - Fixed prop name */}
                     {message.toolDecision && message.role === 'assistant' && (
-                      <EnhancedToolDecisionDisplay toolDecision={message.toolDecision} />
+                      <EnhancedToolDecisionDisplay decision={message.toolDecision} />
                     )}
                     
                     {message.toolsUsed && message.toolsUsed.length > 0 && (
