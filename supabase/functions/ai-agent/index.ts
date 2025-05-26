@@ -55,12 +55,12 @@ serve(async (req) => {
       });
     }
 
-    // Fetch available MCPs from the database - only include working ones
+    // Fetch available MCPs from the database - now including jira-tools
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
       .select('*')
       .eq('isDefault', true)
-      .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2']);
+      .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2', 'jira-tools']);
 
     if (mcpError) {
       console.error('Error fetching MCPs:', mcpError);
