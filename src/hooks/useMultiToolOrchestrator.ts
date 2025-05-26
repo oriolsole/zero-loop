@@ -85,7 +85,7 @@ export const useMultiToolOrchestrator = () => {
           
           const completedExecution: ToolExecution = {
             ...startedExecution,
-            status: 'completed' as const,
+            status: 'completed',
             result,
             endTime: new Date().toISOString()
           };
@@ -115,7 +115,7 @@ export const useMultiToolOrchestrator = () => {
         } catch (error) {
           const failedExecution: ToolExecution = {
             ...startedExecution,
-            status: 'failed' as const,
+            status: 'failed',
             error: error.message,
             endTime: new Date().toISOString()
           };
