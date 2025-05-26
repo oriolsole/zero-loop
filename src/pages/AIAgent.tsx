@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import MainLayout from '@/components/layouts/MainLayout';
 import AIAgentChat from '@/components/knowledge/AIAgentChat';
 import AgentGoalsPanel from '@/components/knowledge/AgentGoalsPanel';
@@ -13,12 +13,12 @@ import { toast } from '@/components/ui/sonner';
 
 const AIAgent: React.FC = () => {
   const { user } = useAuth();
-  const [isFixingMCPs, setIsFixingMCPs] = useState(false);
+  const hasFixedMCPs = useRef(false);
 
-  // Fix MCPs when component mounts
+  // Fix MCPs when component mounts - only once
   useEffect(() => {
-    if (user && !isFixingMCPs) {
-      setIsFixingMCPs(true);
+    if (user && !hasFixedMCPs.current) {
+      hasFixedMCPs.current = true;
       
       const fixMCPs = async () => {
         try {
@@ -37,14 +37,12 @@ const AIAgent: React.FC = () => {
         } catch (error) {
           console.error('Error fixing MCPs:', error);
           toast.error('Failed to optimize tools configuration');
-        } finally {
-          setIsFixingMCPs(false);
         }
       };
 
       fixMCPs();
     }
-  }, [user, isFixingMCPs]);
+  }, [user]); // Removed isFixingMCPs from dependencies
 
   return (
     <MainLayout>
