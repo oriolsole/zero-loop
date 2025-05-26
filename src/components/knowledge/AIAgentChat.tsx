@@ -9,8 +9,6 @@ import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
 import { useAIPhases } from '@/hooks/useAIPhases';
 import { useConversationContext } from '@/hooks/useConversationContext';
-import { useAIPlanDetector } from '@/hooks/useAIPlanDetector';
-import { useDynamicPlanOrchestrator } from '@/hooks/useDynamicPlanOrchestrator';
 import AIAgentHeader from './AIAgentHeader';
 import AIAgentChatInterface from './AIAgentChatInterface';
 import AIAgentInput from './AIAgentInput';
@@ -35,12 +33,6 @@ const AIAgentChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
-  
-  const { detectPlan } = useAIPlanDetector();
-  const {
-    createDynamicPlan,
-    executeDynamicPlan
-  } = useDynamicPlanOrchestrator();
 
   const {
     currentPhase,
@@ -120,108 +112,48 @@ const AIAgentChat: React.FC = () => {
 
     setIsLoading(true);
     clearTools();
+    resetPhases();
 
     try {
-      // Use AI to detect if we need a plan
-      const planDetection = await detectPlan(enhancedMessage, getConversationHistory());
+      setPhase('thinking', 'Analyzing your request...');
       
-      console.log('AI Plan Detection Result:', planDetection);
+      const conversationHistory = getConversationHistory();
 
-      if (planDetection.shouldUsePlan && planDetection.suggestedSteps.length > 0) {
-        // AI explains it will create a plan
-        const planMessage: ConversationMessage = {
-          id: `plan-${Date.now()}`,
-          role: 'assistant',
-          content: `I'll help you with that by breaking this down into ${planDetection.suggestedSteps.length} steps. Let me work through this systematically.`,
-          timestamp: new Date(),
-          messageType: 'planning',
-          aiReasoning: `Creating ${planDetection.estimatedComplexity} plan: ${planDetection.suggestedSteps.join(' → ')}`
-        };
-        addMessage(planMessage);
-        
-        // Create and execute dynamic plan with simple chat updates
-        const plan = await createDynamicPlan(
-          enhancedMessage,
-          planDetection.suggestedSteps,
-          planDetection.planType
-        );
-
-        // Execute the plan with conversational updates
-        await executeDynamicPlan(
-          plan,
-          enhancedMessage,
-          (step) => {
-            // Add conversational step message
-            const stepMessage: ConversationMessage = {
-              id: `step-${step.id}-${Date.now()}`,
-              role: 'assistant',
-              content: step.aiInsight || `Working on: ${step.description}`,
-              timestamp: new Date(),
-              messageType: step.status === 'executing' ? 'step-executing' : 'step-completed',
-              aiReasoning: step.reasoning,
-              stepDetails: {
-                tool: step.tool,
-                result: step.extractedContent,
-                status: step.status,
-                progressUpdate: step.progressUpdate
-              }
-            };
-            addMessage(stepMessage);
-          },
-          (result, followUpSuggestions) => {
-            // Add final conversational result
-            const finalMessage: ConversationMessage = {
-              id: `final-${Date.now()}`,
-              role: 'assistant',
-              content: result,
-              timestamp: new Date(),
-              messageType: 'response',
-              followUpSuggestions
-            };
-            addMessage(finalMessage);
-          }
-        );
-        
-      } else {
-        // Single-step execution for simple requests
-        const conversationHistory = getConversationHistory();
-
-        const { data, error } = await supabase.functions.invoke('ai-agent', {
-          body: {
-            message: enhancedMessage,
-            conversationHistory,
-            userId: user.id,
-            sessionId: currentSessionId,
-            streaming: false,
-            modelSettings: modelSettings
-          }
-        });
-
-        if (error) {
-          throw new Error(error.message);
+      const { data, error } = await supabase.functions.invoke('ai-agent', {
+        body: {
+          message: enhancedMessage,
+          conversationHistory,
+          userId: user.id,
+          sessionId: currentSessionId,
+          streaming: false,
+          modelSettings: modelSettings
         }
+      });
 
-        if (!data || !data.success) {
-          throw new Error(data?.error || 'Failed to get response from AI agent');
-        }
+      if (error) {
+        throw new Error(error.message);
+      }
 
-        const assistantMessage: ConversationMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data.message,
-          timestamp: new Date(),
-          messageType: 'response',
-          toolsUsed: data.toolsUsed || [],
-          selfReflection: data.selfReflection
-        };
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Failed to get response from AI agent');
+      }
 
-        addMessage(assistantMessage);
+      const assistantMessage: ConversationMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.message,
+        timestamp: new Date(),
+        messageType: 'response',
+        toolsUsed: data.toolsUsed || [],
+        selfReflection: data.selfReflection
+      };
 
-        if (data.toolsUsed && data.toolsUsed.length > 0) {
-          const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
-          if (successCount > 0) {
-            toast.success(`Used ${successCount} tool(s) successfully`);
-          }
+      addMessage(assistantMessage);
+
+      if (data.toolsUsed && data.toolsUsed.length > 0) {
+        const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
+        if (successCount > 0) {
+          toast.success(`Used ${successCount} tool(s) successfully`);
         }
       }
 
@@ -243,6 +175,7 @@ const AIAgentChat: React.FC = () => {
       addMessage(errorMessage);
     } finally {
       setIsLoading(false);
+      resetPhases();
     }
   };
 
