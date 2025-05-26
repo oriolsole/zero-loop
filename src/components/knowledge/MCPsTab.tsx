@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Loader2, Shield, Download, Upload } from 'lucide-react';
@@ -15,9 +14,11 @@ import TokenManager from './TokenManager';
 import { MCP } from '@/types/mcp';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/sonner';
+import UnifiedConfigPanel from './UnifiedConfigPanel';
+import { unifiedMcpService } from '@/services/unifiedMcpService';
 
 const MCPsTab: React.FC = () => {
-  const [view, setView] = useState<'grid' | 'chat'>('grid');
+  const [view, setView] = useState<'grid' | 'chat' | 'unified'>('grid');
   const [isCreating, setIsCreating] = useState(false);
   const [editingMCP, setEditingMCP] = useState<MCP | null>(null);
   const [filter, setFilter] = useState<'all' | 'default' | 'custom'>('all');
@@ -156,6 +157,28 @@ const MCPsTab: React.FC = () => {
     }
   };
 
+  const handleExportUnified = async () => {
+    try {
+      toast.loading('Generating unified configuration...');
+      const unifiedConfig = await unifiedMcpService.exportUnifiedConfiguration();
+      
+      const blob = new Blob([unifiedConfig], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'unified-agent.mcp.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Unified configuration exported successfully');
+    } catch (error) {
+      console.error('Export failed:', error);
+      toast.error('Failed to export unified configuration');
+    }
+  };
+
   const handleExportAll = async () => {
     if (!mcps) return;
     
@@ -198,6 +221,10 @@ const MCPsTab: React.FC = () => {
             </CardDescription>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={handleExportUnified} disabled={!mcps?.length}>
+              <Download className="mr-2 h-4 w-4" />
+              Export Unified
+            </Button>
             <Button variant="outline" onClick={handleExportAll} disabled={!mcps?.length}>
               <Download className="mr-2 h-4 w-4" />
               Export All
@@ -214,9 +241,10 @@ const MCPsTab: React.FC = () => {
         </CardHeader>
         
         <CardContent>
-          <Tabs defaultValue="grid" value={view} onValueChange={(v) => setView(v as 'grid' | 'chat')}>
+          <Tabs defaultValue="grid" value={view} onValueChange={(v) => setView(v as 'grid' | 'chat' | 'unified')}>
             <TabsList className="mb-4">
               <TabsTrigger value="grid">Tools Gallery</TabsTrigger>
+              <TabsTrigger value="unified">Unified Config</TabsTrigger>
               <TabsTrigger value="chat">Chat with Tools</TabsTrigger>
             </TabsList>
             
@@ -268,6 +296,10 @@ const MCPsTab: React.FC = () => {
                   </div>
                 )}
               </div>
+            </TabsContent>
+            
+            <TabsContent value="unified">
+              <UnifiedConfigPanel />
             </TabsContent>
             
             <TabsContent value="chat">

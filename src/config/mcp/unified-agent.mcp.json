@@ -1,0 +1,418 @@
+
+{
+  "protocol": "ModelContextProtocol",
+  "version": "1.0.0",
+  "model": {
+    "name": "gpt-4o-mini",
+    "provider": "openai",
+    "max_tokens": 2000,
+    "temperature": 0.7
+  },
+  "session": {
+    "timeout": 3600,
+    "persistent": true
+  },
+  "context": {
+    "tools": [
+      {
+        "id": "web-search",
+        "name": "execute_web_search",
+        "title": "Web Search",
+        "description": "Search the web using Google Custom Search API to find relevant information across the internet",
+        "endpoint": "google-search",
+        "icon": "search",
+        "category": "search",
+        "tags": ["search", "web", "google", "information"],
+        "schema": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "name": "query",
+                "type": "string",
+                "description": "The search query to find relevant web results",
+                "required": true
+              },
+              "limit": {
+                "name": "limit",
+                "type": "number",
+                "description": "Maximum number of search results to return",
+                "required": false,
+                "default": 5
+              }
+            },
+            "required": ["query"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": "array",
+                "description": "Array of search results with titles, links, and snippets"
+              }
+            }
+          }
+        },
+        "security": {
+          "authentication": {
+            "type": "api_key",
+            "provider": "google",
+            "required": true
+          },
+          "permissions": ["web_search"]
+        },
+        "metadata": {
+          "version": "1.0.0",
+          "author": "ZeroLoop",
+          "sampleUseCases": [
+            "Search for latest news on a topic",
+            "Find research papers or articles",
+            "Look up current information about companies or technologies"
+          ],
+          "suggestedPrompt": "Search the web for information about [topic]"
+        }
+      },
+      {
+        "id": "github-tools",
+        "name": "execute_github_tools",
+        "title": "GitHub Tools",
+        "description": "Access GitHub repositories, search code, get file contents, and analyze repository structure",
+        "endpoint": "github-tools",
+        "icon": "github",
+        "category": "development",
+        "tags": ["github", "git", "code", "repository", "development"],
+        "schema": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "name": "action",
+                "type": "string",
+                "description": "The GitHub action to perform",
+                "required": true,
+                "enum": ["search_repositories", "get_file_content", "list_files", "get_repository_info"]
+              },
+              "repository": {
+                "name": "repository",
+                "type": "string",
+                "description": "Repository in format owner/repo",
+                "required": false
+              },
+              "query": {
+                "name": "query",
+                "type": "string",
+                "description": "Search query for repositories or code",
+                "required": false
+              },
+              "path": {
+                "name": "path",
+                "type": "string",
+                "description": "File or directory path within the repository",
+                "required": false
+              }
+            },
+            "required": ["action"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "description": "GitHub API response data"
+              }
+            }
+          }
+        },
+        "security": {
+          "authentication": {
+            "type": "api_key",
+            "provider": "github",
+            "required": true
+          },
+          "permissions": ["repository_read", "code_search"]
+        },
+        "metadata": {
+          "version": "1.0.0",
+          "author": "ZeroLoop",
+          "sampleUseCases": [
+            "Search for repositories by topic or language",
+            "Get specific file contents from a repository",
+            "Analyze repository structure and documentation"
+          ],
+          "suggestedPrompt": "Search GitHub for [topic] repositories or get file from [owner/repo]"
+        }
+      },
+      {
+        "id": "knowledge-search-v2",
+        "name": "execute_knowledge_search_v2",
+        "title": "Knowledge Search",
+        "description": "Search the knowledge base using semantic similarity and embeddings to find relevant information",
+        "endpoint": "knowledge-search",
+        "icon": "database",
+        "category": "knowledge",
+        "tags": ["knowledge", "search", "embeddings", "semantic", "ai"],
+        "schema": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "name": "query",
+                "type": "string",
+                "description": "The search query to find relevant knowledge",
+                "required": true
+              },
+              "limit": {
+                "name": "limit",
+                "type": "number",
+                "description": "Maximum number of results to return",
+                "required": false,
+                "default": 5
+              },
+              "includeNodes": {
+                "name": "includeNodes",
+                "type": "boolean",
+                "description": "Include knowledge graph nodes in results",
+                "required": false,
+                "default": true
+              },
+              "matchThreshold": {
+                "name": "matchThreshold",
+                "type": "number",
+                "description": "Minimum similarity threshold for matches",
+                "required": false,
+                "default": 0.5
+              },
+              "useEmbeddings": {
+                "name": "useEmbeddings",
+                "type": "boolean",
+                "description": "Use embeddings for semantic search",
+                "required": false,
+                "default": true
+              }
+            },
+            "required": ["query"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": "array",
+                "description": "Array of knowledge chunks and nodes matching the query"
+              }
+            }
+          }
+        },
+        "security": {
+          "authentication": {
+            "type": "api_key",
+            "provider": "supabase",
+            "required": true
+          },
+          "permissions": ["knowledge_read"]
+        },
+        "metadata": {
+          "version": "2.0.0",
+          "author": "ZeroLoop",
+          "sampleUseCases": [
+            "Search internal knowledge base for specific topics",
+            "Find related documents and insights",
+            "Semantic search across uploaded content"
+          ],
+          "suggestedPrompt": "Search the knowledge base for information about [topic]"
+        }
+      },
+      {
+        "id": "jira-tools",
+        "name": "execute_jira_tools",
+        "title": "Jira Tools",
+        "description": "Interact with Jira to search issues, get project information, and manage tickets",
+        "endpoint": "jira-tools",
+        "icon": "ticket",
+        "category": "project-management",
+        "tags": ["jira", "tickets", "issues", "project-management", "atlassian"],
+        "schema": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "name": "action",
+                "type": "string",
+                "description": "The Jira action to perform",
+                "required": true,
+                "enum": ["search_issues", "get_issue", "get_projects", "create_issue"]
+              },
+              "query": {
+                "name": "query",
+                "type": "string",
+                "description": "JQL query or search term",
+                "required": false
+              },
+              "issueKey": {
+                "name": "issueKey",
+                "type": "string",
+                "description": "Jira issue key (e.g., PROJ-123)",
+                "required": false
+              },
+              "projectKey": {
+                "name": "projectKey",
+                "type": "string",
+                "description": "Jira project key",
+                "required": false
+              }
+            },
+            "required": ["action"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "description": "Jira API response data"
+              }
+            }
+          }
+        },
+        "security": {
+          "authentication": {
+            "type": "api_key",
+            "provider": "jira",
+            "required": true
+          },
+          "permissions": ["issue_read", "project_read"]
+        },
+        "metadata": {
+          "version": "1.0.0",
+          "author": "ZeroLoop",
+          "sampleUseCases": [
+            "Search for issues by status or assignee",
+            "Get detailed information about specific tickets",
+            "List projects and their metadata"
+          ],
+          "suggestedPrompt": "Search Jira for [issue type] or get details about [ticket]"
+        }
+      },
+      {
+        "id": "web-scraper",
+        "name": "execute_web_scraper",
+        "title": "Web Scraper",
+        "description": "Extract and analyze content from web pages, including text, links, and structured data",
+        "endpoint": "web-scraper",
+        "icon": "globe",
+        "category": "data-extraction",
+        "tags": ["scraping", "web", "extraction", "content", "data"],
+        "schema": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "name": "url",
+                "type": "string",
+                "description": "The URL of the web page to scrape",
+                "required": true
+              },
+              "selector": {
+                "name": "selector",
+                "type": "string",
+                "description": "CSS selector to target specific elements",
+                "required": false
+              },
+              "extractText": {
+                "name": "extractText",
+                "type": "boolean",
+                "description": "Whether to extract text content",
+                "required": false,
+                "default": true
+              },
+              "extractLinks": {
+                "name": "extractLinks",
+                "type": "boolean",
+                "description": "Whether to extract links from the page",
+                "required": false,
+                "default": false
+              }
+            },
+            "required": ["url"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string",
+                "description": "Extracted text content from the page"
+              },
+              "links": {
+                "type": "array",
+                "description": "Array of links found on the page"
+              },
+              "metadata": {
+                "type": "object",
+                "description": "Page metadata like title, description, etc."
+              }
+            }
+          }
+        },
+        "security": {
+          "permissions": ["web_scraping"],
+          "authentication": {
+            "type": "api_key",
+            "required": false
+          }
+        },
+        "metadata": {
+          "version": "1.0.0",
+          "author": "ZeroLoop",
+          "sampleUseCases": [
+            "Extract article content from news websites",
+            "Scrape product information from e-commerce sites",
+            "Analyze page structure and metadata"
+          ],
+          "suggestedPrompt": "Scrape content from [URL] and extract [specific information]"
+        }
+      }
+    ],
+    "sources": [
+      {
+        "id": "supabase-mcps",
+        "type": "database",
+        "uri": "supabase://mcps",
+        "metadata": {
+          "description": "Database-stored MCP definitions"
+        }
+      },
+      {
+        "id": "static-mcps",
+        "type": "file",
+        "uri": "file://config/mcp/",
+        "metadata": {
+          "description": "Static MCP configuration files"
+        }
+      }
+    ],
+    "history": {
+      "include_last_n_messages": 10,
+      "persistent": true
+    }
+  },
+  "security": {
+    "encryption": "AES256",
+    "permissions": [
+      "web_search",
+      "repository_read",
+      "knowledge_read",
+      "issue_read",
+      "web_scraping",
+      "code_search",
+      "project_read"
+    ]
+  },
+  "metadata": {
+    "name": "ZeroLoop Unified AI Agent",
+    "description": "Comprehensive multi-tool AI agent with web search, GitHub integration, knowledge management, Jira tools, and web scraping capabilities",
+    "created": "2025-01-26",
+    "updated": "2025-01-26",
+    "author": "ZeroLoop",
+    "version": "1.0.0",
+    "toolCount": 5,
+    "sources": ["database", "static-files"]
+  }
+}
