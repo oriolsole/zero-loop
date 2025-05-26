@@ -27,7 +27,7 @@ serve(async (req) => {
   }
 
   try {
-    const { message, conversationHistory = [], userId, sessionId, streaming = false, modelSettings } = await req.json();
+    const { message, conversationHistory = [], userId, sessionId, streaming = false, modelSettings, testMode = false } = await req.json();
     
     if (!message) {
       throw new Error('Message is required');
@@ -39,11 +39,12 @@ serve(async (req) => {
       userId, 
       sessionId,
       streaming,
-      modelSettings
+      modelSettings,
+      testMode
     });
 
-    // Store conversation in database if userId and sessionId provided
-    if (userId && sessionId) {
+    // Store conversation in database if userId and sessionId provided (skip in test mode)
+    if (userId && sessionId && !testMode) {
       await supabase.from('agent_conversations').insert({
         user_id: userId,
         session_id: sessionId,
@@ -59,6 +60,20 @@ serve(async (req) => {
 
     console.log('AI complexity decision:', complexityDecision);
     console.log('Using learning loop:', useKnowledgeLoop);
+
+    // In test mode, return complexity decision for validation
+    if (testMode) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          complexity: complexityDecision,
+          useKnowledgeLoop,
+          message: `Test mode: Query classified as ${complexityDecision.classification}`,
+          testMode: true
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (useKnowledgeLoop) {
       // Use unified reasoning with learning loop integration
