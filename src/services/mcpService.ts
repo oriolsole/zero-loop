@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult, MCPParameter } from '@/types/mcp';
 import { defaultMCPs } from '@/constants/defaultMCPs';
@@ -28,10 +27,22 @@ const convertDatabaseMCP = (dbMCP: any): MCP => {
 // Helper function to convert MCP to database format
 const convertMCPForDatabase = (mcp: Partial<MCP>) => {
   return {
-    ...mcp,
+    title: mcp.title || 'Untitled MCP',
+    description: mcp.description || 'No description available',
+    endpoint: mcp.endpoint || '',
+    icon: mcp.icon || 'terminal',
     parameters: JSON.stringify(mcp.parameters || []),
     tags: JSON.stringify(mcp.tags || []),
-    sampleUseCases: JSON.stringify(mcp.sampleUseCases || [])
+    sampleUseCases: JSON.stringify(mcp.sampleUseCases || []),
+    user_id: mcp.user_id,
+    category: mcp.category || null,
+    suggestedPrompt: mcp.suggestedPrompt || null,
+    requiresAuth: mcp.requiresAuth || false,
+    authType: mcp.authType || null,
+    authKeyName: mcp.authKeyName || null,
+    requirestoken: mcp.requirestoken || null,
+    isDefault: mcp.isDefault || false,
+    default_key: mcp.default_key || null
   };
 };
 
