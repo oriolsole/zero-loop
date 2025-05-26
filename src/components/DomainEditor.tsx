@@ -34,7 +34,7 @@ interface DomainFormValues {
   taskLogic: string;
   colorTheme: string;
   icon: string;
-  engineType: string;
+  engine: string;
 }
 
 const DomainEditor: React.FC<DomainEditorProps> = ({ 
@@ -61,7 +61,7 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
     taskLogic: 'function generateTask() {\n  return "Create a task related to this domain.";\n}',
     colorTheme: 'purple',
     icon: domain?.icon || 'brain',
-    engineType: domain?.engineType || availableEngines[0] || 'logic'
+    engine: domain?.engine || availableEngines[0] || 'logic'
   };
   
   const form = useForm<DomainFormValues>({
@@ -87,7 +87,7 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
         name: values.name,
         shortDesc: values.shortDesc,
         description: values.description,
-        engineType: values.engineType, // Add engine type to the domain object
+        engine: values.engine, // Use engine instead of engineType
         totalLoops: domain?.totalLoops || 0,
         currentLoop: domain?.currentLoop || [],
         knowledgeNodes: domain?.knowledgeNodes || [],
@@ -204,7 +204,7 @@ const DomainEditor: React.FC<DomainEditorProps> = ({
                 
                 <FormField
                   control={form.control}
-                  name="engineType"
+                  name="engine"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Engine Type</FormLabel>
