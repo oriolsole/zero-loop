@@ -24,6 +24,18 @@ export interface ConversationSession {
   messageCount: number;
 }
 
+// Temporary interface until Supabase types are regenerated
+interface AgentConversationRow {
+  id: string;
+  user_id: string;
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  tools_used: any[] | null;
+  self_reflection: string | null;
+  created_at: string;
+}
+
 export function useAgentConversation() {
   const { user } = useAuth();
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -51,7 +63,7 @@ export function useAgentConversation() {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from('agent_conversations')
+        .from('agent_conversations' as any)
         .select('*')
         .eq('user_id', user.id)
         .eq('session_id', sessionId)
@@ -59,13 +71,13 @@ export function useAgentConversation() {
 
       if (error) throw error;
 
-      const messages: ConversationMessage[] = data.map(row => ({
+      const messages: ConversationMessage[] = (data as AgentConversationRow[]).map(row => ({
         id: row.id,
-        role: row.role as 'user' | 'assistant',
+        role: row.role,
         content: row.content,
         timestamp: new Date(row.created_at),
         toolsUsed: row.tools_used || [],
-        selfReflection: row.self_reflection
+        selfReflection: row.self_reflection || undefined
       }));
 
       setConversations(messages);
@@ -84,7 +96,7 @@ export function useAgentConversation() {
 
     try {
       const { data, error } = await supabase
-        .from('agent_conversations')
+        .from('agent_conversations' as any)
         .select('session_id, created_at, content')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
@@ -94,7 +106,7 @@ export function useAgentConversation() {
       // Group by session and create session summaries
       const sessionMap = new Map<string, ConversationSession>();
       
-      data.forEach(row => {
+      (data as AgentConversationRow[]).forEach(row => {
         const sessionId = row.session_id;
         if (!sessionMap.has(sessionId)) {
           sessionMap.set(sessionId, {
@@ -138,7 +150,7 @@ export function useAgentConversation() {
 
     try {
       const { error } = await supabase
-        .from('agent_conversations')
+        .from('agent_conversations' as any)
         .delete()
         .eq('user_id', user.id)
         .eq('session_id', sessionId);

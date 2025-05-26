@@ -9,6 +9,39 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      agent_conversations: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          role: string
+          self_reflection: string | null
+          session_id: string
+          tools_used: Json | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          role: string
+          self_reflection?: string | null
+          session_id: string
+          tools_used?: Json | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          role?: string
+          self_reflection?: string | null
+          session_id?: string
+          tools_used?: Json | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       domains: {
         Row: {
           created_at: string | null

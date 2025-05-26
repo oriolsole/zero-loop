@@ -41,13 +41,22 @@ interface Task {
   toolsRequired?: string[];
 }
 
+// Define the type for new goal form
+type Priority = 'low' | 'medium' | 'high';
+
+interface NewGoalForm {
+  title: string;
+  description: string;
+  priority: Priority;
+}
+
 const AgentGoalsPanel: React.FC = () => {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [showNewGoal, setShowNewGoal] = useState(false);
-  const [newGoal, setNewGoal] = useState({
+  const [newGoal, setNewGoal] = useState<NewGoalForm>({
     title: '',
     description: '',
-    priority: 'medium' as const
+    priority: 'medium'
   });
 
   const addGoal = () => {
