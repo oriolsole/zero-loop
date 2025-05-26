@@ -1,22 +1,20 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Card } from '@/components/ui/card';
-import { modelProviderService } from '@/services/modelProviderService';
-import { useAgentConversation } from '@/hooks/useAgentConversation';
+import React, { useState, useRef, useEffect } from 'react';
+import { Card, CardHeader } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/components/ui/sonner';
+import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
+import { useAuth } from '@/contexts/AuthContext';
+import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
+import { useConversationContext } from '@/hooks/useConversationContext';
 import AIAgentHeader from './AIAgentHeader';
 import AIAgentChatInterface from './AIAgentChatInterface';
 import AIAgentInput from './AIAgentInput';
 import SessionsSidebar from './SessionsSidebar';
-import ToolProgressStream from './ToolProgressStream';
 
 const AIAgentChat: React.FC = () => {
-  const [input, setInput] = useState('');
-  const [showSessions, setShowSessions] = useState(false);
-  const [modelSettings, setModelSettings] = useState(modelProviderService.getSettings());
-  const [isLoading, setIsLoading] = useState(false);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  
+  const { user } = useAuth();
   const {
     currentSessionId,
     conversations,
@@ -25,105 +23,190 @@ const AIAgentChat: React.FC = () => {
     startNewSession,
     loadSession,
     addMessage,
-    deleteSession,
-    getConversationHistory
+    updateMessage,
+    getConversationHistory,
+    deleteSession
   } = useAgentConversation();
+
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSessions, setShowSessions] = useState(false);
+  const [modelSettings, setModelSettings] = useState(getModelSettings());
 
   const {
     tools,
-    isActive: toolsActive
+    isActive: toolsActive,
+    startTool,
+    updateTool,
+    completeTool,
+    failTool,
+    clearTools
   } = useToolProgress();
 
-  useEffect(() => {
-    const settings = modelProviderService.getSettings();
-    setModelSettings(settings);
-  }, []);
+  const {
+    context,
+    updateGitHubContext,
+    updateSearchContext,
+    storeToolResult,
+    getContextForMessage
+  } = useConversationContext();
+  
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollAreaRef.current) {
-      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollContainer) {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight;
-      }
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [conversations, isLoading]);
+  }, [conversations]);
 
-  const sendMessage = async (message: string) => {
-    if (!message.trim() || isLoading) return;
+  // Load model settings on component mount and when they change
+  useEffect(() => {
+    const loadSettings = () => {
+      const settings = getModelSettings();
+      setModelSettings(settings);
+    };
+
+    loadSettings();
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'modelSettings') {
+        loadSettings();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const handleFollowUpAction = async (action: string) => {
+    if (!user || !currentSessionId) return;
+
+    const followUpMessage: ConversationMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: action,
+      timestamp: new Date()
+    };
+
+    addMessage(followUpMessage);
+    setInput('');
     
+    await processMessage(action);
+  };
+
+  const processMessage = async (message: string) => {
+    if (!user || !currentSessionId) return;
+
+    const contextualMessage = getContextForMessage(message);
+    const enhancedMessage = contextualMessage ? `${message}\n\nContext: ${contextualMessage}` : message;
+
     setIsLoading(true);
-    
+    clearTools();
+
     try {
-      // Add user message
-      await addMessage({
-        id: `user-${Date.now()}`,
-        role: 'user',
-        content: message,
-        timestamp: new Date()
+      const conversationHistory = getConversationHistory();
+
+      const { data, error } = await supabase.functions.invoke('ai-agent', {
+        body: {
+          message: enhancedMessage,
+          conversationHistory,
+          userId: user.id,
+          sessionId: currentSessionId,
+          streaming: false,
+          modelSettings: modelSettings
+        }
       });
 
-      // Simulate AI response for now
-      setTimeout(async () => {
-        await addMessage({
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: `I received your message: "${message}". This is a placeholder response while the AI agent functionality is being implemented.`,
-          timestamp: new Date()
-        });
-        setIsLoading(false);
-      }, 1000);
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Failed to get response from AI agent');
+      }
+
+      const assistantMessage: ConversationMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.message,
+        timestamp: new Date(),
+        messageType: 'response',
+        toolsUsed: data.toolsUsed || []
+      };
+
+      addMessage(assistantMessage);
+
+      if (data.toolsUsed && data.toolsUsed.length > 0) {
+        const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
+        if (successCount > 0) {
+          toast.success(`Used ${successCount} tool(s) successfully`);
+        }
+      }
+
     } catch (error) {
       console.error('Error sending message:', error);
+      
+      toast.error('Failed to send message', {
+        description: error.message || 'Please try again.',
+        duration: 10000
+      });
+
+      const errorMessage: ConversationMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
+        timestamp: new Date()
+      };
+
+      addMessage(errorMessage);
+    } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading || !user || !currentSessionId) return;
+
+    const userMessage: ConversationMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input,
+      timestamp: new Date()
+    };
+
+    addMessage(userMessage);
+    const messageToProcess = input;
+    setInput('');
     
-    const message = input;
-    setInput('');
-    await sendMessage(message);
-  };
-
-  const handleQuickStart = (suggestion: string) => {
-    setInput(suggestion);
-  };
-
-  const handleNewSession = () => {
-    startNewSession();
-    setInput('');
-  };
-
-  const handleFollowUpAction = (action: string) => {
-    setInput(action);
+    await processMessage(messageToProcess);
   };
 
   return (
-    <div className="flex h-[calc(100vh-200px)] gap-4">
+    <div className="flex h-[700px] gap-4">
       {showSessions && (
-        <div className="w-80 flex-shrink-0">
-          <SessionsSidebar 
-            sessions={sessions}
-            currentSessionId={currentSessionId}
-            onStartNewSession={handleNewSession}
-            onLoadSession={loadSession}
-            onDeleteSession={deleteSession}
-            isLoading={isLoadingSessions}
-          />
-        </div>
+        <SessionsSidebar
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          onStartNewSession={startNewSession}
+          onLoadSession={loadSession}
+          onDeleteSession={deleteSession}
+          isLoading={isLoadingSessions}
+        />
       )}
-      
-      <div className="flex-1 flex flex-col">
-        <Card className="flex-1 flex flex-col">
+
+      <Card className="flex-1 flex flex-col">
+        <CardHeader className="pb-3">
           <AIAgentHeader
             modelSettings={modelSettings}
             showSessions={showSessions}
             onToggleSessions={() => setShowSessions(!showSessions)}
-            onNewSession={handleNewSession}
+            onNewSession={startNewSession}
             isLoading={isLoading}
           />
-          
+        </CardHeader>
+        
+        <div className="flex-1 flex flex-col overflow-hidden">
           <AIAgentChatInterface
             conversations={conversations}
             isLoading={isLoading}
@@ -132,20 +215,17 @@ const AIAgentChat: React.FC = () => {
             toolsActive={toolsActive}
             scrollAreaRef={scrollAreaRef}
             onFollowUpAction={handleFollowUpAction}
-            onQuickStart={handleQuickStart}
           />
-          
-          <AIAgentInput
-            input={input}
-            onInputChange={setInput}
-            onSendMessage={handleSendMessage}
-            isLoading={isLoading}
-            modelProvider={modelSettings.provider}
-          />
-        </Card>
+        </div>
         
-        <ToolProgressStream tools={tools} isActive={toolsActive} />
-      </div>
+        <AIAgentInput
+          input={input}
+          onInputChange={setInput}
+          onSendMessage={sendMessage}
+          isLoading={isLoading}
+          modelProvider={modelSettings.provider}
+        />
+      </Card>
     </div>
   );
 };
