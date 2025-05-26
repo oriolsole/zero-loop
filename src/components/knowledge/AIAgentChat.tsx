@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardHeader } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +14,7 @@ import AIAgentHeader from './AIAgentHeader';
 import AIAgentChatInterface from './AIAgentChatInterface';
 import AIAgentInput from './AIAgentInput';
 import SessionsSidebar from './SessionsSidebar';
+import { useEnhancedAIAgent } from '@/hooks/useEnhancedAIAgent';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
@@ -111,6 +111,13 @@ const AIAgentChat: React.FC = () => {
     await processMessage(action);
   };
 
+  const {
+    currentExecution,
+    executeEnhancedQuery,
+    resetExecution,
+    isExecuting: enhancedExecuting
+  } = useEnhancedAIAgent();
+
   const processMessage = async (message: string) => {
     if (!user || !currentSessionId) return;
 
@@ -119,115 +126,59 @@ const AIAgentChat: React.FC = () => {
 
     setIsLoading(true);
     clearTools();
+    resetExecution();
 
     try {
-      // Use AI to detect if we need a plan
-      const planDetection = await detectPlan(enhancedMessage, getConversationHistory());
-      
-      console.log('AI Plan Detection Result:', planDetection);
-
-      if (planDetection.shouldUsePlan && planDetection.suggestedSteps.length > 0) {
-        // AI explains it will create a plan
-        const planMessage: ConversationMessage = {
-          id: `plan-${Date.now()}`,
-          role: 'assistant',
-          content: `I'll help you with that by breaking this down into ${planDetection.suggestedSteps.length} steps. Let me work through this systematically.`,
-          timestamp: new Date(),
-          messageType: 'planning',
-          aiReasoning: `Creating ${planDetection.estimatedComplexity} plan: ${planDetection.suggestedSteps.join(' → ')}`
-        };
-        addMessage(planMessage);
-        
-        // Create and execute dynamic plan with simple chat updates
-        const plan = await createDynamicPlan(
-          enhancedMessage,
-          planDetection.suggestedSteps,
-          planDetection.planType
-        );
-
-        // Execute the plan with conversational updates
-        await executeDynamicPlan(
-          plan,
-          enhancedMessage,
-          (step) => {
-            // Add conversational step message
-            const stepMessage: ConversationMessage = {
-              id: `step-${step.id}-${Date.now()}`,
-              role: 'assistant',
-              content: step.aiInsight || `Working on: ${step.description}`,
-              timestamp: new Date(),
-              messageType: step.status === 'executing' ? 'step-executing' : 'step-completed',
-              aiReasoning: step.reasoning,
-              stepDetails: {
-                tool: step.tool,
-                result: step.extractedContent,
-                status: step.status,
-                progressUpdate: step.progressUpdate
-              }
-            };
-            addMessage(stepMessage);
-          },
-          (result, followUpSuggestions) => {
-            // Add final conversational result
-            const finalMessage: ConversationMessage = {
-              id: `final-${Date.now()}`,
-              role: 'assistant',
-              content: result,
-              timestamp: new Date(),
-              messageType: 'response',
-              followUpSuggestions
-            };
-            addMessage(finalMessage);
+      // Use the new enhanced AI agent workflow
+      await executeEnhancedQuery(
+        enhancedMessage,
+        getConversationHistory(),
+        (execution) => {
+          // Update UI with execution progress
+          const progressMessage: ConversationMessage = {
+            id: `progress-${execution.id}`,
+            role: 'assistant',
+            content: `${execution.currentStep} (${execution.progress}%)`,
+            timestamp: new Date(),
+            messageType: execution.status === 'executing' ? 'step-executing' : 'planning',
+            aiReasoning: `Enhanced AI agent: ${execution.status} - Tools: ${execution.toolsUsed.join(', ')}`
+          };
+          
+          // Update or add progress message
+          const existingIndex = conversations.findIndex(c => c.id === progressMessage.id);
+          if (existingIndex >= 0) {
+            updateMessage(progressMessage.id, progressMessage);
+          } else {
+            addMessage(progressMessage);
           }
-        );
-        
-      } else {
-        // Single-step execution for simple requests
-        const conversationHistory = getConversationHistory();
-
-        const { data, error } = await supabase.functions.invoke('ai-agent', {
-          body: {
-            message: enhancedMessage,
-            conversationHistory,
-            userId: user.id,
-            sessionId: currentSessionId,
-            streaming: false,
-            modelSettings: modelSettings
-          }
-        });
-
-        if (error) {
-          throw new Error(error.message);
-        }
-
-        if (!data || !data.success) {
-          throw new Error(data?.error || 'Failed to get response from AI agent');
-        }
-
-        const assistantMessage: ConversationMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data.message,
-          timestamp: new Date(),
-          messageType: 'response',
-          toolsUsed: data.toolsUsed || [],
-          selfReflection: data.selfReflection
-        };
-
-        addMessage(assistantMessage);
-
-        if (data.toolsUsed && data.toolsUsed.length > 0) {
-          const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
-          if (successCount > 0) {
-            toast.success(`Used ${successCount} tool(s) successfully`);
+        },
+        (finalResult) => {
+          // Add final result message
+          const finalMessage: ConversationMessage = {
+            id: `final-${Date.now()}`,
+            role: 'assistant',
+            content: finalResult,
+            timestamp: new Date(),
+            messageType: 'response',
+            toolsUsed: currentExecution?.toolsUsed.map(tool => ({
+              name: tool,
+              success: true,
+              result: 'Executed successfully'
+            })) || []
+          };
+          
+          addMessage(finalMessage);
+          
+          if (currentExecution?.toolsUsed.length > 0) {
+            toast.success(`Enhanced AI workflow completed using ${currentExecution.toolsUsed.length} tools`);
           }
         }
-      }
+      );
 
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Enhanced AI agent error:', error);
       
-      toast.error('Failed to send message', {
+      toast.error('Enhanced AI agent failed', {
         description: error.message || 'Please try again.',
         duration: 10000
       });
@@ -235,11 +186,134 @@ const AIAgentChat: React.FC = () => {
       const errorMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
+        content: `I encountered an error with the enhanced workflow: ${error.message}. Let me try a simpler approach.`,
         timestamp: new Date()
       };
 
       addMessage(errorMessage);
+      
+      // Fallback to original logic
+      try {
+        // Use AI to detect if we need a plan
+        const planDetection = await detectPlan(enhancedMessage, getConversationHistory());
+        
+        console.log('AI Plan Detection Result:', planDetection);
+
+        if (planDetection.shouldUsePlan && planDetection.suggestedSteps.length > 0) {
+          // AI explains it will create a plan
+          const planMessage: ConversationMessage = {
+            id: `plan-${Date.now()}`,
+            role: 'assistant',
+            content: `I'll help you with that by breaking this down into ${planDetection.suggestedSteps.length} steps. Let me work through this systematically.`,
+            timestamp: new Date(),
+            messageType: 'planning',
+            aiReasoning: `Creating ${planDetection.estimatedComplexity} plan: ${planDetection.suggestedSteps.join(' → ')}`
+          };
+          addMessage(planMessage);
+          
+          // Create and execute dynamic plan with simple chat updates
+          const plan = await createDynamicPlan(
+            enhancedMessage,
+            planDetection.suggestedSteps,
+            planDetection.planType
+          );
+
+          // Execute the plan with conversational updates
+          await executeDynamicPlan(
+            plan,
+            enhancedMessage,
+            (step) => {
+              // Add conversational step message
+              const stepMessage: ConversationMessage = {
+                id: `step-${step.id}-${Date.now()}`,
+                role: 'assistant',
+                content: step.aiInsight || `Working on: ${step.description}`,
+                timestamp: new Date(),
+                messageType: step.status === 'executing' ? 'step-executing' : 'step-completed',
+                aiReasoning: step.reasoning,
+                stepDetails: {
+                  tool: step.tool,
+                  result: step.extractedContent,
+                  status: step.status,
+                  progressUpdate: step.progressUpdate
+                }
+              };
+              addMessage(stepMessage);
+            },
+            (result, followUpSuggestions) => {
+              // Add final conversational result
+              const finalMessage: ConversationMessage = {
+                id: `final-${Date.now()}`,
+                role: 'assistant',
+                content: result,
+                timestamp: new Date(),
+                messageType: 'response',
+                followUpSuggestions
+              };
+              addMessage(finalMessage);
+            }
+          );
+          
+        } else {
+          // Single-step execution for simple requests
+          const conversationHistory = getConversationHistory();
+
+          const { data, error } = await supabase.functions.invoke('ai-agent', {
+            body: {
+              message: enhancedMessage,
+              conversationHistory,
+              userId: user.id,
+              sessionId: currentSessionId,
+              streaming: false,
+              modelSettings: modelSettings
+            }
+          });
+
+          if (error) {
+            throw new Error(error.message);
+          }
+
+          if (!data || !data.success) {
+            throw new Error(data?.error || 'Failed to get response from AI agent');
+          }
+
+          const assistantMessage: ConversationMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: data.message,
+            timestamp: new Date(),
+            messageType: 'response',
+            toolsUsed: data.toolsUsed || [],
+            selfReflection: data.selfReflection
+          };
+
+          addMessage(assistantMessage);
+
+          if (data.toolsUsed && data.toolsUsed.length > 0) {
+            const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
+            if (successCount > 0) {
+              toast.success(`Used ${successCount} tool(s) successfully`);
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error('Error sending message:', error);
+        
+        toast.error('Failed to send message', {
+          description: error.message || 'Please try again.',
+          duration: 10000
+        });
+
+        const errorMessage: ConversationMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
+          timestamp: new Date()
+        };
+
+        addMessage(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
