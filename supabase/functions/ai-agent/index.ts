@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -105,22 +106,31 @@ serve(async (req) => {
 
     console.log('Generated tools:', tools.map(t => t.function.name));
 
-    // Enhanced system prompt with self-reflection capabilities
+    // Detect if user is asking for search operations
+    const lowerMessage = message.toLowerCase();
+    const isSearchRequest = lowerMessage.includes('search') || 
+                           lowerMessage.includes('find') || 
+                           lowerMessage.includes('look up') ||
+                           lowerMessage.includes('information about') ||
+                           lowerMessage.includes('tell me about');
+
+    // Enhanced system prompt with mandatory tool usage for searches
     const systemPrompt = `You are an advanced AI agent with access to various tools and self-reflection capabilities. You can help users by:
 
-1. **Tool Usage**: Search the web, access knowledge bases, and use specialized tools
+1. **Mandatory Tool Usage**: When users ask for searches, information lookup, or current data, you MUST use the appropriate tools
 2. **Self-Reflection**: After using tools, analyze the results and determine if they meet the user's needs
 3. **Task Planning**: Break down complex requests into manageable steps
 4. **Error Recovery**: If a tool fails, try alternative approaches or explain limitations
 
 **Available tools**: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}
 
-**Tool Execution Guidelines**:
-- Always use tools when you can provide better information through them
-- For GitHub queries, use the github-tools with appropriate action (get_repository, get_file_content, list_files, etc.)
-- For current information, use web-search
-- For knowledge base queries, use knowledge-search-v2
-- Be specific with tool parameters to get the best results
+**CRITICAL TOOL EXECUTION RULES**:
+- For ANY search request, you MUST use web-search or knowledge-search-v2 tools
+- For GitHub-related queries, you MUST use github-tools
+- For current information, you MUST use web-search
+- For knowledge base queries, you MUST use knowledge-search-v2
+- NEVER claim you will search without actually calling the search tools
+- Always be specific with tool parameters to get the best results
 
 **Self-Reflection Protocol**:
 - After using tools, assess if the results answer the user's question
@@ -134,7 +144,9 @@ serve(async (req) => {
 - Provide context for your decisions
 - Ask clarifying questions when needed
 
-Remember: You can use multiple tools in sequence and should reflect on their outputs to provide the best possible assistance.`;
+Remember: You can use multiple tools in sequence and should reflect on their outputs to provide the best possible assistance.
+
+${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information. You MUST use the appropriate search tools (web-search or knowledge-search-v2) to fulfill this request. Do not provide generic responses without using tools.' : ''}`;
 
     // Prepare messages for AI model
     const messages = [
@@ -149,11 +161,14 @@ Remember: You can use multiple tools in sequence and should reflect on their out
       }
     ];
 
+    // Use mandatory tool choice for search requests
+    const toolChoice = isSearchRequest ? 'required' : 'auto';
+
     // Use the ai-model-proxy instead of calling OpenAI directly
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: 'auto',
+      tool_choice: toolChoice,
       temperature: 0.7,
       max_tokens: 2000,
       stream: streaming,
@@ -165,7 +180,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
       })
     };
 
-    console.log('Calling AI model proxy with tools:', tools.length);
+    console.log('Calling AI model proxy with tools:', tools.length, 'tool_choice:', toolChoice);
 
     const response = await supabase.functions.invoke('ai-model-proxy', {
       body: modelRequestBody

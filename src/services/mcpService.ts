@@ -306,6 +306,43 @@ export const mcpService = {
     }
   },
 
+  // Fix existing GitHub Tools MCP to use local edge function
+  async fixGitHubToolsMCP(userId: string): Promise<void> {
+    console.log('Fixing GitHub Tools MCP for user:', userId);
+    
+    try {
+      // Update the GitHub Tools MCP to use the local edge function
+      const { data: githubMcp, error: fetchError } = await supabase
+        .from('mcps')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('default_key', 'github-tools')
+        .single();
+
+      if (fetchError || !githubMcp) {
+        console.log('GitHub Tools MCP not found, will be created on next seed');
+        return;
+      }
+
+      console.log('Updating GitHub Tools MCP endpoint from:', githubMcp.endpoint, 'to: github-tools');
+
+      const { error: updateError } = await supabase
+        .from('mcps')
+        .update({ endpoint: 'github-tools' })
+        .eq('id', githubMcp.id);
+
+      if (updateError) {
+        console.error('Error updating GitHub Tools MCP:', updateError);
+        throw updateError;
+      }
+
+      console.log('Successfully fixed GitHub Tools MCP endpoint');
+    } catch (error) {
+      console.error('Error fixing GitHub Tools MCP:', error);
+      throw error;
+    }
+  },
+
   // Clean up invalid MCPs that point to non-existent endpoints
   async cleanupInvalidMCPs(userId: string): Promise<void> {
     console.log('Cleaning up invalid MCPs for user:', userId);
@@ -322,15 +359,17 @@ export const mcpService = {
       const invalidMCPs = mcps?.filter(mcp => {
         // Mark MCPs with external HTTP endpoints as potentially invalid
         // Keep only edge functions and known working endpoints
-        return mcp.endpoint?.startsWith('http') && 
-               !['google-search', 'github-tools', 'knowledge-proxy'].includes(mcp.endpoint.split('/').pop() || '');
+        return mcp.endpoint?.includes('api.example.com') || 
+               mcp.endpoint?.includes('api.zeroloop.ai/mcp/github') ||
+               (mcp.endpoint?.startsWith('http') && 
+                !['google-search', 'github-tools', 'knowledge-proxy'].includes(mcp.endpoint.split('/').pop() || ''));
       }) || [];
 
       console.log('Found', invalidMCPs.length, 'potentially invalid MCPs');
 
       // Delete invalid MCPs
       for (const mcp of invalidMCPs) {
-        console.log('Deleting invalid MCP:', mcp.title);
+        console.log('Deleting invalid MCP:', mcp.title, 'endpoint:', mcp.endpoint);
         await this.deleteMCP(mcp.id);
       }
 

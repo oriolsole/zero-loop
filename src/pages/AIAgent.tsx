@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import MainLayout from '@/components/layouts/MainLayout';
 import AIAgentChat from '@/components/knowledge/AIAgentChat';
 import AgentGoalsPanel from '@/components/knowledge/AgentGoalsPanel';
@@ -7,8 +7,45 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, Cpu, Search, Database, Target, Brain, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/contexts/AuthContext';
+import { mcpService } from '@/services/mcpService';
+import { toast } from '@/components/ui/sonner';
 
 const AIAgent: React.FC = () => {
+  const { user } = useAuth();
+  const [isFixingMCPs, setIsFixingMCPs] = useState(false);
+
+  // Fix MCPs when component mounts
+  useEffect(() => {
+    if (user && !isFixingMCPs) {
+      setIsFixingMCPs(true);
+      
+      const fixMCPs = async () => {
+        try {
+          console.log('Fixing MCPs for improved tool execution...');
+          
+          // Clean up invalid MCPs first
+          await mcpService.cleanupInvalidMCPs(user.id);
+          
+          // Fix GitHub Tools MCP endpoint
+          await mcpService.fixGitHubToolsMCP(user.id);
+          
+          // Seed any missing default MCPs
+          await mcpService.seedDefaultMCPs(user.id);
+          
+          console.log('MCPs fixed successfully');
+        } catch (error) {
+          console.error('Error fixing MCPs:', error);
+          toast.error('Failed to optimize tools configuration');
+        } finally {
+          setIsFixingMCPs(false);
+        }
+      };
+
+      fixMCPs();
+    }
+  }, [user, isFixingMCPs]);
+
   return (
     <MainLayout>
       <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -17,11 +54,11 @@ const AIAgent: React.FC = () => {
             <Bot className="h-8 w-8" />
             AI Agent
             <Badge variant="outline" className="text-xs">
-              Phase 2 Enhanced
+              Enhanced with Tool Execution
             </Badge>
           </h1>
           <p className="text-muted-foreground">
-            An intelligent agent with advanced capabilities: memory, self-reflection, goal planning, and tool orchestration
+            An intelligent agent with advanced capabilities: memory, self-reflection, goal planning, and real-time tool orchestration
           </p>
         </div>
 
@@ -98,9 +135,9 @@ const AIAgent: React.FC = () => {
                   <div className="flex items-start gap-3">
                     <Cpu className="h-5 w-5 mt-0.5 text-orange-500" />
                     <div>
-                      <h4 className="font-medium">Advanced Tool Orchestration</h4>
+                      <h4 className="font-medium">Real-Time Tool Execution</h4>
                       <p className="text-sm text-muted-foreground">
-                        Uses multiple tools in sequence with error recovery
+                        Uses multiple tools with live progress tracking and error recovery
                       </p>
                     </div>
                   </div>
@@ -115,7 +152,7 @@ const AIAgent: React.FC = () => {
                     Available Tools
                   </CardTitle>
                   <CardDescription>
-                    Tools the agent can use to help you
+                    Tools the agent actively uses to help you
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -124,7 +161,7 @@ const AIAgent: React.FC = () => {
                     <div>
                       <h4 className="font-medium">Web Search</h4>
                       <p className="text-sm text-muted-foreground">
-                        Search the internet for current information
+                        Real-time internet search for current information
                       </p>
                     </div>
                   </div>
@@ -134,7 +171,7 @@ const AIAgent: React.FC = () => {
                     <div>
                       <h4 className="font-medium">Knowledge Base</h4>
                       <p className="text-sm text-muted-foreground">
-                        Access your personal knowledge repository
+                        Semantic search across your personal knowledge repository
                       </p>
                     </div>
                   </div>
@@ -142,9 +179,9 @@ const AIAgent: React.FC = () => {
                   <div className="flex items-start gap-3">
                     <Bot className="h-5 w-5 mt-0.5 text-purple-500" />
                     <div>
-                      <h4 className="font-medium">Custom MCPs</h4>
+                      <h4 className="font-medium">GitHub Integration</h4>
                       <p className="text-sm text-muted-foreground">
-                        Use any configured Model Context Protocols
+                        Access repositories, files, and code with GitHub token
                       </p>
                     </div>
                   </div>
@@ -154,23 +191,23 @@ const AIAgent: React.FC = () => {
               {/* Example Queries */}
               <Card className="lg:col-span-2">
                 <CardHeader>
-                  <CardTitle>Example Queries</CardTitle>
+                  <CardTitle>Try These Enhanced Queries</CardTitle>
                   <CardDescription>
-                    Try these advanced requests to see the agent's capabilities:
+                    Test the agent's real-time tool execution capabilities:
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Badge variant="outline" className="justify-start p-3 h-auto">
-                    "Create a goal to research AI safety, break it into tasks, and start executing"
+                    "Search for the latest AI news from 2024"
                   </Badge>
                   <Badge variant="outline" className="justify-start p-3 h-auto">
-                    "Search for the latest quantum computing news and save key insights to my knowledge base"
+                    "Find information about React 19 features"
                   </Badge>
                   <Badge variant="outline" className="justify-start p-3 h-auto">
-                    "Help me plan a project by researching best practices and creating actionable steps"
+                    "Search my knowledge base for machine learning notes"
                   </Badge>
                   <Badge variant="outline" className="justify-start p-3 h-auto">
-                    "Find conflicting information about a topic and help me understand the differences"
+                    "Look up the latest developments in quantum computing"
                   </Badge>
                 </CardContent>
               </Card>
