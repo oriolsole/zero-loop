@@ -115,7 +115,7 @@ const AIAgentChat: React.FC = () => {
     resetPhases();
 
     try {
-      setPhase('thinking', 'Analyzing your request...');
+      setPhase('analyzing', 'Analyzing your request...');
       
       const conversationHistory = getConversationHistory();
 
