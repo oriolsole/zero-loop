@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Bot, Loader2 } from 'lucide-react';
+import { Bot, Loader2, Sparkles, Search, Database, Github } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
@@ -44,30 +44,65 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
   };
 
   return (
-    <CardContent className="flex-1 overflow-hidden">
-      <ScrollArea className="h-full pr-4" ref={scrollAreaRef}>
-        <div className="space-y-4">
+    <CardContent className="flex-1 overflow-hidden p-0">
+      <ScrollArea className="h-full px-6" ref={scrollAreaRef}>
+        <div className="space-y-6 py-4">
           {conversations.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <h3 className="text-lg font-medium mb-2">Start a conversation</h3>
-              <p className="text-sm mb-4">
-                I'm your AI assistant with enhanced memory and tool capabilities.
+            <div className="text-center py-16">
+              <div className="relative mb-6">
+                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center shadow-lg">
+                  <Bot className="h-10 w-10 text-white" />
+                </div>
+                <div className="absolute -top-1 -right-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                  <Sparkles className="h-3 w-3 text-white" />
+                </div>
+              </div>
+              
+              <h3 className="text-2xl font-bold mb-3 bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                AI Agent Ready
+              </h3>
+              <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                I'm your intelligent assistant with advanced planning capabilities, real-time tools, and adaptive reasoning.
               </p>
-              <div className="flex items-center justify-center gap-2 text-xs mb-2">
-                <span>Currently using:</span>
-                <Badge variant="secondary" className="flex items-center gap-1">
+              
+              <div className="flex items-center justify-center gap-2 text-sm mb-6">
+                <span className="text-gray-500">Currently using:</span>
+                <Badge variant="secondary" className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-gray-100 to-gray-200">
                   <span>{getProviderIcon(modelSettings.provider)}</span>
-                  <span className="font-medium">
+                  <span className="font-semibold">
                     {modelSettings.provider.toUpperCase()}
                     {modelSettings.selectedModel && ` - ${modelSettings.selectedModel}`}
                   </span>
                 </Badge>
               </div>
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <p>💭 I remember context across our conversation</p>
-                <p>🔧 I can search the web, access GitHub, and query knowledge bases</p>
-                <p>🎯 Try: "Search for React hooks" or "Analyze a GitHub repository"</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto mb-8">
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200">
+                  <Search className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-blue-700">Web Search</p>
+                  <p className="text-xs text-blue-600">Real-time information</p>
+                </div>
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200">
+                  <Database className="h-6 w-6 text-green-500 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-green-700">Knowledge Base</p>
+                  <p className="text-xs text-green-600">Semantic memory</p>
+                </div>
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-4 rounded-xl border border-purple-200">
+                  <Github className="h-6 w-6 text-purple-500 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-purple-700">GitHub Tools</p>
+                  <p className="text-xs text-purple-600">Code analysis</p>
+                </div>
+              </div>
+              
+              <div className="space-y-2 text-sm text-gray-500">
+                <p className="flex items-center justify-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-500" />
+                  Try: "What are the latest AI developments?"
+                </p>
+                <p className="flex items-center justify-center gap-2">
+                  <Search className="h-4 w-4 text-blue-500" />
+                  Or: "Search for React 19 features and changes"
+                </p>
               </div>
             </div>
           )}
@@ -81,15 +116,15 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
           
           {isLoading && (
             <div className="flex justify-start animate-fade-in">
-              <Avatar className="h-8 w-8 mt-0.5">
-                <AvatarFallback>
-                  <Bot className="h-4 w-4" />
+              <Avatar className="h-9 w-9 mt-1 shadow-sm">
+                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500">
+                  <Bot className="h-5 w-5 text-white" />
                 </AvatarFallback>
               </Avatar>
-              <div className="ml-3 bg-secondary rounded-lg px-4 py-3 max-w-[80%]">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">
+              <div className="ml-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl px-4 py-3 max-w-[80%] border border-gray-200 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                  <span className="text-sm font-medium text-gray-700">
                     Processing with {modelSettings.provider.toUpperCase()}...
                   </span>
                 </div>

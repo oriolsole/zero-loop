@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { getModelSettings } from '@/services/modelProviderService';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface DynamicPlanStep {
   id: string;
@@ -30,6 +31,7 @@ export interface DynamicExecutionPlan {
 }
 
 export const useDynamicPlanOrchestrator = () => {
+  const { user } = useAuth();
   const [currentPlan, setCurrentPlan] = useState<DynamicExecutionPlan | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
 
@@ -90,8 +92,8 @@ export const useDynamicPlanOrchestrator = () => {
         onStepUpdate(updatedStep);
 
         try {
-          // Execute the step
-          const result = await executeStep(step, results, originalRequest);
+          // Execute the step with REAL tools
+          const result = await executeStepWithRealTools(step, results, originalRequest, user?.id);
           
           const completedStep = {
             ...updatedStep,
@@ -167,7 +169,7 @@ export const useDynamicPlanOrchestrator = () => {
     } finally {
       setIsExecuting(false);
     }
-  }, []);
+  }, [user]);
 
   const getProgress = useCallback(() => {
     if (!currentPlan) return { current: 0, total: 0, percentage: 0 };
@@ -221,15 +223,43 @@ function inferParametersFromStep(step: string): Record<string, any> {
   return { query: keywords };
 }
 
-async function executeStep(step: DynamicPlanStep, previousResults: any[], originalRequest: string): Promise<any> {
-  // Simulate step execution - in reality this would call actual tools
-  await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-  
-  if (step.tool === 'synthesize_results') {
-    return `Synthesized result from ${previousResults.length} previous steps for: ${step.description}`;
+async function executeStepWithRealTools(step: DynamicPlanStep, previousResults: any[], originalRequest: string, userId?: string): Promise<any> {
+  if (!userId) {
+    throw new Error('User not authenticated');
   }
-  
-  return `AI-executed result for: ${step.description} (tool: ${step.tool})`;
+
+  const modelSettings = getModelSettings();
+
+  try {
+    // Call the actual AI agent with the specific tool
+    const { data, error } = await supabase.functions.invoke('ai-agent', {
+      body: {
+        message: step.description,
+        conversationHistory: [],
+        userId: userId,
+        sessionId: `plan-execution-${Date.now()}`,
+        streaming: false,
+        modelSettings: modelSettings,
+        forcedTool: step.tool,
+        toolParameters: step.parameters
+      }
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data || !data.success) {
+      throw new Error(data?.error || 'Tool execution failed');
+    }
+
+    return data.message || `Executed ${step.tool} successfully`;
+
+  } catch (error) {
+    console.error(`Tool execution failed for ${step.tool}:`, error);
+    // Return a fallback result instead of failing completely
+    return `Tool ${step.tool} encountered an issue: ${error.message}`;
+  }
 }
 
 async function shouldAdaptPlan(originalRequest: string, results: any[], remainingSteps: DynamicPlanStep[]): Promise<{needsAdaptation: boolean, reasoning: string}> {
