@@ -1,6 +1,6 @@
 
 import { useState, useCallback } from 'react';
-import { ToolProgressItem } from '@/components/knowledge/ToolProgressStream';
+import { ToolProgressItem } from '@/types/tools';
 
 export interface UseToolProgressReturn {
   tools: ToolProgressItem[];
@@ -36,7 +36,6 @@ export const useToolProgress = (): UseToolProgressReturn => {
 
     setTools(prev => [...prev, newTool]);
     
-    // Automatically move to executing status after a short delay
     setTimeout(() => {
       setTools(prev => prev.map(tool => 
         tool.id === id ? { ...tool, status: 'executing' } : tool

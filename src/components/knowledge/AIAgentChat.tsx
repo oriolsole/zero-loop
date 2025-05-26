@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardHeader } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,6 +9,8 @@ import { useToolProgress } from '@/hooks/useToolProgress';
 import { EnhancedToolDecision } from './EnhancedToolDecision';
 import { useEnhancedToolDecision } from '@/hooks/useEnhancedToolDecision';
 import { useAIPhases } from '@/hooks/useAIPhases';
+import { useConversationContext } from '@/hooks/useConversationContext';
+import { ToolProgressItem } from '@/types/tools';
 import AIAgentHeader from './AIAgentHeader';
 import AIAgentChatInterface from './AIAgentChatInterface';
 import AIAgentInput from './AIAgentInput';
@@ -61,6 +62,14 @@ const AIAgentChat: React.FC = () => {
     failTool,
     clearTools
   } = useToolProgress();
+
+  const {
+    context,
+    updateGitHubContext,
+    updateSearchContext,
+    storeToolResult,
+    getContextForMessage
+  } = useConversationContext();
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +116,9 @@ const AIAgentChat: React.FC = () => {
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !user || !currentSessionId) return;
 
+    const contextualMessage = getContextForMessage(input);
+    const enhancedMessage = contextualMessage ? `${input}\n\nContext: ${contextualMessage}` : input;
+
     const userMessage: ConversationMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -116,8 +128,8 @@ const AIAgentChat: React.FC = () => {
 
     addMessage(userMessage);
     
-    setPhase('analyzing', 'Analyzing your request and determining the best approach...', 15);
-    const decision = analyzeRequest(input);
+    setPhase('analyzing', 'Understanding your request...', 15);
+    const decision = analyzeRequest(enhancedMessage);
     
     setInput('');
     setIsLoading(true);
@@ -129,14 +141,12 @@ const AIAgentChat: React.FC = () => {
         setPhase('error', 'Request timed out');
         resetDecision();
         resetPhases();
-        toast.error('Request timed out', {
-          description: 'The AI agent took too long to respond. Please try again.'
-        });
+        toast.error('Request timed out');
         
         const timeoutMessage: ConversationMessage = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: 'I apologize, but my response timed out. Please try your request again. If this continues to happen, there might be an issue with the AI service.',
+          content: 'I apologize, but my response timed out. Please try your request again.',
           timestamp: new Date()
         };
         addMessage(timeoutMessage);
@@ -146,24 +156,15 @@ const AIAgentChat: React.FC = () => {
     try {
       const conversationHistory = getConversationHistory();
 
-      console.log('Sending message to AI agent with enhanced analysis:', {
-        message: input,
-        conversationHistory: conversationHistory.length,
-        userId: user.id,
-        sessionId: currentSessionId,
-        modelSettings,
-        toolDecision: decision
-      });
-
-      setPhase('planning', 'Creating execution strategy...', 10);
+      setPhase('thinking', 'Processing your request...', 10);
       if (decision.shouldUseTools) {
         startExecution();
-        setPhase('executing', `Executing ${decision.suggestedTools.length} tools...`, decision.estimatedSteps * 3);
+        setPhase('working', `Using ${decision.suggestedTools.length} tools...`, decision.estimatedSteps * 3);
       }
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
-          message: input,
+          message: enhancedMessage,
           conversationHistory,
           userId: user.id,
           sessionId: currentSessionId,
@@ -174,28 +175,19 @@ const AIAgentChat: React.FC = () => {
 
       clearTimeout(timeoutId);
 
-      console.log('AI agent response:', { data, error });
-
       if (error) {
-        console.error('AI agent error:', error);
         throw new Error(error.message);
       }
 
       if (!data || !data.success) {
-        console.error('AI agent returned error:', data?.error);
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
-      setPhase('reflecting', 'Processing results and preparing response...', 5);
+      setPhase('completing', 'Finalizing response...', 5);
 
-      if (data.toolDecision && data.toolDecision.complexity) {
-        console.log('Enhanced tool decision received:', data.toolDecision);
-      }
-
+      // Process and store tool results
       if (data.toolProgress && data.toolProgress.length > 0) {
-        console.log('Processing tool progress:', data.toolProgress);
-        
-        data.toolProgress.forEach((toolItem: any, index: number) => {
+        data.toolProgress.forEach((toolItem: any) => {
           nextStep();
           
           const toolId = startTool(
@@ -211,33 +203,35 @@ const AIAgentChat: React.FC = () => {
             error: toolItem.error,
             progress: toolItem.status === 'completed' ? 100 : toolItem.status === 'failed' ? 0 : 50
           });
+
+          if (toolItem.result) {
+            storeToolResult(toolId, toolItem.result);
+          }
         });
       }
 
-      if (data.toolsUsed && data.toolsUsed.length > 0 && (!data.toolProgress || data.toolProgress.length === 0)) {
-        console.log('Processing legacy tools used:', data.toolsUsed);
-        
-        data.toolsUsed.forEach((tool: any, index: number) => {
-          nextStep();
-          
-          const toolId = startTool(
-            tool.name,
-            tool.name.replace('execute_', ''),
-            tool.parameters
-          );
-
-          setTimeout(() => {
-            if (tool.success) {
-              completeTool(toolId, tool.result);
-            } else {
-              failTool(toolId, tool.result?.error || 'Tool execution failed');
+      // Update context based on tool results
+      if (data.toolsUsed) {
+        data.toolsUsed.forEach((tool: any) => {
+          if (tool.name.includes('github') && tool.result?.url) {
+            const urlParts = tool.result.url.split('/');
+            if (urlParts.length >= 5) {
+              updateGitHubContext({
+                owner: urlParts[3],
+                repo: urlParts[4],
+                url: tool.result.url
+              });
             }
-          }, (index + 1) * 200);
+          }
+          
+          if (tool.name.includes('search') && tool.result) {
+            updateSearchContext(input, tool.result);
+          }
         });
       }
 
       completeExecution();
-      setPhase('completed', 'Response ready');
+      setPhase('completed', 'Done');
 
       const assistantMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
@@ -253,47 +247,14 @@ const AIAgentChat: React.FC = () => {
 
       if (data.toolsUsed && data.toolsUsed.length > 0) {
         const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
-        const failCount = data.toolsUsed.length - successCount;
-        
-        console.log('Enhanced tool execution summary:', { 
-          total: data.toolsUsed.length, 
-          success: successCount, 
-          failed: failCount,
-          expectedComplexity: decision.complexity,
-          actualSteps: data.toolsUsed.length,
-          expectedSteps: decision.estimatedSteps
-        });
-        
         if (successCount > 0) {
           const successfulTools = data.toolsUsed
             .filter((tool: any) => tool.success)
             .map((tool: any) => tool.name.replace('execute_', ''))
             .join(', ');
           
-          toast.success(`Successfully executed ${successCount} tool(s)`, {
-            description: `Tools: ${successfulTools}`
-          });
+          toast.success(`Used ${successCount} tool(s): ${successfulTools}`);
         }
-        
-        if (failCount > 0) {
-          const failedTools = data.toolsUsed
-            .filter((tool: any) => !tool.success)
-            .map((tool: any) => `${tool.name.replace('execute_', '')}: ${tool.result?.error || 'Unknown error'}`)
-            .join(', ');
-          
-          toast.error(`${failCount} tool(s) failed`, {
-            description: `${failedTools}. ${decision.fallbackStrategy || 'Please try rephrasing your request.'}`,
-            duration: 10000
-          });
-        }
-      } else {
-        console.log('No tools were used in this response');
-      }
-
-      if (data.fallbackUsed) {
-        toast.warning(`Using OpenAI fallback`, {
-          description: `${modelSettings.provider.toUpperCase()} failed: ${data.fallbackReason}`
-        });
       }
 
     } catch (error) {
@@ -302,21 +263,14 @@ const AIAgentChat: React.FC = () => {
       setPhase('error', `Error: ${error.message}`);
       
       toast.error('Failed to send message', {
-        description: error.message || 'Please try again. Check edge function logs if the issue persists.',
+        description: error.message || 'Please try again.',
         duration: 10000
       });
 
       const errorMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `I apologize, but I encountered an error processing your request: ${error.message}. 
-
-This could be due to:
-- Network connectivity issues
-- AI service temporarily unavailable
-- Configuration problems with API keys
-
-Please try again, or check the edge function logs in the Supabase dashboard if you're the administrator.`,
+        content: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
         timestamp: new Date()
       };
 

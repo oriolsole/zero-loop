@@ -8,17 +8,9 @@ import { Bot, Loader2 } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { EnhancedToolDecision } from './EnhancedToolDecision';
+import { ToolProgressItem } from '@/types/tools';
 import ToolProgressStream from './ToolProgressStream';
 import AIAgentMessage from './AIAgentMessage';
-
-interface Tool {
-  id: string;
-  name: string;
-  status: string;
-  progress: number;
-  result?: any;
-  error?: string;
-}
 
 interface AIAgentChatInterfaceProps {
   conversations: ConversationMessage[];
@@ -27,7 +19,7 @@ interface AIAgentChatInterfaceProps {
     provider: ModelProvider;
     selectedModel?: string;
   };
-  tools: Tool[];
+  tools: ToolProgressItem[];
   toolsActive: boolean;
   normalizeToolDecision: (decision: any) => EnhancedToolDecision;
   scrollAreaRef: React.RefObject<HTMLDivElement>;
@@ -64,7 +56,7 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
               <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <h3 className="text-lg font-medium mb-2">Start a conversation</h3>
               <p className="text-sm mb-4">
-                I'm your enhanced AI agent with advanced reasoning, tool execution, and fallback strategies.
+                I'm your AI assistant with enhanced memory and tool capabilities.
               </p>
               <div className="flex items-center justify-center gap-2 text-xs mb-2">
                 <span>Currently using:</span>
@@ -77,10 +69,9 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
                 </Badge>
               </div>
               <div className="space-y-2 text-xs text-muted-foreground">
-                <p>🚀 Enhanced with Lovable-style principles for better analysis and execution</p>
-                <p>🔧 Available tools: Web Search, GitHub Tools, Knowledge Base Search</p>
-                <p>🎯 Try: "Search GitHub for React hooks examples" or "Find recent AI news"</p>
-                <p>💡 Tip: For GitHub access, configure your GitHub token in Settings</p>
+                <p>💭 I remember context across our conversation</p>
+                <p>🔧 I can search the web, access GitHub, and query knowledge bases</p>
+                <p>🎯 Try: "Search for React hooks" or "Analyze a GitHub repository"</p>
               </div>
             </div>
           )}
@@ -104,7 +95,7 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
                 <div className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span className="text-sm">
-                    Processing with enhanced {modelSettings.provider.toUpperCase()} analysis...
+                    Thinking with {modelSettings.provider.toUpperCase()}...
                   </span>
                 </div>
                 
