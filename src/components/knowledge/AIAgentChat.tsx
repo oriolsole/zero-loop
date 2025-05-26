@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardHeader } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,7 +11,6 @@ import { EnhancedToolDecision } from './EnhancedToolDecision';
 import { useEnhancedToolDecision } from '@/hooks/useEnhancedToolDecision';
 import { useAIPhases } from '@/hooks/useAIPhases';
 import { useConversationContext } from '@/hooks/useConversationContext';
-import { ToolProgressItem } from '@/types/tools';
 import AIAgentHeader from './AIAgentHeader';
 import AIAgentChatInterface from './AIAgentChatInterface';
 import AIAgentInput from './AIAgentInput';
@@ -156,10 +156,10 @@ const AIAgentChat: React.FC = () => {
     try {
       const conversationHistory = getConversationHistory();
 
-      setPhase('thinking', 'Processing your request...', 10);
+      setPhase('planning', 'Processing your request...', 10);
       if (decision.shouldUseTools) {
         startExecution();
-        setPhase('working', `Using ${decision.suggestedTools.length} tools...`, decision.estimatedSteps * 3);
+        setPhase('executing', `Using ${decision.suggestedTools.length} tools...`, decision.estimatedSteps * 3);
       }
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
@@ -183,7 +183,7 @@ const AIAgentChat: React.FC = () => {
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
-      setPhase('completing', 'Finalizing response...', 5);
+      setPhase('reflecting', 'Finalizing response...', 5);
 
       // Process and store tool results
       if (data.toolProgress && data.toolProgress.length > 0) {
