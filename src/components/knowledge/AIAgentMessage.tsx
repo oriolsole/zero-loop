@@ -41,15 +41,15 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
     
     switch (message.messageType) {
       case 'analysis':
-        return 'bg-purple-50 border-l-4 border-l-purple-500';
+        return 'bg-card border border-border border-l-4 border-l-purple-500 text-card-foreground';
       case 'planning':
-        return 'bg-blue-50 border-l-4 border-l-blue-500';
+        return 'bg-card border border-border border-l-4 border-l-blue-500 text-card-foreground';
       case 'execution':
-        return 'bg-orange-50 border-l-4 border-l-orange-500';
+        return 'bg-card border border-border border-l-4 border-l-orange-500 text-card-foreground';
       case 'tool-update':
-        return 'bg-green-50 border-l-4 border-l-green-500';
+        return 'bg-card border border-border border-l-4 border-l-green-500 text-card-foreground';
       default:
-        return 'bg-secondary';
+        return 'bg-muted border border-border text-muted-foreground';
     }
   };
 
@@ -72,14 +72,14 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
     <div className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
       {message.role !== 'user' && (
         <Avatar className="h-8 w-8 mt-0.5">
-          <AvatarFallback>
+          <AvatarFallback className="bg-secondary">
             {getMessageIcon()}
           </AvatarFallback>
         </Avatar>
       )}
       
       <div 
-        className={`rounded-lg px-4 py-3 max-w-[80%] ${getMessageStyle()}`}
+        className={`rounded-lg px-4 py-3 max-w-[80%] shadow-sm ${getMessageStyle()}`}
       >
         {getMessageTitle() && (
           <div className="flex items-center gap-2 mb-2 text-sm font-medium">
@@ -102,7 +102,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
                 ) : (
                   <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
                 )}
-                <span>{tool.displayName || tool.name.replace('execute_', '')}</span>
+                <span className="text-foreground">{tool.displayName || tool.name.replace('execute_', '')}</span>
                 {tool.status === 'completed' && (
                   <Badge variant="secondary" className="text-xs">Done</Badge>
                 )}
@@ -145,7 +145,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-2 mt-2">
               {message.toolDecision && (
-                <div className="p-2 rounded bg-muted/50 border-l-2 border-blue-500">
+                <div className="p-2 rounded bg-muted/50 border border-border border-l-2 border-l-blue-500">
                   <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
                     <Brain className="h-3 w-3" />
                     Tool Decision
@@ -157,7 +157,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
               )}
               
               {message.selfReflection && (
-                <div className="p-2 rounded bg-muted/50 border-l-2 border-purple-500">
+                <div className="p-2 rounded bg-muted/50 border border-border border-l-2 border-l-purple-500">
                   <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
                     <Brain className="h-3 w-3" />
                     Self-Reflection
@@ -178,7 +178,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
       
       {message.role === 'user' && (
         <Avatar className="h-8 w-8 mt-0.5">
-          <AvatarFallback>
+          <AvatarFallback className="bg-secondary">
             <User className="h-4 w-4" />
           </AvatarFallback>
         </Avatar>
