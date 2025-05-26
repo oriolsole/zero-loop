@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardHeader } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,7 +14,6 @@ import AIAgentHeader from './AIAgentHeader';
 import AIAgentChatInterface from './AIAgentChatInterface';
 import AIAgentInput from './AIAgentInput';
 import SessionsSidebar from './SessionsSidebar';
-import PlanExecutionProgress from './PlanExecutionProgress';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
@@ -38,11 +36,8 @@ const AIAgentChat: React.FC = () => {
   
   const { detectPlan } = useAIPlanDetector();
   const {
-    currentPlan,
-    isExecuting,
     createDynamicPlan,
-    executeDynamicPlan,
-    getProgress
+    executeDynamicPlan
   } = useDynamicPlanOrchestrator();
 
   const {
@@ -112,7 +107,6 @@ const AIAgentChat: React.FC = () => {
     addMessage(followUpMessage);
     setInput('');
     
-    // Process the follow-up action the same way as a regular message
     await processMessage(action);
   };
 
@@ -124,16 +118,6 @@ const AIAgentChat: React.FC = () => {
 
     setPhase('analyzing', 'AI is analyzing your request...', 10);
     
-    const analysisMessage: ConversationMessage = {
-      id: `analysis-${Date.now()}`,
-      role: 'system',
-      content: 'AI is determining the best approach for your request...',
-      timestamp: new Date(),
-      messageType: 'analysis'
-    };
-    
-    addMessage(analysisMessage);
-    
     setIsLoading(true);
     clearTools();
 
@@ -144,49 +128,59 @@ const AIAgentChat: React.FC = () => {
       console.log('AI Plan Detection Result:', planDetection);
 
       if (planDetection.shouldUsePlan && planDetection.suggestedSteps.length > 0) {
-        // Create and execute dynamic plan
-        setPhase('planning', 'Creating dynamic execution plan...', 5);
+        // Show AI reasoning for creating a plan
+        const planReasoningMessage: ConversationMessage = {
+          id: `plan-reasoning-${Date.now()}`,
+          role: 'assistant',
+          content: `I'll create a ${planDetection.estimatedComplexity} plan to handle your request comprehensively.`,
+          timestamp: new Date(),
+          messageType: 'planning',
+          aiReasoning: `Detected ${planDetection.planType} request requiring ${planDetection.suggestedSteps.length} steps: ${planDetection.suggestedSteps.join(' → ')}`
+        };
+        addMessage(planReasoningMessage);
         
+        // Create and execute dynamic plan with chat-based updates
         const plan = await createDynamicPlan(
           enhancedMessage,
           planDetection.suggestedSteps,
           planDetection.planType
         );
         
-        const planningMessage: ConversationMessage = {
-          id: `planning-${Date.now()}`,
-          role: 'system',
-          content: `🤖 AI has created a ${planDetection.estimatedComplexity} plan: ${plan.title}\n\nSteps: ${planDetection.suggestedSteps.join(' → ')}`,
-          timestamp: new Date(),
-          messageType: 'planning',
-          executionPlan: plan
-        };
-        addMessage(planningMessage);
-        
         setPhase('executing', `Executing ${plan.steps.length} AI-generated steps...`, plan.steps.length * 8);
 
-        // Execute the dynamic plan with real-time updates
+        // Execute the dynamic plan with chat message updates
         await executeDynamicPlan(
           plan,
           enhancedMessage,
           (step) => {
-            console.log('AI Plan step updated:', step);
-            // Update the planning message with step progress
-            updateMessage(`planning-${Date.now()}`, {
-              content: `🤖 AI Plan Progress: Step ${plan.currentStepIndex + 1}/${plan.steps.length}\n\n${step.progressUpdate || step.description}`,
-              messageType: 'execution'
-            });
+            // Add step execution message
+            const stepMessage: ConversationMessage = {
+              id: `step-${step.id}-${Date.now()}`,
+              role: 'assistant',
+              content: step.aiInsight || `Completed: ${step.description}`,
+              timestamp: new Date(),
+              messageType: step.status === 'executing' ? 'step-executing' : 'step-completed',
+              aiReasoning: step.reasoning,
+              stepDetails: {
+                tool: step.tool,
+                result: step.extractedContent,
+                status: step.status,
+                progressUpdate: step.progressUpdate
+              }
+            };
+            addMessage(stepMessage);
           },
-          (result) => {
-            const assistantMessage: ConversationMessage = {
-              id: (Date.now() + 2).toString(),
+          (result, followUpSuggestions) => {
+            // Add final result message with follow-up suggestions
+            const finalMessage: ConversationMessage = {
+              id: `final-${Date.now()}`,
               role: 'assistant',
               content: result,
               timestamp: new Date(),
               messageType: 'response',
-              executionPlan: plan
+              followUpSuggestions
             };
-            addMessage(assistantMessage);
+            addMessage(finalMessage);
           }
         );
 
@@ -309,16 +303,6 @@ const AIAgentChat: React.FC = () => {
         </CardHeader>
         
         <div className="flex-1 flex flex-col overflow-hidden">
-          {currentPlan && (
-            <div className="px-6 pb-0">
-              <PlanExecutionProgress 
-                plan={currentPlan} 
-                progress={getProgress()}
-                onFollowUpAction={handleFollowUpAction}
-              />
-            </div>
-          )}
-          
           <AIAgentChatInterface
             conversations={conversations}
             isLoading={isLoading}
@@ -326,6 +310,7 @@ const AIAgentChat: React.FC = () => {
             tools={tools}
             toolsActive={toolsActive}
             scrollAreaRef={scrollAreaRef}
+            onFollowUpAction={handleFollowUpAction}
           />
         </div>
         

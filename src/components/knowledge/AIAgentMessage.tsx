@@ -2,17 +2,18 @@
 import React, { useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Bot, User, Wrench, Brain, ChevronDown, ChevronRight, Search, Github, Database, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Bot, User, Brain, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader2, Lightbulb, ArrowRight } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 
 interface AIAgentMessageProps {
   message: ConversationMessage;
+  onFollowUpAction?: (action: string) => void;
 }
 
-const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
+const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpAction }) => {
   const [showDetails, setShowDetails] = useState(false);
 
   const formatTimestamp = (date: Date) => {
@@ -23,72 +24,69 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
     if (message.role === 'user') return <User className="h-4 w-4" />;
     
     switch (message.messageType) {
-      case 'analysis':
-        return <Brain className="h-4 w-4 text-purple-500" />;
       case 'planning':
-        return <Search className="h-4 w-4 text-blue-500" />;
-      case 'execution':
-        return <Wrench className="h-4 w-4 text-orange-500" />;
-      case 'tool-update':
-        return message.isStreaming ? <Loader2 className="h-4 w-4 animate-spin text-blue-500" /> : <CheckCircle className="h-4 w-4 text-green-500" />;
+        return <Brain className="h-4 w-4 text-purple-500" />;
+      case 'step-executing':
+        return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+      case 'step-completed':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
       default:
         return <Bot className="h-4 w-4" />;
     }
   };
 
   const getMessageStyle = () => {
-    if (message.role === 'user') return 'bg-primary text-primary-foreground';
+    if (message.role === 'user') return 'bg-primary text-primary-foreground ml-12';
     
     switch (message.messageType) {
-      case 'analysis':
-        return 'bg-card border border-border border-l-4 border-l-purple-500 text-card-foreground';
       case 'planning':
-        return 'bg-card border border-border border-l-4 border-l-blue-500 text-card-foreground';
-      case 'execution':
-        return 'bg-card border border-border border-l-4 border-l-orange-500 text-card-foreground';
-      case 'tool-update':
-        return 'bg-card border border-border border-l-4 border-l-green-500 text-card-foreground';
+        return 'bg-purple-50 border border-purple-200 mr-12';
+      case 'step-executing':
+        return 'bg-blue-50 border border-blue-200 mr-12';
+      case 'step-completed':
+        return 'bg-green-50 border border-green-200 mr-12';
       default:
-        return 'bg-muted border border-border text-muted-foreground';
+        return 'bg-gray-50 border border-gray-200 mr-12';
     }
   };
 
-  const getMessageTitle = () => {
-    switch (message.messageType) {
-      case 'analysis':
-        return 'Analyzing Request';
-      case 'planning':
-        return 'Planning Execution';
-      case 'execution':
-        return 'Executing Tools';
-      case 'tool-update':
-        return 'Tool Progress';
-      default:
-        return null;
-    }
+  const shouldShowAIReasoning = () => {
+    return message.aiReasoning && (message.messageType === 'planning' || message.messageType === 'step-executing' || message.messageType === 'step-completed');
   };
 
   return (
     <div className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
       {message.role !== 'user' && (
-        <Avatar className="h-8 w-8 mt-0.5">
+        <Avatar className="h-8 w-8 mt-0.5 flex-shrink-0">
           <AvatarFallback className="bg-secondary">
             {getMessageIcon()}
           </AvatarFallback>
         </Avatar>
       )}
       
-      <div 
-        className={`rounded-lg px-4 py-3 max-w-[80%] shadow-sm ${getMessageStyle()}`}
-      >
-        {getMessageTitle() && (
-          <div className="flex items-center gap-2 mb-2 text-sm font-medium">
-            {getMessageIcon()}
-            <span>{getMessageTitle()}</span>
+      <div className={`rounded-lg px-4 py-3 max-w-[80%] shadow-sm ${getMessageStyle()}`}>
+        {/* Main message content */}
+        <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+        
+        {/* AI Reasoning (Lovable-style purple italic text) */}
+        {shouldShowAIReasoning() && (
+          <div className="mt-2 text-sm text-purple-600 italic">
+            <Brain className="h-3 w-3 inline mr-1" />
+            {message.aiReasoning}
           </div>
         )}
-        
-        <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+
+        {/* Step Progress Status */}
+        {message.stepDetails && (
+          <div className="mt-2 flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">
+              {message.stepDetails.tool.replace('execute_', '')}
+            </Badge>
+            {message.stepDetails.status === 'executing' && (
+              <span className="text-xs text-blue-600">{message.stepDetails.progressUpdate}</span>
+            )}
+          </div>
+        )}
         
         {/* Tool Progress Display */}
         {message.toolProgress && message.toolProgress.length > 0 && (
@@ -125,7 +123,6 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
                   variant={tool.success ? "default" : "destructive"}
                   className="text-xs"
                 >
-                  <Wrench className="h-3 w-3 mr-1" />
                   {tool.name.replace('execute_', '')}
                   {!tool.success && ' (failed)'}
                 </Badge>
@@ -134,11 +131,59 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
           </div>
         )}
 
-        {/* Collapsible Technical Details */}
-        {(message.toolDecision || message.selfReflection) && (
+        {/* Follow-up Suggestions */}
+        {message.followUpSuggestions && message.followUpSuggestions.length > 0 && (
+          <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+            <div className="flex items-center gap-2 mb-2">
+              <ArrowRight className="h-4 w-4 text-indigo-600" />
+              <span className="text-sm font-medium text-indigo-800">What's next?</span>
+            </div>
+            <div className="space-y-1">
+              {message.followUpSuggestions.map((suggestion, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onFollowUpAction?.(suggestion)}
+                  className="mr-2 mb-1 text-xs bg-white/60 hover:bg-white border-indigo-300 text-indigo-700 hover:text-indigo-800"
+                >
+                  {suggestion}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Collapsible Step Details */}
+        {message.stepDetails?.result && (
           <Collapsible open={showDetails} onOpenChange={setShowDetails} className="mt-3">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs">
+              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-gray-600 hover:text-gray-800">
+                {showDetails ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
+                View Details
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2">
+              <div className="p-3 bg-white/80 rounded-lg border border-gray-200">
+                <div className="text-xs font-medium text-gray-500 mb-2">Tool Result:</div>
+                <div className="text-sm text-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                  {typeof message.stepDetails.result === 'string' 
+                    ? message.stepDetails.result.length > 1000 
+                      ? `${message.stepDetails.result.substring(0, 1000)}...` 
+                      : message.stepDetails.result
+                    : JSON.stringify(message.stepDetails.result, null, 2)
+                  }
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+
+        {/* Collapsible Technical Details for other message types */}
+        {(message.toolDecision || message.selfReflection) && !message.stepDetails && (
+          <Collapsible open={showDetails} onOpenChange={setShowDetails} className="mt-3">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-gray-600 hover:text-gray-800">
                 {showDetails ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
                 Technical Details
               </Button>
@@ -177,7 +222,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message }) => {
       </div>
       
       {message.role === 'user' && (
-        <Avatar className="h-8 w-8 mt-0.5">
+        <Avatar className="h-8 w-8 mt-0.5 flex-shrink-0">
           <AvatarFallback className="bg-secondary">
             <User className="h-4 w-4" />
           </AvatarFallback>

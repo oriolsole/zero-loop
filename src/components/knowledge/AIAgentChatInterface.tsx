@@ -20,6 +20,7 @@ interface AIAgentChatInterfaceProps {
   tools: ToolProgressItem[];
   toolsActive: boolean;
   scrollAreaRef: React.RefObject<HTMLDivElement>;
+  onFollowUpAction?: (action: string) => void;
 }
 
 const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
@@ -28,7 +29,8 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
   modelSettings,
   tools,
   toolsActive,
-  scrollAreaRef
+  scrollAreaRef,
+  onFollowUpAction
 }) => {
   const getProviderIcon = (provider: ModelProvider) => {
     switch (provider) {
@@ -111,6 +113,7 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
             <AIAgentMessage 
               key={message.id}
               message={message}
+              onFollowUpAction={onFollowUpAction}
             />
           ))}
           

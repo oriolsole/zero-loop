@@ -37,8 +37,6 @@ export interface DynamicExecutionPlan {
 
 export const useDynamicPlanOrchestrator = () => {
   const { user } = useAuth();
-  const [currentPlan, setCurrentPlan] = useState<DynamicExecutionPlan | null>(null);
-  const [isExecuting, setIsExecuting] = useState(false);
 
   const createDynamicPlan = useCallback(async (
     userRequest: string,
@@ -63,7 +61,6 @@ export const useDynamicPlanOrchestrator = () => {
       accumulatedFindings: {}
     };
 
-    setCurrentPlan(plan);
     return plan;
   }, []);
 
@@ -71,11 +68,8 @@ export const useDynamicPlanOrchestrator = () => {
     plan: DynamicExecutionPlan,
     originalRequest: string,
     onStepUpdate: (step: DynamicPlanStep) => void,
-    onPlanComplete: (result: string) => void
+    onPlanComplete: (result: string, followUpSuggestions?: string[]) => void
   ) => {
-    setIsExecuting(true);
-    setCurrentPlan(prev => prev ? { ...prev, status: 'executing' } : null);
-
     const accumulatedContent: string[] = [];
     const findings: Record<string, any> = {};
 
@@ -93,12 +87,6 @@ export const useDynamicPlanOrchestrator = () => {
           reasoning: `Executing ${step.description} to gather information for: ${originalRequest}`,
           progressUpdate
         };
-        
-        setCurrentPlan(prev => prev ? {
-          ...prev,
-          currentStepIndex: i,
-          steps: prev.steps.map((s, idx) => idx === i ? updatedStep : s)
-        } : null);
         
         onStepUpdate(updatedStep);
 
@@ -123,43 +111,7 @@ export const useDynamicPlanOrchestrator = () => {
             endTime: new Date().toISOString()
           };
 
-          setCurrentPlan(prev => prev ? {
-            ...prev,
-            steps: prev.steps.map((s, idx) => idx === i ? completedStep : s),
-            accumulatedFindings: findings
-          } : null);
-
           onStepUpdate(completedStep);
-
-          // Intelligent adaptation with AI-driven analysis
-          if (i < plan.steps.length - 1) {
-            const adaptationResult = await intelligentAdaptationWithAI(
-              originalRequest, 
-              accumulatedContent, 
-              plan.steps.slice(i + 1),
-              findings
-            );
-            
-            if (adaptationResult.needsAdaptation) {
-              const newSteps = await generateAdaptiveStepsWithAI(
-                originalRequest, 
-                accumulatedContent, 
-                adaptationResult.reasoning,
-                findings
-              );
-              
-              if (newSteps.length > 0) {
-                setCurrentPlan(prev => prev ? {
-                  ...prev,
-                  steps: [
-                    ...prev.steps.slice(0, i + 1),
-                    ...newSteps,
-                    ...prev.steps.slice(i + 1)
-                  ]
-                } : null);
-              }
-            }
-          }
 
         } catch (error) {
           const failedStep = {
@@ -168,11 +120,6 @@ export const useDynamicPlanOrchestrator = () => {
             error: error.message,
             endTime: new Date().toISOString()
           };
-
-          setCurrentPlan(prev => prev ? {
-            ...prev,
-            steps: prev.steps.map((s, idx) => idx === i ? failedStep : s)
-          } : null);
 
           onStepUpdate(failedStep);
           console.error('Step failed:', error);
@@ -186,45 +133,16 @@ export const useDynamicPlanOrchestrator = () => {
         findings
       );
       
-      setCurrentPlan(prev => prev ? {
-        ...prev,
-        status: 'completed',
-        finalResult,
-        followUpSuggestions,
-        endTime: new Date().toISOString()
-      } : null);
-
-      onPlanComplete(finalResult);
+      onPlanComplete(finalResult, followUpSuggestions);
 
     } catch (error) {
-      setCurrentPlan(prev => prev ? {
-        ...prev,
-        status: 'failed',
-        endTime: new Date().toISOString()
-      } : null);
-      
       throw error;
-    } finally {
-      setIsExecuting(false);
     }
   }, [user]);
 
-  const getProgress = useCallback(() => {
-    if (!currentPlan) return { current: 0, total: 0, percentage: 0 };
-    
-    const completed = currentPlan.steps.filter(step => step.status === 'completed').length;
-    const total = currentPlan.steps.length;
-    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-    
-    return { current: completed, total, percentage };
-  }, [currentPlan]);
-
   return {
-    currentPlan,
-    isExecuting,
     createDynamicPlan,
-    executeDynamicPlan,
-    getProgress
+    executeDynamicPlan
   };
 };
 

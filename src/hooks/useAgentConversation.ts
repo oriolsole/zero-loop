@@ -1,20 +1,38 @@
 import { useState, useCallback, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { DynamicExecutionPlan } from './useDynamicPlanOrchestrator';
 
 export interface ConversationMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  messageType?: 'response' | 'analysis' | 'planning' | 'execution' | 'tool-update';
-  toolsUsed?: any[];
-  selfReflection?: string;
-  toolDecision?: any;
-  toolProgress?: any[];
+  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed';
   isStreaming?: boolean;
-  executionPlan?: DynamicExecutionPlan;
+  toolsUsed?: Array<{
+    name: string;
+    success: boolean;
+    result?: any;
+    error?: string;
+  }>;
+  toolProgress?: Array<{
+    name: string;
+    status: 'pending' | 'executing' | 'completed' | 'failed';
+    displayName?: string;
+  }>;
+  selfReflection?: string;
+  toolDecision?: {
+    reasoning: string;
+    selectedTools: string[];
+  };
+  executionPlan?: any;
+  aiReasoning?: string;
+  stepDetails?: {
+    tool: string;
+    result: any;
+    status: string;
+    progressUpdate?: string;
+  };
+  followUpSuggestions?: string[];
 }
 
 export interface ConversationSession {
