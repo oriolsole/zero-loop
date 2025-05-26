@@ -2,7 +2,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ModeToggle } from '@/components/theme-provider';
-import { Brain, Settings } from 'lucide-react';
+import { Brain, Settings, Library, Puzzle, Bot } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import UserMenu from './UserMenu';
 
@@ -56,7 +56,27 @@ const Header: React.FC = () => {
             </Link>
           </nav>
         </div>
-        <div className="flex flex-1 items-center justify-end space-x-2">
+        <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
+          <div className="w-full flex-1 md:w-auto md:flex-none">
+            <Button variant="ghost" className="mr-2" asChild>
+              <Link to="/knowledge">
+                <Library className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Knowledge</span>
+              </Link>
+            </Button>
+            <Button variant="ghost" className="mr-2" asChild>
+              <Link to="/ai-agent">
+                <Bot className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">AI Agent</span>
+              </Link>
+            </Button>
+            <Button variant="ghost" className="mr-2" asChild>
+              <Link to="/domains">
+                <Puzzle className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Domains</span>
+              </Link>
+            </Button>
+          </div>
           <nav className="flex items-center space-x-2">
             <Button variant="ghost" size="sm" asChild>
               <Link to="/settings">
