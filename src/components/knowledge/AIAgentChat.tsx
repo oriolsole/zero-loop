@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardHeader } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
@@ -116,8 +117,6 @@ const AIAgentChat: React.FC = () => {
     const contextualMessage = getContextForMessage(message);
     const enhancedMessage = contextualMessage ? `${message}\n\nContext: ${contextualMessage}` : message;
 
-    setPhase('analyzing', 'AI is analyzing your request...', 10);
-    
     setIsLoading(true);
     clearTools();
 
@@ -128,36 +127,34 @@ const AIAgentChat: React.FC = () => {
       console.log('AI Plan Detection Result:', planDetection);
 
       if (planDetection.shouldUsePlan && planDetection.suggestedSteps.length > 0) {
-        // Show AI reasoning for creating a plan
-        const planReasoningMessage: ConversationMessage = {
-          id: `plan-reasoning-${Date.now()}`,
+        // AI explains it will create a plan
+        const planMessage: ConversationMessage = {
+          id: `plan-${Date.now()}`,
           role: 'assistant',
-          content: `I'll create a ${planDetection.estimatedComplexity} plan to handle your request comprehensively.`,
+          content: `I'll help you with that by breaking this down into ${planDetection.suggestedSteps.length} steps. Let me work through this systematically.`,
           timestamp: new Date(),
           messageType: 'planning',
-          aiReasoning: `Detected ${planDetection.planType} request requiring ${planDetection.suggestedSteps.length} steps: ${planDetection.suggestedSteps.join(' → ')}`
+          aiReasoning: `Creating ${planDetection.estimatedComplexity} plan: ${planDetection.suggestedSteps.join(' → ')}`
         };
-        addMessage(planReasoningMessage);
+        addMessage(planMessage);
         
-        // Create and execute dynamic plan with chat-based updates
+        // Create and execute dynamic plan with simple chat updates
         const plan = await createDynamicPlan(
           enhancedMessage,
           planDetection.suggestedSteps,
           planDetection.planType
         );
-        
-        setPhase('executing', `Executing ${plan.steps.length} AI-generated steps...`, plan.steps.length * 8);
 
-        // Execute the dynamic plan with chat message updates
+        // Execute the plan with conversational updates
         await executeDynamicPlan(
           plan,
           enhancedMessage,
           (step) => {
-            // Add step execution message
+            // Add conversational step message
             const stepMessage: ConversationMessage = {
               id: `step-${step.id}-${Date.now()}`,
               role: 'assistant',
-              content: step.aiInsight || `Completed: ${step.description}`,
+              content: step.aiInsight || `Working on: ${step.description}`,
               timestamp: new Date(),
               messageType: step.status === 'executing' ? 'step-executing' : 'step-completed',
               aiReasoning: step.reasoning,
@@ -171,7 +168,7 @@ const AIAgentChat: React.FC = () => {
             addMessage(stepMessage);
           },
           (result, followUpSuggestions) => {
-            // Add final result message with follow-up suggestions
+            // Add final conversational result
             const finalMessage: ConversationMessage = {
               id: `final-${Date.now()}`,
               role: 'assistant',
@@ -183,14 +180,9 @@ const AIAgentChat: React.FC = () => {
             addMessage(finalMessage);
           }
         );
-
-        setPhase('completed', 'AI plan execution completed');
-        toast.success(`AI successfully completed ${plan.steps.length}-step plan`);
         
       } else {
         // Single-step execution for simple requests
-        setPhase('executing', 'Processing your request...', 15);
-        
         const conversationHistory = getConversationHistory();
 
         const { data, error } = await supabase.functions.invoke('ai-agent', {
@@ -211,8 +203,6 @@ const AIAgentChat: React.FC = () => {
         if (!data || !data.success) {
           throw new Error(data?.error || 'Failed to get response from AI agent');
         }
-
-        setPhase('completed', 'Done');
 
         const assistantMessage: ConversationMessage = {
           id: (Date.now() + 1).toString(),
@@ -236,7 +226,6 @@ const AIAgentChat: React.FC = () => {
 
     } catch (error) {
       console.error('Error sending message:', error);
-      setPhase('error', `Error: ${error.message}`);
       
       toast.error('Failed to send message', {
         description: error.message || 'Please try again.',
@@ -253,9 +242,6 @@ const AIAgentChat: React.FC = () => {
       addMessage(errorMessage);
     } finally {
       setIsLoading(false);
-      setTimeout(() => {
-        resetPhases();
-      }, 3000);
     }
   };
 
