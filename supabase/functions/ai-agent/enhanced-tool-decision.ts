@@ -5,7 +5,7 @@
 
 export interface EnhancedToolDecision {
   shouldUseTools: boolean;
-  detectedType: 'search' | 'github' | 'knowledge' | 'general' | 'none' | 'search-and-scrape' | 'scrape-content';
+  detectedType: 'search' | 'github' | 'knowledge' | 'general' | 'none' | 'search-and-scrape' | 'scrape-content' | 'jira';
   reasoning: string;
   suggestedTools: string[];
   confidence: number;
@@ -65,7 +65,17 @@ export function enhancedAnalyzeToolRequirements(
     { pattern: /\b(stored|saved|documented|recorded)\b/i, weight: 0.7, context: 'stored_data' }
   ];
 
-  // NEW: Web scraping specific patterns
+  // NEW: Jira-specific patterns
+  const jiraPatterns = [
+    { pattern: /\b(jira|atlassian)\b/i, weight: 1.0, context: 'jira_platform' },
+    { pattern: /\b(connect to jira|jira api|jira integration|access jira)\b/i, weight: 0.9, context: 'jira_connection' },
+    { pattern: /\b(search (in )?jira|find (in )?jira|retrieve.*jira)\b/i, weight: 0.9, context: 'jira_search' },
+    { pattern: /\b(projects?|issues?|tickets?|epic|story|bug|sprint)\b/i, weight: 0.8, context: 'jira_entities' },
+    { pattern: /\b(create (issue|ticket)|update (issue|ticket)|comment|assign)\b/i, weight: 0.7, context: 'jira_actions' },
+    { pattern: /\b(jql|jira query)\b/i, weight: 0.8, context: 'jira_query' }
+  ];
+
+  // Web scraping specific patterns
   const scrapingPatterns = [
     { pattern: /https?:\/\/[^\s]+/g, weight: 1.0, context: 'direct_url' },
     { pattern: /\b(extract|scrape|get content|full article|detailed|comprehensive)\b/i, weight: 0.8, context: 'detailed_content' },
@@ -106,6 +116,7 @@ export function enhancedAnalyzeToolRequirements(
   let searchScore = 0;
   let knowledgeScore = 0;
   let scrapingScore = 0;
+  let jiraScore = 0;
   
   // Apply context boost for GitHub if we're referencing previous GitHub content
   const contextBoost = referencesContext && contextInfo.referencesGitHub ? 0.8 : 0;
@@ -127,9 +138,13 @@ export function enhancedAnalyzeToolRequirements(
     if (pattern.test(message)) knowledgeScore += weight;
   });
 
-  // NEW: Calculate scraping score
   scrapingPatterns.forEach(({ pattern, weight }) => {
     if (pattern.test(message)) scrapingScore += weight;
+  });
+
+  // NEW: Calculate Jira score
+  jiraPatterns.forEach(({ pattern, weight }) => {
+    if (pattern.test(message)) jiraScore += weight;
   });
 
   // Check for URLs in the message
@@ -147,8 +162,30 @@ export function enhancedAnalyzeToolRequirements(
   // Decision logic with context-aware confidence scoring
   let decision: EnhancedToolDecision;
 
-  // NEW: Enhanced decision logic for scraping scenarios
-  if (hasUrls && scrapingScore >= 0.7) {
+  // NEW: Jira decision logic (check first since it's specific)
+  if (jiraScore >= 0.6) {
+    decision = {
+      shouldUseTools: true,
+      detectedType: 'jira',
+      reasoning: `Jira-related request detected (score: ${jiraScore.toFixed(1)}) - requires Jira tools for project/issue management`,
+      suggestedTools: ['execute_jira-tools'],
+      confidence: Math.min(0.95, 0.7 + jiraScore * 0.2),
+      complexity,
+      estimatedSteps: complexity === 'complex' ? 3 : 2,
+      fallbackStrategy: 'If Jira access fails, provide guidance on Jira setup and API configuration',
+      contextualInfo: {
+        referencePrevious: referencesContext
+      },
+      executionPlan: [
+        {
+          step: 1,
+          tool: 'execute_jira-tools',
+          description: 'Connect to Jira and execute the requested operation',
+          estimatedTime: 8
+        }
+      ]
+    };
+  } else if (hasUrls && scrapingScore >= 0.7) {
     // Direct URL scraping request
     decision = {
       shouldUseTools: true,

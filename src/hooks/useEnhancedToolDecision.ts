@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { EnhancedToolDecision } from '@/components/knowledge/EnhancedToolDecision';
 import { usePlanDetector } from './usePlanDetector';
@@ -56,7 +57,7 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       return decision;
     }
     
-    // Fallback to original single-step analysis with enhanced scraping support
+    // Fallback to original single-step analysis with enhanced support
     const contextInfo = analyzeConversationContext(message, conversationHistory);
     
     const githubPatterns = [
@@ -81,7 +82,17 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       { pattern: /\b(stored|saved|documented|recorded)\b/i, weight: 0.7, context: 'stored_data' }
     ];
 
-    // NEW: Web scraping specific patterns
+    // NEW: Jira-specific patterns
+    const jiraPatterns = [
+      { pattern: /\b(jira|atlassian)\b/i, weight: 1.0, context: 'jira_platform' },
+      { pattern: /\b(connect to jira|jira api|jira integration|access jira)\b/i, weight: 0.9, context: 'jira_connection' },
+      { pattern: /\b(search (in )?jira|find (in )?jira|retrieve.*jira)\b/i, weight: 0.9, context: 'jira_search' },
+      { pattern: /\b(projects?|issues?|tickets?|epic|story|bug|sprint)\b/i, weight: 0.8, context: 'jira_entities' },
+      { pattern: /\b(create (issue|ticket)|update (issue|ticket)|comment|assign)\b/i, weight: 0.7, context: 'jira_actions' },
+      { pattern: /\b(jql|jira query)\b/i, weight: 0.8, context: 'jira_query' }
+    ];
+
+    // Web scraping specific patterns
     const scrapingPatterns = [
       { pattern: /https?:\/\/[^\s]+/g, weight: 1.0, context: 'direct_url' },
       { pattern: /\b(extract|scrape|get content|full article|detailed|comprehensive)\b/i, weight: 0.8, context: 'detailed_content' },
@@ -125,6 +136,7 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
     let searchScore = 0;
     let knowledgeScore = 0;
     let scrapingScore = 0;
+    let jiraScore = 0;
     
     githubPatterns.forEach(({ pattern, weight }) => {
       if (pattern.test(message)) githubScore += weight;
@@ -142,17 +154,28 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       if (pattern.test(message)) knowledgeScore += weight;
     });
 
-    // NEW: Calculate scraping score
     scrapingPatterns.forEach(({ pattern, weight }) => {
       if (pattern.test(message)) scrapingScore += weight;
+    });
+
+    // NEW: Calculate Jira score
+    jiraPatterns.forEach(({ pattern, weight }) => {
+      if (pattern.test(message)) jiraScore += weight;
     });
 
     // Check for URLs and detailed content needs
     const hasUrls = /https?:\/\/[^\s]+/g.test(message);
     const needsDetailedContent = /\b(detailed|comprehensive|full|complete|in-depth|news today|current news|latest news)\b/i.test(message);
 
-    // Enhanced decision logic for scraping scenarios
-    if (hasUrls && scrapingScore >= 0.7) {
+    // Enhanced decision logic - Jira gets priority since it's specific
+    if (jiraScore >= 0.6) {
+      detectedType = 'jira';
+      shouldUseTools = true;
+      reasoning = `Jira-related request detected (score: ${jiraScore.toFixed(1)}) - requires Jira tools for project/issue management`;
+      suggestedTools = ['execute_jira-tools'];
+      confidence = Math.min(0.95, 0.7 + jiraScore * 0.2);
+      fallbackStrategy = 'If Jira access fails, provide guidance on Jira setup and API configuration';
+    } else if (hasUrls && scrapingScore >= 0.7) {
       detectedType = 'scrape-content';
       shouldUseTools = true;
       reasoning = `Direct web scraping request detected - user provided specific URL(s) and wants detailed content extraction`;
@@ -177,16 +200,14 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       suggestedTools = ['execute_github-tools'];
       confidence = Math.min(0.95, 0.7 + githubScore * 0.2);
       fallbackStrategy = 'If GitHub access fails, provide general guidance about repository structure and best practices';
-    }
-    else if (knowledgeScore >= 0.7) {
+    } else if (knowledgeScore >= 0.7) {
       detectedType = 'knowledge';
       shouldUseTools = true;
       reasoning = 'Knowledge base query detected - requires search through stored documents and conversations';
       suggestedTools = ['execute_knowledge-search-v2'];
       confidence = 0.85;
       fallbackStrategy = 'If no results found, suggest alternative search terms or approaches';
-    }
-    else if (searchScore >= 0.6) {
+    } else if (searchScore >= 0.6) {
       const needsMultipleTools = searchScore > 0.8 || complexity === 'complex';
       detectedType = 'search';
       shouldUseTools = true;
@@ -196,8 +217,7 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
         ['execute_web-search'];
       confidence = 0.8;
       fallbackStrategy = 'If web search fails, try knowledge base search or provide general guidance';
-    }
-    else {
+    } else {
       detectedType = 'general';
       shouldUseTools = false;
       reasoning = 'General conversation or question - can be answered without external tools';

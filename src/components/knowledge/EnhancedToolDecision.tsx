@@ -3,7 +3,7 @@ import React from 'react';
 
 export interface EnhancedToolDecision {
   shouldUseTools: boolean;
-  detectedType: 'github' | 'search' | 'knowledge' | 'general' | 'multi-step-plan' | 'search-and-scrape' | 'scrape-content';
+  detectedType: 'github' | 'search' | 'knowledge' | 'general' | 'multi-step-plan' | 'search-and-scrape' | 'scrape-content' | 'jira';
   reasoning: string;
   confidence: number;
   suggestedTools: string[];
@@ -21,6 +21,8 @@ const EnhancedToolDecision: React.FC<{ decision: EnhancedToolDecision }> = ({ de
         return 'text-purple-700 bg-purple-50 border-purple-200';
       case 'scrape-content':
         return 'text-green-700 bg-green-50 border-green-200';
+      case 'jira':
+        return 'text-indigo-700 bg-indigo-50 border-indigo-200';
       case 'github':
         return 'text-gray-700 bg-gray-50 border-gray-200';
       case 'search':
@@ -40,6 +42,8 @@ const EnhancedToolDecision: React.FC<{ decision: EnhancedToolDecision }> = ({ de
         return 'Search + Scrape';
       case 'scrape-content':
         return 'Content Extraction';
+      case 'jira':
+        return 'Jira Tools';
       case 'github':
         return 'GitHub Analysis';
       case 'search':
