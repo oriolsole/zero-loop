@@ -1,3 +1,4 @@
+
 /**
  * Response handling utilities
  */
@@ -61,29 +62,14 @@ export function extractAssistantMessage(data: any): { content: string; role: str
     assistantMessage.content = '';
   }
 
-  // Enhanced code-block-wrapped output handling
+  // Handle code-block-wrapped output for synthesis responses
   if (assistantMessage.content && typeof assistantMessage.content === 'string') {
-    // Handle code blocks with optional language specifiers
-    const codeBlockMatch = assistantMessage.content.match(/```(?:json|text|markdown)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) {
-      const cleanText = codeBlockMatch[1].trim();
+    const match = assistantMessage.content.match(/```(?:json|text)?\s*([\s\S]*?)```/);
+    if (match) {
+      const cleanText = match[1].trim();
       if (cleanText.length > 0) {
         assistantMessage.content = cleanText;
         console.log('Extracted content from code block wrapper');
-      }
-    }
-    
-    // Handle JSON wrapped responses
-    if (assistantMessage.content.startsWith('{') && assistantMessage.content.endsWith('}')) {
-      try {
-        const parsed = JSON.parse(assistantMessage.content);
-        if (parsed.content || parsed.response || parsed.answer) {
-          assistantMessage.content = parsed.content || parsed.response || parsed.answer;
-          console.log('Extracted content from JSON wrapper');
-        }
-      } catch (e) {
-        // If JSON parsing fails, keep original content
-        console.log('Failed to parse JSON-like content, keeping original');
       }
     }
   }
