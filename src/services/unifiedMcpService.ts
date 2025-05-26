@@ -1,4 +1,3 @@
-
 import { MCPConfiguration, MCPToolDefinition } from '@/types/mcpConfig';
 import { MCP } from '@/types/mcp';
 import { mcpConfigService } from './mcpConfigService';
@@ -93,10 +92,7 @@ export class UnifiedMcpService {
           description: 'Comprehensive multi-tool AI agent with all available MCP tools',
           created: new Date().toISOString().split('T')[0],
           updated: new Date().toISOString().split('T')[0],
-          author: 'ZeroLoop',
-          version: '1.0.0',
-          toolCount: allTools.length,
-          sources: ['database', 'static-files']
+          author: 'ZeroLoop'
         }
       };
       
