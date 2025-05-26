@@ -69,9 +69,9 @@ export const useMultiToolOrchestrator = () => {
       for (let i = 0; i < updatedPlan.toolExecutions.length; i++) {
         const execution = updatedPlan.toolExecutions[i];
         
-        const startedExecution = {
+        const startedExecution: ToolExecution = {
           ...execution,
-          status: 'executing' as const,
+          status: 'executing',
           startTime: new Date().toISOString()
         };
         
@@ -84,9 +84,9 @@ export const useMultiToolOrchestrator = () => {
             updatedPlan.contextMemory
           );
           
-          const completedExecution = {
+          const completedExecution: ToolExecution = {
             ...startedExecution,
-            status: 'completed' as const,
+            status: 'completed',
             result,
             endTime: new Date().toISOString()
           };
@@ -114,9 +114,9 @@ export const useMultiToolOrchestrator = () => {
           }
           
         } catch (error) {
-          const failedExecution = {
+          const failedExecution: ToolExecution = {
             ...startedExecution,
-            status: 'failed' as const,
+            status: 'failed',
             error: error.message,
             endTime: new Date().toISOString()
           };
