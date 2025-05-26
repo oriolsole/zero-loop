@@ -40,13 +40,13 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     
     switch (message.messageType) {
       case 'planning':
-        return 'bg-purple-50 border border-purple-200 mr-12';
+        return 'bg-purple-900/20 border border-purple-500/30 mr-12';
       case 'step-executing':
-        return 'bg-blue-50 border border-blue-200 mr-12';
+        return 'bg-blue-900/20 border border-blue-500/30 mr-12';
       case 'step-completed':
-        return 'bg-green-50 border border-green-200 mr-12';
+        return 'bg-green-900/20 border border-green-500/30 mr-12';
       default:
-        return 'bg-gray-50 border border-gray-200 mr-12';
+        return 'bg-secondary/50 border border-border mr-12';
     }
   };
 
@@ -70,7 +70,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
         
         {/* AI Reasoning (Lovable-style purple italic text) */}
         {shouldShowAIReasoning() && (
-          <div className="mt-2 text-sm text-purple-600 italic">
+          <div className="mt-2 text-sm text-purple-400 italic">
             <Brain className="h-3 w-3 inline mr-1" />
             {message.aiReasoning}
           </div>
@@ -83,7 +83,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
               {message.stepDetails.tool.replace('execute_', '')}
             </Badge>
             {message.stepDetails.status === 'executing' && (
-              <span className="text-xs text-blue-600">{message.stepDetails.progressUpdate}</span>
+              <span className="text-xs text-blue-400">{message.stepDetails.progressUpdate}</span>
             )}
           </div>
         )}
@@ -133,10 +133,10 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
 
         {/* Follow-up Suggestions */}
         {message.followUpSuggestions && message.followUpSuggestions.length > 0 && (
-          <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+          <div className="mt-4 p-3 bg-indigo-900/30 rounded-lg border border-indigo-500/30">
             <div className="flex items-center gap-2 mb-2">
-              <ArrowRight className="h-4 w-4 text-indigo-600" />
-              <span className="text-sm font-medium text-indigo-800">What's next?</span>
+              <ArrowRight className="h-4 w-4 text-indigo-400" />
+              <span className="text-sm font-medium text-indigo-300">What's next?</span>
             </div>
             <div className="space-y-1">
               {message.followUpSuggestions.map((suggestion, index) => (
@@ -145,7 +145,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
                   variant="outline"
                   size="sm"
                   onClick={() => onFollowUpAction?.(suggestion)}
-                  className="mr-2 mb-1 text-xs bg-white/60 hover:bg-white border-indigo-300 text-indigo-700 hover:text-indigo-800"
+                  className="mr-2 mb-1 text-xs bg-secondary/60 hover:bg-secondary border-indigo-500/30 text-indigo-300 hover:text-indigo-200"
                 >
                   {suggestion}
                 </Button>
@@ -158,15 +158,15 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
         {message.stepDetails?.result && (
           <Collapsible open={showDetails} onOpenChange={setShowDetails} className="mt-3">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-gray-600 hover:text-gray-800">
+              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-muted-foreground hover:text-foreground">
                 {showDetails ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
                 View Details
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-2">
-              <div className="p-3 bg-white/80 rounded-lg border border-gray-200">
-                <div className="text-xs font-medium text-gray-500 mb-2">Tool Result:</div>
-                <div className="text-sm text-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto">
+              <div className="p-3 bg-secondary/30 rounded-lg border border-border">
+                <div className="text-xs font-medium text-muted-foreground mb-2">Tool Result:</div>
+                <div className="text-sm text-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
                   {typeof message.stepDetails.result === 'string' 
                     ? message.stepDetails.result.length > 1000 
                       ? `${message.stepDetails.result.substring(0, 1000)}...` 
@@ -183,14 +183,14 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
         {(message.toolDecision || message.selfReflection) && !message.stepDetails && (
           <Collapsible open={showDetails} onOpenChange={setShowDetails} className="mt-3">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-gray-600 hover:text-gray-800">
+              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-muted-foreground hover:text-foreground">
                 {showDetails ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
                 Technical Details
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-2 mt-2">
               {message.toolDecision && (
-                <div className="p-2 rounded bg-muted/50 border border-border border-l-2 border-l-blue-500">
+                <div className="p-2 rounded bg-secondary/30 border border-border border-l-2 border-l-blue-500">
                   <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
                     <Brain className="h-3 w-3" />
                     Tool Decision
@@ -202,7 +202,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
               )}
               
               {message.selfReflection && (
-                <div className="p-2 rounded bg-muted/50 border border-border border-l-2 border-l-purple-500">
+                <div className="p-2 rounded bg-secondary/30 border border-border border-l-2 border-l-purple-500">
                   <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
                     <Brain className="h-3 w-3" />
                     Self-Reflection
