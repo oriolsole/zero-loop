@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import AIAgentChat from '@/components/knowledge/AIAgentChat';
 import AIAgentTestTab from '@/components/knowledge/AIAgentTestTab';
-import { Bot, MessageSquare, TestTube } from 'lucide-react';
+import { Bot, MessageSquare, TestTube, Brain } from 'lucide-react';
 
 const AIAgent: React.FC = () => {
   return (
