@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -6,9 +7,6 @@ import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
 import { generateSystemPrompt } from './system-prompts.ts';
 import { extractAssistantMessage } from './response-handler.ts';
-import { detectQueryComplexity, shouldUseLearningLoop } from './learning-loop-detector.ts';
-import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
-import { getRelevantKnowledge } from './knowledge-retrieval.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,50 +52,28 @@ serve(async (req) => {
       });
     }
 
-    // Use AI to determine query complexity
-    const complexityDecision = await detectQueryComplexity(message, conversationHistory, supabase, modelSettings);
-    const useKnowledgeLoop = shouldUseLearningLoop(complexityDecision);
-
-    console.log('AI complexity decision:', complexityDecision);
-    console.log('Using learning loop:', useKnowledgeLoop);
-
-    // In test mode, return complexity decision for validation
+    // In test mode, return simple response for validation
     if (testMode) {
       return new Response(
         JSON.stringify({
           success: true,
-          complexity: complexityDecision,
-          useKnowledgeLoop,
-          message: `Test mode: Query classified as ${complexityDecision.classification}`,
+          message: `Test mode: Received message "${message}"`,
           testMode: true
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (useKnowledgeLoop) {
-      // Use unified reasoning with learning loop integration
-      return await handleComplexQueryWithLearningLoop(
-        message, 
-        conversationHistory, 
-        userId, 
-        sessionId, 
-        modelSettings, 
-        supabase,
-        complexityDecision
-      );
-    } else {
-      // Use standard tool chaining for simple queries
-      return await handleSimpleQuery(
-        message, 
-        conversationHistory, 
-        userId, 
-        sessionId, 
-        modelSettings, 
-        streaming, 
-        supabase
-      );
-    }
+    // Use unified query handler - no complexity detection needed
+    return await handleQuery(
+      message, 
+      conversationHistory, 
+      userId, 
+      sessionId, 
+      modelSettings, 
+      streaming, 
+      supabase
+    );
 
   } catch (error) {
     console.error('AI Agent error:', error);
@@ -117,281 +93,9 @@ serve(async (req) => {
 });
 
 /**
- * Handle complex queries using learning loop integration
+ * Unified query handler - simplified single flow
  */
-async function handleComplexQueryWithLearningLoop(
-  message: string,
-  conversationHistory: any[],
-  userId: string | null,
-  sessionId: string | null,
-  modelSettings: any,
-  supabase: any,
-  complexityDecision: any
-): Promise<Response> {
-  console.log('Starting complex query with learning loop integration');
-  console.log('AI reasoning:', complexityDecision.reasoning);
-  
-  // 1. Retrieve relevant existing knowledge
-  const relevantKnowledge = await getRelevantKnowledge(message, userId, supabase);
-  console.log('Retrieved relevant knowledge:', relevantKnowledge?.length || 0, 'nodes');
-
-  // 2. Get available tools
-  const { data: mcps, error: mcpError } = await supabase
-    .from('mcps')
-    .select('*')
-    .eq('isDefault', true)
-    .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2', 'jira-tools', 'web-scraper']);
-
-  if (mcpError) {
-    throw new Error('Failed to fetch available tools');
-  }
-
-  const tools = convertMCPsToTools(mcps);
-  const systemPrompt = generateSystemPrompt(mcps);
-
-  // 3. Execute iterative reasoning loop
-  let iteration = 0;
-  const maxIterations = 4;
-  let accumulatedContext: any[] = [];
-  let stopSignalReached = false;
-  let finalResponse = '';
-
-  // Enhanced system prompt for learning loop integration
-  const learningLoopPrompt = `${systemPrompt}
-
-**LEARNING LOOP MODE ACTIVATED**
-
-You are now in learning loop mode for a complex query. The AI classifier determined this query is COMPLEX because: ${complexityDecision.reasoning}
-
-Your goal is to:
-1. Break down the complex question into steps
-2. Use tools iteratively to gather information
-3. Build knowledge progressively across iterations
-4. Synthesize insights and persist valuable knowledge
-5. Only provide final response when you have sufficient information
-
-Relevant existing knowledge:
-${relevantKnowledge?.map(node => `- ${node.title}: ${node.description}`).join('\n') || 'No relevant prior knowledge found'}
-
-Continue until you have enough information to provide a comprehensive answer.`;
-
-  while (!stopSignalReached && iteration < maxIterations) {
-    iteration++;
-    console.log(`Learning loop iteration ${iteration}/${maxIterations}`);
-
-    // Prepare messages with accumulated context
-    const iterationMessages = [
-      {
-        role: 'system',
-        content: learningLoopPrompt
-      },
-      ...conversationHistory,
-      {
-        role: 'user',
-        content: iteration === 1 ? message : `Continue with iteration ${iteration}. Previous results: ${JSON.stringify(accumulatedContext.slice(-2))}`
-      }
-    ];
-
-    // Get AI decision on next steps
-    const response = await supabase.functions.invoke('ai-model-proxy', {
-      body: {
-        messages: iterationMessages,
-        tools: tools.length > 0 ? tools : undefined,
-        tool_choice: 'auto',
-        temperature: 0.7,
-        max_tokens: 2000,
-        ...(modelSettings && {
-          provider: modelSettings.provider,
-          model: modelSettings.selectedModel,
-          localModelUrl: modelSettings.localModelUrl
-        })
-      }
-    });
-
-    if (response.error) {
-      throw new Error(`AI Model Proxy error: ${response.error.message}`);
-    }
-
-    const assistantMessage = extractAssistantMessage(response.data);
-    if (!assistantMessage) {
-      throw new Error('No valid message content received from AI model');
-    }
-
-    // Execute tools if chosen
-    let toolResults: any[] = [];
-    let hasToolResults = false;
-    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-      console.log(`Executing ${assistantMessage.tool_calls.length} tools in iteration ${iteration}`);
-      
-      const { toolResults: results, toolsUsed } = await executeTools(
-        assistantMessage.tool_calls,
-        mcps,
-        userId,
-        supabase
-      );
-      
-      toolResults = results;
-      hasToolResults = toolsUsed.some(tool => tool.success);
-      accumulatedContext.push({
-        iteration,
-        response: assistantMessage.content,
-        toolsUsed,
-        toolResults: results,
-        hasToolResults
-      });
-    } else {
-      accumulatedContext.push({
-        iteration,
-        response: assistantMessage.content,
-        reasoning: 'No tools used - direct response',
-        hasToolResults: false
-      });
-    }
-
-    // Check if we should continue or stop
-    const shouldContinue = await evaluateIterationCompletion(
-      message,
-      accumulatedContext,
-      assistantMessage.content,
-      modelSettings,
-      supabase
-    );
-
-    if (!shouldContinue || iteration >= maxIterations) {
-      stopSignalReached = true;
-      finalResponse = assistantMessage.content;
-    }
-  }
-
-  // 4. Synthesize final response with all accumulated context
-  const hasAnyToolResults = accumulatedContext.some(ctx => ctx.hasToolResults);
-  
-  if (accumulatedContext.length >= 1 && hasAnyToolResults) {
-    console.log('🧠 Synthesizing learning loop results from', accumulatedContext.length, 'iterations');
-    console.log('📊 Context summary:', accumulatedContext.map(ctx => ({
-      iteration: ctx.iteration,
-      hasTools: ctx.hasToolResults,
-      toolCount: ctx.toolsUsed?.length || 0
-    })));
-    
-    const synthesisResponse = await synthesizeIterativeResults(
-      message,
-      accumulatedContext,
-      modelSettings,
-      supabase
-    );
-    
-    if (synthesisResponse) {
-      finalResponse = synthesisResponse;
-      console.log('✅ Synthesis successful, response length:', finalResponse.length);
-    } else {
-      console.warn('⚠️ Synthesis failed. Using fallback strategy.');
-      
-      // Enhanced fallback strategy: Format tool results directly
-      const lastContext = accumulatedContext[accumulatedContext.length - 1];
-      if (lastContext?.toolResults && lastContext.toolResults.length > 0) {
-        const lastToolResult = lastContext.toolResults[lastContext.toolResults.length - 1];
-        
-        // Special formatting for Jira projects
-        if (lastContext.toolsUsed?.some(tool => tool.name === 'execute_jira-tools')) {
-          finalResponse = formatJiraProjectsResponse(lastToolResult);
-        } else if (typeof lastToolResult === 'string') {
-          finalResponse = lastToolResult;
-        } else if (lastToolResult?.content) {
-          finalResponse = lastToolResult.content;
-        } else {
-          finalResponse = `I found the following information: ${JSON.stringify(lastToolResult, null, 2)}`;
-        }
-      } else if (lastContext?.response) {
-        finalResponse = lastContext.response;
-      } else {
-        finalResponse = 'I was able to process your request through multiple steps, but encountered an issue creating the final summary.';
-      }
-    }
-  }
-
-  // Ensure we have a meaningful response
-  if (!finalResponse || finalResponse.trim().length === 0) {
-    console.warn('⚠️ No final response generated. Using emergency fallback.');
-    finalResponse = 'I processed your request but encountered an issue generating the response. Please try again.';
-  }
-
-  console.log('📝 Final response prepared, length:', finalResponse.length);
-
-  // 5. Persist valuable insights as knowledge nodes
-  if (userId && accumulatedContext.length > 0) {
-    await persistInsightAsKnowledgeNode(
-      message,
-      finalResponse,
-      accumulatedContext,
-      userId,
-      complexityDecision,
-      supabase
-    );
-  }
-
-  // 6. Store final response
-  if (userId && sessionId) {
-    await supabase.from('agent_conversations').insert({
-      user_id: userId,
-      session_id: sessionId,
-      role: 'assistant',
-      content: finalResponse,
-      tools_used: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
-      ai_reasoning: complexityDecision.reasoning,
-      created_at: new Date().toISOString()
-    });
-  }
-
-  console.log('Learning loop completed after', iteration, 'iterations');
-  console.log('Final response length:', finalResponse.length);
-
-  return new Response(
-    JSON.stringify({
-      success: true,
-      message: finalResponse,
-      learningLoopUsed: true,
-      iterations: iteration,
-      accumulatedContext: accumulatedContext.length,
-      toolsUsed: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
-      aiReasoning: complexityDecision.reasoning,
-      sessionId
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-/**
- * Format Jira projects response into readable text
- */
-function formatJiraProjectsResponse(toolResult: any): string {
-  try {
-    let projects;
-    if (typeof toolResult === 'string') {
-      projects = JSON.parse(toolResult);
-    } else {
-      projects = toolResult;
-    }
-
-    if (Array.isArray(projects) && projects.length > 0) {
-      const projectList = projects.map(project => 
-        `• **${project.name}** (${project.key}) - ${project.projectTypeKey || 'software'} project`
-      ).join('\n');
-
-      return `Here are the latest Jira projects I found (${projects.length} total):\n\n${projectList}\n\nThese projects span various areas including marketing platforms, AI research, customer success tools, and business solutions.`;
-    } else {
-      return 'No Jira projects were found in your workspace.';
-    }
-  } catch (error) {
-    console.error('Error formatting Jira response:', error);
-    return `I found your Jira projects, but there was an issue formatting the response. Raw data: ${JSON.stringify(toolResult)}`;
-  }
-}
-
-/**
- * Handle simple queries using standard tool chaining
- */
-async function handleSimpleQuery(
+async function handleQuery(
   message: string,
   conversationHistory: any[],
   userId: string | null,
@@ -400,6 +104,8 @@ async function handleSimpleQuery(
   streaming: boolean,
   supabase: any
 ): Promise<Response> {
+  console.log('Processing query with unified handler');
+
   // Fetch available MCPs from the database
   const { data: mcps, error: mcpError } = await supabase
     .from('mcps')
@@ -430,7 +136,7 @@ async function handleSimpleQuery(
   const modelRequestBody = {
     messages,
     tools: tools.length > 0 ? tools : undefined,
-    tool_choice: 'auto',
+    tool_choice: 'auto', // Let AI decide naturally
     temperature: 0.7,
     max_tokens: 2000,
     stream: streaming,
@@ -470,6 +176,8 @@ async function handleSimpleQuery(
 
   // Execute tools if the model chose to use them
   if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+    console.log(`Executing ${assistantMessage.tool_calls.length} tools`);
+    
     const { toolResults, toolsUsed: executedTools } = await executeTools(
       assistantMessage.tool_calls,
       mcps,
@@ -479,18 +187,36 @@ async function handleSimpleQuery(
     
     toolsUsed = executedTools;
     
-    // Make synthesis call with tool results
-    const synthesizedResponse = await synthesizeToolResults(
-      message,
-      conversationHistory,
-      toolsUsed,
-      assistantMessage.content,
-      modelSettings,
-      supabase
-    );
-    
-    if (synthesizedResponse) {
-      finalResponse = synthesizedResponse;
+    // Format tool results directly for single tool calls
+    if (toolsUsed.length === 1 && toolsUsed[0].success) {
+      const toolResult = toolsUsed[0];
+      
+      // Special formatting for known tool types
+      if (toolResult.name === 'execute_jira-tools') {
+        finalResponse = formatJiraResponse(toolResult);
+      } else if (toolResult.name === 'execute_knowledge-search-v2') {
+        finalResponse = formatKnowledgeResponse(toolResult);
+      } else if (toolResult.name === 'execute_web-search') {
+        finalResponse = formatWebSearchResponse(toolResult);
+      } else {
+        // Generic formatting for other tools
+        finalResponse = formatGenericToolResponse(toolResult);
+      }
+    }
+    // For multiple tools or failed tools, synthesize if needed
+    else if (toolsUsed.length > 1 || toolsUsed.some(t => !t.success)) {
+      const synthesizedResponse = await synthesizeToolResults(
+        message,
+        conversationHistory,
+        toolsUsed,
+        assistantMessage.content,
+        modelSettings,
+        supabase
+      );
+      
+      if (synthesizedResponse) {
+        finalResponse = synthesizedResponse;
+      }
     }
   }
 
@@ -506,11 +232,12 @@ async function handleSimpleQuery(
     });
   }
 
+  console.log('Query processed successfully, response length:', finalResponse.length);
+
   return new Response(
     JSON.stringify({
       success: true,
       message: finalResponse,
-      learningLoopUsed: false,
       toolsUsed: toolsUsed.map(t => ({
         name: t.name,
         parameters: t.parameters,
@@ -524,164 +251,139 @@ async function handleSimpleQuery(
 }
 
 /**
- * Evaluate if iteration should continue
+ * Format Jira tool responses
  */
-async function evaluateIterationCompletion(
-  originalMessage: string,
-  accumulatedContext: any[],
-  currentResponse: string,
-  modelSettings: any,
-  supabase: any
-): Promise<boolean> {
+function formatJiraResponse(toolResult: any): string {
   try {
-    const evaluationMessages = [
-      {
-        role: 'system',
-        content: `Evaluate if more information is needed to fully answer the user's question. 
-        
-        Respond with JSON: {"continue": true/false, "reason": "explanation"}
-        
-        Continue if:
-        - The answer is incomplete or vague
-        - Important aspects of the question remain unanswered
-        - More context or data would significantly improve the response
-        
-        Stop if:
-        - The question has been thoroughly answered
-        - Sufficient information has been gathered
-        - Additional iterations won't add meaningful value`
-      },
-      {
-        role: 'user',
-        content: `Original question: "${originalMessage}"
-        
-        Current accumulated context: ${JSON.stringify(accumulatedContext, null, 2)}
-        
-        Latest response: "${currentResponse}"
-        
-        Should I continue gathering more information?`
-      }
-    ];
-
-    const response = await supabase.functions.invoke('ai-model-proxy', {
-      body: {
-        messages: evaluationMessages,
-        temperature: 0.3,
-        max_tokens: 200,
-        ...(modelSettings && {
-          provider: modelSettings.provider,
-          model: modelSettings.selectedModel,
-          localModelUrl: modelSettings.localModelUrl
-        })
-      }
-    });
-
-    if (response.error) {
-      console.error('Error in iteration evaluation:', response.error);
-      return false; // Stop on error
-    }
-
-    const evaluationMessage = extractAssistantMessage(response.data);
-    if (evaluationMessage?.content) {
+    let result = toolResult.result;
+    
+    // Handle string results that might be JSON
+    if (typeof result === 'string') {
       try {
-        const evaluation = JSON.parse(evaluationMessage.content);
-        console.log('Iteration evaluation:', evaluation);
-        return evaluation.continue === true;
-      } catch (parseError) {
-        console.error('Error parsing evaluation response:', parseError);
-        return false;
+        result = JSON.parse(result);
+      } catch (e) {
+        return result; // Return as-is if not JSON
       }
     }
 
-    return false;
+    // Format project lists
+    if (Array.isArray(result) && result.length > 0 && result[0].key) {
+      const projectList = result.map(project => 
+        `• **${project.name}** (${project.key}) - ${project.projectTypeKey || 'software'} project`
+      ).join('\n');
+
+      return `Here are the Jira projects I found (${result.length} total):\n\n${projectList}\n\nThese projects span various areas including marketing platforms, AI research, customer success tools, and business solutions.`;
+    }
+
+    // Format issue lists
+    if (result.issues && Array.isArray(result.issues)) {
+      if (result.issues.length === 0) {
+        return 'No issues found matching your criteria.';
+      }
+      
+      const issueList = result.issues.slice(0, 10).map(issue => 
+        `• **${issue.key}**: ${issue.fields?.summary || 'No summary'} (${issue.fields?.status?.name || 'Unknown status'})`
+      ).join('\n');
+
+      return `Found ${result.total || result.issues.length} issue(s):\n\n${issueList}${result.total > 10 ? '\n\n...and more' : ''}`;
+    }
+
+    // Fallback to generic formatting
+    return `Jira query completed: ${JSON.stringify(result, null, 2)}`;
+    
   } catch (error) {
-    console.error('Error in evaluateIterationCompletion:', error);
-    return false;
+    console.error('Error formatting Jira response:', error);
+    return `I found your Jira data, but there was an issue formatting the response. Raw data: ${JSON.stringify(toolResult.result)}`;
   }
 }
 
 /**
- * Synthesize results from multiple iterations
+ * Format knowledge search responses
  */
-async function synthesizeIterativeResults(
-  originalMessage: string,
-  accumulatedContext: any[],
-  modelSettings: any,
-  supabase: any
-): Promise<string | null> {
+function formatKnowledgeResponse(toolResult: any): string {
   try {
-    console.log('🧠 Starting synthesis with context:', accumulatedContext.length, 'iterations');
+    let result = toolResult.result;
     
-    const contextSummary = accumulatedContext.map((ctx, idx) => 
-      `Iteration ${ctx.iteration}: ${ctx.response}\nTools used: ${ctx.toolsUsed?.map(t => t.name).join(', ') || 'none'}\nResults: ${JSON.stringify(ctx.toolResults).substring(0, 500)}...`
-    ).join('\n\n');
-
-    console.log('📝 Context summary prepared, length:', contextSummary.length);
-
-    const synthesisMessages = [
-      {
-        role: 'system',
-        content: `Synthesize a comprehensive final answer based on multiple iterations of research and tool usage.
-
-        Create a coherent, well-structured response that:
-        1. Directly answers the original question
-        2. Integrates insights from all iterations
-        3. Provides clear, actionable information
-        4. Maintains a helpful, professional tone
-
-        IMPORTANT: Respond with plain text only, no code blocks or markdown formatting.`
-      },
-      {
-        role: 'user',
-        content: `Original question: "${originalMessage}"
-
-        Research iterations:
-        ${contextSummary}
-
-        Please provide a comprehensive final answer.`
+    if (typeof result === 'string') {
+      try {
+        result = JSON.parse(result);
+      } catch (e) {
+        return result;
       }
-    ];
-
-    console.log('🤖 Calling AI model for synthesis...');
-
-    const response = await supabase.functions.invoke('ai-model-proxy', {
-      body: {
-        messages: synthesisMessages,
-        temperature: 0.5,
-        max_tokens: 1000,
-        ...(modelSettings && {
-          provider: modelSettings.provider,
-          model: modelSettings.selectedModel,
-          localModelUrl: modelSettings.localModelUrl
-        })
-      }
-    });
-
-    if (response.error) {
-      console.error('❌ Error in synthesis AI call:', response.error);
-      return null;
     }
 
-    console.log('📥 Synthesis response received:', response.data ? 'Success' : 'No data');
+    if (result.results && Array.isArray(result.results)) {
+      if (result.results.length === 0) {
+        return 'No relevant information found in the knowledge base.';
+      }
 
-    const synthesisMessage = extractAssistantMessage(response.data);
-    
-    if (synthesisMessage?.content) {
-      console.log('✅ Synthesis successful, content length:', synthesisMessage.content.length);
-      return synthesisMessage.content;
-    } else {
-      console.warn('⚠️ No content in synthesis message:', synthesisMessage);
-      return null;
+      const resultList = result.results.map(item => 
+        `• **${item.title || 'Untitled'}**: ${item.description || item.content || 'No description'}`
+      ).join('\n');
+
+      return `Found ${result.results.length} relevant item(s) in the knowledge base:\n\n${resultList}`;
     }
 
+    return `Knowledge search completed: ${JSON.stringify(result, null, 2)}`;
+    
   } catch (error) {
-    console.error('❌ Error in synthesizeIterativeResults:', error);
-    return null;
+    console.error('Error formatting knowledge response:', error);
+    return `I found knowledge base results, but there was an issue formatting the response.`;
   }
 }
 
 /**
- * Synthesize tool results into a coherent response (existing function)
+ * Format web search responses
+ */
+function formatWebSearchResponse(toolResult: any): string {
+  try {
+    let result = toolResult.result;
+    
+    if (typeof result === 'string') {
+      try {
+        result = JSON.parse(result);
+      } catch (e) {
+        return result;
+      }
+    }
+
+    if (result.results && Array.isArray(result.results)) {
+      if (result.results.length === 0) {
+        return 'No web search results found.';
+      }
+
+      const resultList = result.results.slice(0, 5).map(item => 
+        `• **${item.title}**: ${item.snippet}\n  Source: ${item.link}`
+      ).join('\n\n');
+
+      return `Here are the web search results:\n\n${resultList}`;
+    }
+
+    return `Web search completed: ${JSON.stringify(result, null, 2)}`;
+    
+  } catch (error) {
+    console.error('Error formatting web search response:', error);
+    return `I found web search results, but there was an issue formatting the response.`;
+  }
+}
+
+/**
+ * Format generic tool responses
+ */
+function formatGenericToolResponse(toolResult: any): string {
+  if (typeof toolResult.result === 'string') {
+    return toolResult.result;
+  }
+
+  if (toolResult.result && typeof toolResult.result === 'object') {
+    return `Tool execution completed successfully. Result: ${JSON.stringify(toolResult.result, null, 2)}`;
+  }
+
+  return `Tool ${toolResult.name} executed successfully.`;
+}
+
+/**
+ * Synthesize results from multiple tools (only when needed)
  */
 async function synthesizeToolResults(
   originalMessage: string,
@@ -692,24 +394,26 @@ async function synthesizeToolResults(
   supabase: any
 ): Promise<string | null> {
   try {
+    console.log('Synthesizing results from', toolsUsed.length, 'tools');
+    
     const toolResultsSummary = toolsUsed.map(tool => {
       if (tool.success && tool.result) {
-        return `${tool.name}: ${typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result)}`;
+        return `${tool.name}: ${typeof tool.result === 'string' ? tool.result.substring(0, 500) : JSON.stringify(tool.result).substring(0, 500)}`;
       }
-      return `${tool.name}: Failed`;
-    }).join('\n');
+      return `${tool.name}: Failed - ${tool.error || 'Unknown error'}`;
+    }).join('\n\n');
 
     const synthesisMessages = [
       {
         role: 'system',
-        content: `Provide a direct, helpful answer to the user's question using the tool results. Be concise and informative.
+        content: `Provide a clear, helpful answer based on the tool results. Be concise and focus on what the user asked.
 
 User asked: "${originalMessage}"
 
 Tool results:
 ${toolResultsSummary}
 
-Give a clear answer based on this information.`
+Synthesize this into a coherent response.`
       },
       {
         role: 'user',
