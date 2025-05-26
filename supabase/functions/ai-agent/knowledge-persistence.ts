@@ -1,4 +1,3 @@
-
 /**
  * Knowledge Persistence for Learning Loop Integration
  */
@@ -87,6 +86,85 @@ export async function persistInsightAsKnowledgeNode(
 }
 
 /**
+ * Extract JSON from various response formats
+ */
+function extractJSONFromResponse(content: string): any | null {
+  if (!content) return null;
+
+  // Strategy 1: Try direct JSON parsing
+  try {
+    return JSON.parse(content);
+  } catch (e) {
+    // Continue to other strategies
+  }
+
+  // Strategy 2: Extract from markdown code blocks
+  const codeBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/i;
+  const codeBlockMatch = content.match(codeBlockRegex);
+  if (codeBlockMatch) {
+    try {
+      return JSON.parse(codeBlockMatch[1]);
+    } catch (e) {
+      console.log('Failed to parse JSON from code block:', e.message);
+    }
+  }
+
+  // Strategy 3: Find JSON-like content between curly braces
+  const jsonRegex = /\{[\s\S]*\}/;
+  const jsonMatch = content.match(jsonRegex);
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      console.log('Failed to parse JSON from regex match:', e.message);
+    }
+  }
+
+  // Strategy 4: Try to clean up common formatting issues
+  try {
+    const cleaned = content
+      .replace(/^\s*```(?:json)?\s*/i, '') // Remove starting markdown
+      .replace(/\s*```\s*$/, '') // Remove ending markdown
+      .replace(/^[^{]*(\{)/, '$1') // Remove text before first {
+      .replace(/(\})[^}]*$/, '$1') // Remove text after last }
+      .trim();
+    
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.log('Failed to parse cleaned JSON:', e.message);
+  }
+
+  return null;
+}
+
+/**
+ * Validate insight object has required fields
+ */
+function validateInsight(insight: any): boolean {
+  if (!insight || typeof insight !== 'object') {
+    return false;
+  }
+
+  const requiredFields = ['title', 'description', 'type', 'isSignificant'];
+  const hasAllRequired = requiredFields.every(field => 
+    insight.hasOwnProperty(field) && insight[field] !== undefined && insight[field] !== null
+  );
+
+  if (!hasAllRequired) {
+    console.log('Insight missing required fields:', requiredFields.filter(field => !insight.hasOwnProperty(field)));
+    return false;
+  }
+
+  // Check if marked as significant
+  if (!insight.isSignificant) {
+    console.log('Insight not marked as significant');
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Generate insight summary from learning loop results
  */
 async function generateInsightSummary(
@@ -110,7 +188,7 @@ async function generateInsightSummary(
         role: 'system',
         content: `Generate a structured insight summary for a knowledge base. Extract the key learnings, patterns, and reusable knowledge from this research session.
 
-        Respond with JSON in this format:
+        Respond with ONLY a JSON object in this exact format:
         {
           "title": "Concise, searchable title (max 100 chars)",
           "description": "Detailed description of the insight (max 500 chars)",
@@ -122,7 +200,8 @@ async function generateInsightSummary(
           "reasoning": "Why this insight is valuable for future reference"
         }
 
-        Only mark as significant if it contains reusable knowledge, patterns, or insights that would be valuable for future queries.`
+        Only mark as significant if it contains reusable knowledge, patterns, or insights that would be valuable for future queries.
+        Do NOT wrap the JSON in markdown code blocks or add any other text.`
       },
       {
         role: 'user',
@@ -155,25 +234,32 @@ async function generateInsightSummary(
 
     const insightMessage = response.data?.choices?.[0]?.message?.content;
     if (!insightMessage) {
+      console.log('No insight message received from AI');
       return null;
     }
 
-    try {
-      const insight = JSON.parse(insightMessage);
-      
-      // Only persist significant insights
-      if (!insight.isSignificant) {
-        return null;
-      }
+    console.log('Raw insight response:', insightMessage);
 
-      // Add tools involved
-      insight.toolsInvolved = toolsInvolved;
-      
-      return insight;
-    } catch (parseError) {
-      console.error('Error parsing insight JSON:', parseError);
+    // Use robust JSON extraction
+    const insight = extractJSONFromResponse(insightMessage);
+    
+    if (!insight) {
+      console.error('Failed to extract valid JSON from insight response');
       return null;
     }
+
+    // Validate the insight object
+    if (!validateInsight(insight)) {
+      console.log('Insight validation failed');
+      return null;
+    }
+
+    console.log('Successfully parsed and validated insight:', insight.title);
+
+    // Add tools involved
+    insight.toolsInvolved = toolsInvolved;
+    
+    return insight;
 
   } catch (error) {
     console.error('Error in generateInsightSummary:', error);
