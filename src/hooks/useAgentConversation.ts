@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -64,7 +63,11 @@ export function useAgentConversation() {
         role: row.role as 'user' | 'assistant',
         content: row.content,
         timestamp: new Date(row.created_at),
-        toolsUsed: row.tools_used || [],
+        toolsUsed: Array.isArray(row.tools_used) ? row.tools_used as Array<{
+          name: string;
+          parameters: Record<string, any>;
+          success: boolean;
+        }> : undefined,
         selfReflection: row.self_reflection || undefined
       }));
 
