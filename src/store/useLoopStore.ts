@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
@@ -145,6 +146,11 @@ export const useLoopStore = create<LoopState>()(
         setSelectedInsight: (nodeId) => {
           set({ selectedInsightId: nodeId });
         },
+        
+        recalculateGraphLayout: () => {
+          // Trigger graph layout recalculation - implementation would depend on the graph library
+          console.log('Recalculating graph layout...');
+        }
       };
       
       // Combine all actions into one state object

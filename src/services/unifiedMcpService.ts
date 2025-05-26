@@ -55,7 +55,8 @@ export class UnifiedMcpService {
           provider: modelSettings.provider || 'openai',
           max_tokens: 2000,
           temperature: 0.7,
-          localUrl: modelSettings.localModelUrl
+          // Only include localUrl if it exists in modelSettings
+          ...(modelSettings.localModelUrl && { localModelUrl: modelSettings.localModelUrl })
         },
         session: {
           timeout: 3600,
@@ -98,8 +99,9 @@ export class UnifiedMcpService {
           created: new Date().toISOString().split('T')[0],
           updated: new Date().toISOString().split('T')[0],
           author: 'ZeroLoop',
-          modelProvider: modelSettings.provider,
-          selectedModel: modelSettings.selectedModel
+          // Add provider info in a supported way
+          provider: modelSettings.provider,
+          model: modelSettings.selectedModel
         }
       };
       

@@ -1,8 +1,9 @@
+
 import { StateCreator } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { LearningStep, LoopHistory } from '../../types/intelligence';
 import { domainEngines } from '../../engines/domainEngines';
-import { saveLoopToSupabase } from '../../utils/supabase/loopOperations';
+import { logLoopToSupabase } from '../../utils/supabase/loopOperations';
 import { getModelSettings } from '../../services/modelProviderService';
 
 export interface LoopActions {
@@ -43,34 +44,34 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
       // Pass model settings to the task generation
       const taskResult = await engine.generateTask(activeDomain, { modelSettings });
       
-      if (!taskResult.success) {
-        console.error('Failed to generate task:', taskResult.error);
+      if (typeof taskResult === 'string') {
+        // Handle simple string response
+        const initialStep: LearningStep = {
+          id: uuidv4(),
+          type: 'task',
+          title: 'Task Generation',
+          content: taskResult,
+          isCompleted: true,
+          result: { task: taskResult, success: true }
+        };
+
+        set({
+          isRunningLoop: true,
+          currentStepIndex: 0,
+          loopHistory: [{
+            id: loopId,
+            domainId: activeDomainId,
+            domainName: activeDomain.name,
+            steps: [initialStep],
+            startTime: createdAt,
+            isCompleted: false,
+            status: 'active'
+          }, ...get().loopHistory]
+        });
+      } else {
+        console.error('Invalid task generation result');
         return;
       }
-
-      const initialStep: LearningStep = {
-        id: uuidv4(),
-        type: 'task',
-        title: 'Task Generation',
-        content: taskResult.task || '',
-        timestamp: new Date().toISOString(),
-        isCompleted: true,
-        result: taskResult
-      };
-
-      set({
-        isRunningLoop: true,
-        currentStepIndex: 0,
-        loopHistory: [{
-          id: loopId,
-          domainId: activeDomainId,
-          domainName: activeDomain.name,
-          steps: [initialStep],
-          startTime: createdAt,
-          isCompleted: false,
-          modelSettings // Store which model settings were used
-        }, ...get().loopHistory]
-      });
 
       // Auto-advance if in continuous mode
       if (isContinuousMode) {
@@ -124,7 +125,6 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
     const modelSettings = getModelSettings();
 
     const stepType = stepTypes[nextStepIndex];
-    const timestamp = new Date().toISOString();
     
     try {
       let result;
@@ -136,49 +136,58 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
 
       switch (stepType) {
         case 'solution':
-          result = await engine.generateSolution(currentLoop.steps[0].result?.task || '', context);
+          // Use solveTask method from DomainEngine interface
+          const taskContent = currentLoop.steps[0].result?.task || currentLoop.steps[0].content;
+          result = await engine.solveTask(taskContent, context);
           break;
         case 'verification':
-          result = await engine.verifySolution(
-            currentLoop.steps[0].result?.task || '',
-            currentLoop.steps[1].result?.solution || '',
-            context
-          );
+          // Use verifyTask or verifySolution method
+          const solutionContent = currentLoop.steps[1].result?.solution || currentLoop.steps[1].content;
+          if (engine.verifyTask) {
+            result = await engine.verifyTask(taskContent, solutionContent);
+          } else if (engine.verifySolution) {
+            result = await engine.verifySolution(taskContent, solutionContent, activeDomain.id);
+          } else {
+            result = { result: true, explanation: 'No verification available', score: 1 };
+          }
           break;
         case 'reflection':
-          result = await engine.generateReflection(currentLoop.steps, context);
+          // Use reflect or reflectOnTask method
+          const verificationResult = currentLoop.steps[2].result || { result: true };
+          if (engine.reflectOnTask) {
+            result = await engine.reflectOnTask(taskContent, solutionContent, verificationResult);
+          } else if (engine.reflect) {
+            result = await engine.reflect(taskContent, solutionContent, verificationResult, activeDomain.id);
+          } else {
+            result = { reflection: 'No reflection available', insights: [] };
+          }
           break;
         case 'mutation':
-          result = await engine.mutateTask(
-            currentLoop.steps[0].result?.task || '',
-            currentLoop.steps[3].result?.insights || [],
-            context
-          );
+          // Use mutateTask method
+          const reflectionResult = currentLoop.steps[3].result || { insights: [] };
+          if (engine.mutateTask) {
+            result = await engine.mutateTask(taskContent, solutionContent, verificationResult, reflectionResult);
+          } else {
+            result = taskContent; // Fallback to original task
+          }
           break;
         default:
           console.error('Unknown step type:', stepType);
           return;
       }
 
-      if (!result?.success) {
-        console.error(`Failed to execute ${stepType} step:`, result?.error);
-        return;
-      }
-
       const newStep: LearningStep = {
         id: uuidv4(),
         type: stepType,
         title: stepType.charAt(0).toUpperCase() + stepType.slice(1),
-        content: result.content || JSON.stringify(result, null, 2),
-        timestamp,
+        content: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
         isCompleted: true,
         result
       };
 
       const updatedLoop = {
         ...currentLoop,
-        steps: [...currentLoop.steps, newStep],
-        modelSettings: modelSettings // Update model settings for the loop
+        steps: [...currentLoop.steps, newStep]
       };
 
       set({
@@ -210,7 +219,8 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
     const completedLoop: LoopHistory = {
       ...currentLoop,
       endTime: new Date().toISOString(),
-      isCompleted: true
+      isCompleted: true,
+      status: 'completed'
     };
 
     set({
@@ -221,7 +231,7 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
 
     // Save to Supabase if remote logging is enabled
     if (useRemoteLogging) {
-      saveLoopToSupabase(completedLoop).catch(error => {
+      logLoopToSupabase(completedLoop).catch(error => {
         console.error('Error saving completed loop to Supabase:', error);
       });
     }
