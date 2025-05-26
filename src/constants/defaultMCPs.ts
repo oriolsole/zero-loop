@@ -41,6 +41,54 @@ export const defaultMCPs: MCP[] = [
     requirestoken: "google"
   },
   {
+    id: uuidv4(),
+    title: "Web Scraper",
+    description: "Extract detailed content from web pages by providing a URL. Perfect for getting full article text, news content, or any webpage content.",
+    endpoint: "web-scraper",
+    icon: "file-search",
+    parameters: [
+      {
+        name: "url",
+        type: "string",
+        description: "The URL of the webpage to scrape content from",
+        required: true
+      },
+      {
+        name: "selector",
+        type: "string",
+        description: "Optional CSS selector to target specific content (e.g., 'article', '.content', '#main')",
+        required: false
+      },
+      {
+        name: "format",
+        type: "string",
+        description: "Output format for the scraped content",
+        required: false,
+        default: "markdown",
+        enum: ["html", "text", "markdown"]
+      },
+      {
+        name: "includeMetadata",
+        type: "boolean",
+        description: "Whether to include page metadata (title, description, etc.)",
+        required: false,
+        default: true
+      }
+    ],
+    isDefault: true,
+    default_key: "web-scraper",
+    category: "Extraction",
+    tags: ["scraper", "web", "content", "extraction", "news"],
+    sampleUseCases: [
+      "Extract full article content from news websites",
+      "Get detailed information from blog posts",
+      "Scrape product information from e-commerce sites",
+      "Extract content from documentation pages"
+    ],
+    suggestedPrompt: "Extract the content from this article: https://example.com/article",
+    requiresAuth: false
+  },
+  {
     id: "github-tools-mcp-id",
     title: "GitHub Tools",
     description: "Interact with GitHub repositories, issues, pull requests, and more",

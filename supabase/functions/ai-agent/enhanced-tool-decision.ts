@@ -5,7 +5,7 @@
 
 export interface EnhancedToolDecision {
   shouldUseTools: boolean;
-  detectedType: 'search' | 'github' | 'knowledge' | 'general' | 'none';
+  detectedType: 'search' | 'github' | 'knowledge' | 'general' | 'none' | 'search-and-scrape' | 'scrape-content';
   reasoning: string;
   suggestedTools: string[];
   confidence: number;
@@ -17,6 +17,8 @@ export interface EnhancedToolDecision {
     referencesGitHub?: boolean;
     githubRepo?: { owner: string; repo: string };
     referencePrevious?: boolean;
+    needsDetailedContent?: boolean;
+    hasUrls?: boolean;
   };
 }
 
@@ -63,6 +65,14 @@ export function enhancedAnalyzeToolRequirements(
     { pattern: /\b(stored|saved|documented|recorded)\b/i, weight: 0.7, context: 'stored_data' }
   ];
 
+  // NEW: Web scraping specific patterns
+  const scrapingPatterns = [
+    { pattern: /https?:\/\/[^\s]+/g, weight: 1.0, context: 'direct_url' },
+    { pattern: /\b(extract|scrape|get content|full article|detailed|comprehensive)\b/i, weight: 0.8, context: 'detailed_content' },
+    { pattern: /\b(news today|current news|latest news|breaking news)\b/i, weight: 0.9, context: 'news_request' },
+    { pattern: /\b(article|blog post|webpage|website content)\b/i, weight: 0.7, context: 'content_request' }
+  ];
+
   // Context-aware reference patterns
   const contextReferencePatterns = [
     /\b(its?|this|that|the)\s+(file structure|directory structure|structure|files|folders)\b/i,
@@ -95,6 +105,7 @@ export function enhancedAnalyzeToolRequirements(
   let githubScore = 0;
   let searchScore = 0;
   let knowledgeScore = 0;
+  let scrapingScore = 0;
   
   // Apply context boost for GitHub if we're referencing previous GitHub content
   const contextBoost = referencesContext && contextInfo.referencesGitHub ? 0.8 : 0;
@@ -116,6 +127,15 @@ export function enhancedAnalyzeToolRequirements(
     if (pattern.test(message)) knowledgeScore += weight;
   });
 
+  // NEW: Calculate scraping score
+  scrapingPatterns.forEach(({ pattern, weight }) => {
+    if (pattern.test(message)) scrapingScore += weight;
+  });
+
+  // Check for URLs in the message
+  const hasUrls = /https?:\/\/[^\s]+/g.test(message);
+  const needsDetailedContent = /\b(detailed|comprehensive|full|complete|in-depth|news today|current news|latest news)\b/i.test(message);
+
   // Determine complexity
   let complexity: 'simple' | 'moderate' | 'complex' = 'simple';
   if (complexityFactors.complex.some(pattern => pattern.test(message))) {
@@ -127,8 +147,64 @@ export function enhancedAnalyzeToolRequirements(
   // Decision logic with context-aware confidence scoring
   let decision: EnhancedToolDecision;
 
-  // GitHub decision with context awareness
-  if (githubScore >= 0.6 || (referencesContext && contextInfo.referencesGitHub)) {
+  // NEW: Enhanced decision logic for scraping scenarios
+  if (hasUrls && scrapingScore >= 0.7) {
+    // Direct URL scraping request
+    decision = {
+      shouldUseTools: true,
+      detectedType: 'scrape-content',
+      reasoning: `Direct web scraping request detected - user provided specific URL(s) and wants detailed content extraction`,
+      suggestedTools: ['execute_web-scraper'],
+      confidence: 0.95,
+      complexity,
+      estimatedSteps: 2,
+      fallbackStrategy: 'If scraping fails, try to provide information about the URL or suggest manual access',
+      contextualInfo: {
+        hasUrls: true,
+        needsDetailedContent: true,
+        referencePrevious: referencesContext
+      },
+      executionPlan: [
+        {
+          step: 1,
+          tool: 'execute_web-scraper',
+          description: 'Extract detailed content from the provided URL(s)',
+          estimatedTime: 8
+        }
+      ]
+    };
+  } else if (needsDetailedContent && searchScore >= 0.7) {
+    // Search + scrape scenario for comprehensive answers
+    decision = {
+      shouldUseTools: true,
+      detectedType: 'search-and-scrape',
+      reasoning: `Comprehensive information request detected - requires web search followed by content extraction for detailed answers`,
+      suggestedTools: ['execute_web-search', 'execute_web-scraper'],
+      confidence: 0.9,
+      complexity: 'complex',
+      estimatedSteps: 4,
+      fallbackStrategy: 'If scraping fails, provide summary from search results; if search fails, use knowledge base',
+      contextualInfo: {
+        needsDetailedContent: true,
+        referencePrevious: referencesContext
+      },
+      executionPlan: [
+        {
+          step: 1,
+          tool: 'execute_web-search',
+          description: 'Search for relevant sources and current information',
+          estimatedTime: 6
+        },
+        {
+          step: 2,
+          tool: 'execute_web-scraper',
+          description: 'Extract detailed content from top search results',
+          estimatedTime: 10,
+          dependencies: ['execute_web-search']
+        }
+      ]
+    };
+  } else if (githubScore >= 0.6 || (referencesContext && contextInfo.referencesGitHub)) {
     decision = {
       shouldUseTools: true,
       detectedType: 'github',
@@ -196,7 +272,7 @@ export function enhancedAnalyzeToolRequirements(
       confidence: Math.min(0.85, 0.5 + searchScore * 0.3),
       complexity,
       estimatedSteps: needsMultipleTools ? 3 : 2,
-      fallbackStrategy: 'If web search fails, try knowledge base search or provide general information',
+      fallbackStrategy: 'If web search fails, try knowledge base search or provide general guidance',
       contextualInfo: {
         referencePrevious: referencesContext
       },
