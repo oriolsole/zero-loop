@@ -22,6 +22,7 @@ const AIAgentChat: React.FC = () => {
     currentSessionId,
     conversations,
     sessions,
+    isLoadingSessions,
     startNewSession,
     loadSession,
     addMessage,
@@ -271,6 +272,7 @@ const AIAgentChat: React.FC = () => {
           onStartNewSession={startNewSession}
           onLoadSession={loadSession}
           onDeleteSession={deleteSession}
+          isLoading={isLoadingSessions}
         />
       )}
 

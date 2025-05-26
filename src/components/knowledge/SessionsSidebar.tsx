@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { MessageSquare, Plus, Trash2 } from 'lucide-react';
+import { MessageSquare, Plus, Trash2, Loader2 } from 'lucide-react';
 import { ConversationSession } from '@/hooks/useAgentConversation';
 
 interface SessionsSidebarProps {
@@ -13,6 +13,7 @@ interface SessionsSidebarProps {
   onStartNewSession: () => void;
   onLoadSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
+  isLoading?: boolean;
 }
 
 const SessionsSidebar: React.FC<SessionsSidebarProps> = ({
@@ -20,7 +21,8 @@ const SessionsSidebar: React.FC<SessionsSidebarProps> = ({
   currentSessionId,
   onStartNewSession,
   onLoadSession,
-  onDeleteSession
+  onDeleteSession,
+  isLoading = false
 }) => {
   const formatDate = (date: Date) => {
     const now = new Date();
@@ -42,6 +44,7 @@ const SessionsSidebar: React.FC<SessionsSidebarProps> = ({
           <CardTitle className="flex items-center gap-2 text-lg">
             <MessageSquare className="h-5 w-5" />
             Chat History
+            {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
           </CardTitle>
           <Button variant="outline" size="sm" onClick={onStartNewSession}>
             <Plus className="h-4 w-4" />
@@ -52,7 +55,12 @@ const SessionsSidebar: React.FC<SessionsSidebarProps> = ({
       <CardContent className="p-0">
         <ScrollArea className="h-[600px]">
           <div className="space-y-2 p-4">
-            {sessions.length === 0 ? (
+            {isLoading && sessions.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
+                <p className="text-sm">Loading conversations...</p>
+              </div>
+            ) : sessions.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p className="text-sm">No conversations yet</p>

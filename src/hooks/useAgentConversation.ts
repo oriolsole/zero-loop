@@ -51,6 +51,7 @@ export const useAgentConversation = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationMessage[]>([]);
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
 
   const generateSessionTitle = (firstMessage: string): string => {
     const truncated = firstMessage.length > 50 
@@ -58,6 +59,80 @@ export const useAgentConversation = () => {
       : firstMessage;
     return truncated;
   };
+
+  const loadExistingSessions = useCallback(async () => {
+    if (!user || isLoadingSessions) return;
+
+    setIsLoadingSessions(true);
+    
+    try {
+      // Get distinct sessions with metadata
+      const { data: sessionData, error } = await supabase
+        .from('agent_conversations')
+        .select('session_id, created_at, content, role')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      if (sessionData && sessionData.length > 0) {
+        // Group messages by session_id and create session metadata
+        const sessionMap = new Map<string, {
+          id: string;
+          firstMessage: string;
+          lastMessage: string;
+          messageCount: number;
+          created_at: Date;
+          updated_at: Date;
+        }>();
+
+        sessionData.forEach((row) => {
+          const sessionId = row.session_id;
+          const createdAt = new Date(row.created_at);
+          
+          if (!sessionMap.has(sessionId)) {
+            sessionMap.set(sessionId, {
+              id: sessionId,
+              firstMessage: row.role === 'user' ? row.content : '',
+              lastMessage: row.content,
+              messageCount: 0,
+              created_at: createdAt,
+              updated_at: createdAt
+            });
+          }
+          
+          const session = sessionMap.get(sessionId)!;
+          session.messageCount++;
+          session.updated_at = createdAt > session.updated_at ? createdAt : session.updated_at;
+          session.lastMessage = row.content;
+          
+          // Set first user message as the session title source
+          if (row.role === 'user' && !session.firstMessage) {
+            session.firstMessage = row.content;
+          }
+        });
+
+        // Convert to sessions array
+        const sessionsArray: ConversationSession[] = Array.from(sessionMap.values())
+          .map(session => ({
+            id: session.id,
+            title: generateSessionTitle(session.firstMessage || session.lastMessage),
+            created_at: session.created_at,
+            updated_at: session.updated_at,
+            lastMessage: session.lastMessage,
+            messageCount: session.messageCount
+          }))
+          .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
+
+        setSessions(sessionsArray);
+        console.log(`Loaded ${sessionsArray.length} existing sessions`);
+      }
+    } catch (error) {
+      console.error('Error loading existing sessions:', error);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  }, [user, isLoadingSessions]);
 
   const startNewSession = useCallback(async () => {
     if (!user) return;
@@ -87,7 +162,24 @@ export const useAgentConversation = () => {
       const title = generateSessionTitle(message.content);
       setSessions(prev => prev.map(session => 
         session.id === currentSessionId 
-          ? { ...session, title, updated_at: new Date() }
+          ? { 
+              ...session, 
+              title, 
+              updated_at: new Date(),
+              messageCount: (session.messageCount || 0) + 1
+            }
+          : session
+      ));
+    } else {
+      // Update session metadata
+      setSessions(prev => prev.map(session => 
+        session.id === currentSessionId 
+          ? { 
+              ...session, 
+              updated_at: new Date(),
+              messageCount: (session.messageCount || 0) + 1,
+              lastMessage: message.content
+            }
           : session
       ));
     }
@@ -156,6 +248,7 @@ export const useAgentConversation = () => {
       }));
 
       setConversations(messages);
+      console.log(`Loaded ${messages.length} messages for session ${sessionId}`);
     } catch (error) {
       console.error('Error loading session:', error);
     }
@@ -189,22 +282,31 @@ export const useAgentConversation = () => {
     }));
   }, [conversations]);
 
-  // Initialize with a new session if none exists
+  // Load existing sessions when user becomes available
   useEffect(() => {
-    if (user && !currentSessionId) {
+    if (user && sessions.length === 0 && !isLoadingSessions) {
+      loadExistingSessions();
+    }
+  }, [user, sessions.length, loadExistingSessions, isLoadingSessions]);
+
+  // Initialize with a new session if none exists and no sessions are loading
+  useEffect(() => {
+    if (user && !currentSessionId && sessions.length === 0 && !isLoadingSessions) {
       startNewSession();
     }
-  }, [user, currentSessionId, startNewSession]);
+  }, [user, currentSessionId, sessions.length, startNewSession, isLoadingSessions]);
 
   return {
     currentSessionId,
     conversations,
     sessions,
+    isLoadingSessions,
     startNewSession,
     loadSession,
     addMessage,
     updateMessage,
     deleteSession,
-    getConversationHistory
+    getConversationHistory,
+    loadExistingSessions
   };
 };
