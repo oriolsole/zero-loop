@@ -1,19 +1,20 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { toast } from '@/components/ui/sonner';
 
 export interface ConversationMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  toolsUsed?: Array<{
-    name: string;
-    parameters: Record<string, any>;
-    success: boolean;
-  }>;
+  toolsUsed?: any[];
   selfReflection?: string;
+  toolDecision?: {
+    shouldUseTools: boolean;
+    detectedType: string;
+    reasoning: string;
+    confidence: number;
+    suggestedTools?: string[];
+  };
 }
 
 export interface ConversationSession {
@@ -63,12 +64,15 @@ export function useAgentConversation() {
         role: row.role as 'user' | 'assistant',
         content: row.content,
         timestamp: new Date(row.created_at),
-        toolsUsed: Array.isArray(row.tools_used) ? row.tools_used as Array<{
-          name: string;
-          parameters: Record<string, any>;
-          success: boolean;
-        }> : undefined,
-        selfReflection: row.self_reflection || undefined
+        toolsUsed: Array.isArray(row.tools_used) ? row.tools_used as any[] : undefined,
+        selfReflection: row.self_reflection || undefined,
+        toolDecision: row.tool_decision ? {
+          shouldUseTools: row.tool_decision.should_use_tools,
+          detectedType: row.tool_decision.detected_type,
+          reasoning: row.tool_decision.reasoning,
+          confidence: row.tool_decision.confidence,
+          suggestedTools: row.tool_decision.suggested_tools
+        } : undefined
       }));
 
       setConversations(messages);

@@ -6,10 +6,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { parseGitHubUrl, detectGitHubRequest } from './github-utils.ts';
 import { detectSearchRequest } from './search-utils.ts';
 import { executeTools } from './tool-executor.ts';
-import { forceGitHubExecution, forceKnowledgeSearch } from './forced-tools.ts';
+import { executeBasedOnDecision } from './enhanced-forced-tools.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
 import { generateSystemPrompt } from './system-prompts.ts';
 import { extractAssistantMessage, generateSelfReflection } from './response-handler.ts';
+import { analyzeToolRequirements, logToolDecision } from './tool-decision-logger.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -72,21 +73,35 @@ serve(async (req) => {
     const tools = convertMCPsToTools(mcps);
     console.log('Generated tools:', tools.map(t => t.function.name));
 
-    // Detect request types
+    // ENHANCED TOOL DECISION ANALYSIS
+    const toolDecision = analyzeToolRequirements(message);
+    logToolDecision(toolDecision, message);
+
+    // Detect request types (legacy compatibility)
     const isSearchRequest = detectSearchRequest(message);
     const { isGitHubRequest, githubInfo } = detectGitHubRequest(message);
 
-    console.log('Is search request:', isSearchRequest);
-    console.log('Is GitHub request:', isGitHubRequest, githubInfo);
+    console.log('Legacy detection - Is search request:', isSearchRequest);
+    console.log('Legacy detection - Is GitHub request:', isGitHubRequest, githubInfo);
+    console.log('Enhanced detection - Tool decision:', toolDecision);
 
-    // Generate system prompt
-    const systemPrompt = generateSystemPrompt(mcps, isSearchRequest, isGitHubRequest);
+    // Generate system prompt with enhanced tool usage instructions
+    let enhancedSystemPrompt = generateSystemPrompt(mcps, isSearchRequest, isGitHubRequest);
+    
+    // Add aggressive tool usage instructions based on decision analysis
+    if (toolDecision.shouldUseTools) {
+      enhancedSystemPrompt += `\n\n**CRITICAL TOOL EXECUTION DIRECTIVE**: 
+Based on analysis, this message REQUIRES tool usage. Type: ${toolDecision.detectedType}
+Reasoning: ${toolDecision.reasoning}
+Required tools: ${toolDecision.suggestedTools.join(', ')}
+You MUST generate appropriate tool calls for this request. Do not provide generic responses.`;
+    }
 
     // Prepare messages for AI model
     const messages = [
       {
         role: 'system',
-        content: systemPrompt
+        content: enhancedSystemPrompt
       },
       ...conversationHistory,
       {
@@ -99,7 +114,7 @@ serve(async (req) => {
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: 'auto',
+      tool_choice: toolDecision.shouldUseTools ? 'required' : 'auto',
       temperature: 0.7,
       max_tokens: 2000,
       stream: streaming,
@@ -111,7 +126,7 @@ serve(async (req) => {
       })
     };
 
-    console.log('Calling AI model proxy with tools:', tools.length, 'tool_choice: auto');
+    console.log('Calling AI model proxy with tools:', tools.length, 'tool_choice:', toolDecision.shouldUseTools ? 'required' : 'auto');
 
     const response = await supabase.functions.invoke('ai-model-proxy', {
       body: modelRequestBody
@@ -149,29 +164,31 @@ serve(async (req) => {
     let selfReflection = '';
     let toolProgress: any[] = [];
 
-    // Check if this was a GitHub request but no tools were called - FORCE tool execution
-    if (isGitHubRequest && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
-      if (githubInfo) {
-        const result = await forceGitHubExecution(githubInfo, mcps, userId, supabase);
-        finalResponse = result.finalResponse;
-        toolsUsed = result.toolsUsed;
-        toolProgress = result.toolProgress;
-        selfReflection = result.selfReflection;
-      } else {
-        finalResponse = `I detected a GitHub repository request, but I couldn't parse the repository information from your message. Please provide a clear GitHub repository URL like "https://github.com/owner/repository".`;
-        selfReflection = 'GitHub request detected but repository information could not be parsed';
+    // ENHANCED FORCED TOOL EXECUTION
+    // Check if tools should be used but weren't called by the AI model
+    if (toolDecision.shouldUseTools && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
+      console.log('AI MODEL FAILED TO GENERATE REQUIRED TOOL CALLS - FORCING EXECUTION');
+      console.log('Tool decision analysis indicated tools were required but AI model did not generate tool calls');
+      
+      const forcedResult = await executeBasedOnDecision(
+        toolDecision,
+        message,
+        githubInfo,
+        mcps,
+        userId,
+        supabase
+      );
+      
+      if (forcedResult) {
+        finalResponse = forcedResult.finalResponse;
+        toolsUsed = forcedResult.toolsUsed;
+        toolProgress = forcedResult.toolProgress;
+        selfReflection = forcedResult.selfReflection;
       }
-    }
-    // Check if this was a search request but no tools were called - FORCE tool execution
-    else if (isSearchRequest && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
-      const result = await forceKnowledgeSearch(message, mcps, supabase);
-      finalResponse = result.finalResponse;
-      toolsUsed = result.toolsUsed;
-      toolProgress = result.toolProgress;
-      selfReflection = result.selfReflection;
     }
     // Enhanced tool execution with detailed progress tracking
     else if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      console.log('AI MODEL GENERATED TOOL CALLS - EXECUTING NORMALLY');
       const { toolResults, toolsUsed: executedTools, toolProgress: progress } = await executeTools(
         assistantMessage.tool_calls,
         mcps,
@@ -249,8 +266,8 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
 
       console.log('Follow-up response completed successfully');
     } else {
-      console.log('No tool calls were made by the AI model');
-      selfReflection = 'No tools were used for this request';
+      console.log('No tool calls were made by the AI model and none were forced');
+      selfReflection = `No tools were used for this request. Tool decision analysis: ${toolDecision.reasoning}`;
     }
 
     // Store assistant response in database
@@ -282,7 +299,13 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
         selfReflection,
         sessionId,
         fallbackUsed,
-        fallbackReason
+        fallbackReason,
+        toolDecision: {
+          shouldUseTools: toolDecision.shouldUseTools,
+          detectedType: toolDecision.detectedType,
+          reasoning: toolDecision.reasoning,
+          confidence: toolDecision.confidence
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

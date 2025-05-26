@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -25,7 +24,11 @@ import {
   CheckCircle,
   XCircle,
   PlayCircle,
-  AlertTriangle
+  AlertTriangle,
+  Search,
+  Database,
+  Github,
+  MessageCircle
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { supabase } from '@/integrations/supabase/client';
@@ -35,6 +38,76 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings, ModelProvider } from '@/services/modelProviderService';
 import ToolProgressStream from './ToolProgressStream';
 import { useToolProgress } from '@/hooks/useToolProgress';
+
+// Enhanced Tool Decision Display Component
+const ToolDecisionDisplay: React.FC<{ toolDecision?: any }> = ({ toolDecision }) => {
+  if (!toolDecision) return null;
+
+  const getDecisionIcon = (type: string) => {
+    switch (type) {
+      case 'github':
+        return <Github className="h-4 w-4 text-purple-500" />;
+      case 'search':
+        return <Search className="h-4 w-4 text-blue-500" />;
+      case 'knowledge':
+        return <Database className="h-4 w-4 text-green-500" />;
+      case 'general':
+        return <MessageCircle className="h-4 w-4 text-gray-500" />;
+      default:
+        return <Brain className="h-4 w-4 text-orange-500" />;
+    }
+  };
+
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 0.8) return 'text-green-600 bg-green-50 border-green-200';
+    if (confidence >= 0.6) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    return 'text-red-600 bg-red-50 border-red-200';
+  };
+
+  return (
+    <div className="mt-3 p-3 rounded-lg border bg-muted/30">
+      <div className="flex items-center gap-2 mb-2">
+        <Brain className="h-4 w-4" />
+        <span className="text-sm font-medium">Tool Decision Analysis</span>
+        <Badge 
+          variant="outline" 
+          className={`text-xs ${getConfidenceColor(toolDecision.confidence)}`}
+        >
+          {Math.round(toolDecision.confidence * 100)}% confidence
+        </Badge>
+      </div>
+      
+      <div className="space-y-2 text-sm">
+        <div className="flex items-center gap-2">
+          {getDecisionIcon(toolDecision.detectedType)}
+          <span className="font-medium">Type:</span>
+          <span className="capitalize">{toolDecision.detectedType}</span>
+          {toolDecision.shouldUseTools && (
+            <Badge variant="default" className="text-xs">Tools Required</Badge>
+          )}
+        </div>
+        
+        <div>
+          <span className="font-medium">Reasoning:</span>
+          <p className="text-muted-foreground mt-1">{toolDecision.reasoning}</p>
+        </div>
+        
+        {toolDecision.suggestedTools && toolDecision.suggestedTools.length > 0 && (
+          <div>
+            <span className="font-medium">Suggested Tools:</span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {toolDecision.suggestedTools.map((tool: string, index: number) => (
+                <Badge key={index} variant="secondary" className="text-xs">
+                  {tool.replace('execute_', '')}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // Tool Progress Component with enhanced feedback
 const ToolProgress: React.FC<{ toolProgress: any[] }> = ({ toolProgress }) => {
@@ -91,6 +164,7 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
   const [debugInfo, setDebugInfo] = useState<string>('');
+  const [currentToolDecision, setCurrentToolDecision] = useState<any>(null);
   
   // Add tool progress hook
   const {
@@ -175,6 +249,7 @@ const AIAgentChat: React.FC = () => {
     setInput('');
     setIsLoading(true);
     clearTools(); // Clear previous tool progress
+    setCurrentToolDecision(null); // Clear previous tool decision
     setDebugInfo('Starting AI agent request...');
 
     // Add timeout to prevent infinite loading
@@ -236,6 +311,12 @@ const AIAgentChat: React.FC = () => {
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
+      // Display tool decision analysis
+      if (data.toolDecision) {
+        setCurrentToolDecision(data.toolDecision);
+        console.log('Tool decision analysis:', data.toolDecision);
+      }
+
       // Process tool progress if available
       if (data.toolProgress && data.toolProgress.length > 0) {
         console.log('Processing tool progress:', data.toolProgress);
@@ -286,7 +367,8 @@ const AIAgentChat: React.FC = () => {
         content: data.message,
         timestamp: new Date(),
         toolsUsed: data.toolsUsed || [],
-        selfReflection: data.selfReflection
+        selfReflection: data.selfReflection,
+        toolDecision: data.toolDecision
       };
 
       addMessage(assistantMessage);
@@ -365,6 +447,7 @@ Please try again, or check the edge function logs in the Supabase dashboard if y
     } finally {
       setIsLoading(false);
       setDebugInfo('');
+      setCurrentToolDecision(null);
     }
   };
 
@@ -496,11 +579,19 @@ Please try again, or check the edge function logs in the Supabase dashboard if y
             </div>
           </div>
 
-          {/* Debug Info */}
-          {debugInfo && (
-            <div className="mt-2 p-2 bg-muted/50 rounded text-xs text-muted-foreground flex items-center gap-2">
-              <AlertTriangle className="h-3 w-3" />
-              {debugInfo}
+          {/* Enhanced Debug Info with Tool Decision */}
+          {(debugInfo || currentToolDecision) && (
+            <div className="mt-2 space-y-2">
+              {debugInfo && (
+                <div className="p-2 bg-muted/50 rounded text-xs text-muted-foreground flex items-center gap-2">
+                  <AlertTriangle className="h-3 w-3" />
+                  {debugInfo}
+                </div>
+              )}
+              
+              {currentToolDecision && (
+                <ToolDecisionDisplay toolDecision={currentToolDecision} />
+              )}
             </div>
           )}
         </CardHeader>
@@ -555,6 +646,11 @@ Please try again, or check the edge function logs in the Supabase dashboard if y
                   >
                     <div className="whitespace-pre-wrap text-sm">{message.content}</div>
                     
+                    {/* Enhanced Tool Decision Display */}
+                    {message.toolDecision && message.role === 'assistant' && (
+                      <ToolDecisionDisplay toolDecision={message.toolDecision} />
+                    )}
+                    
                     {message.toolsUsed && message.toolsUsed.length > 0 && (
                       <div className="mt-3 space-y-2">
                         <Separator />
@@ -601,7 +697,7 @@ Please try again, or check the edge function logs in the Supabase dashboard if y
                 </div>
               ))}
               
-              {/* Enhanced loading state with real-time tool progress */}
+              {/* Enhanced loading state with tool decision analysis */}
               {isLoading && (
                 <div className="flex justify-start">
                   <Avatar className="h-8 w-8 mt-0.5">
@@ -613,9 +709,14 @@ Please try again, or check the edge function logs in the Supabase dashboard if y
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       <span className="text-sm">
-                        Thinking with {modelSettings.provider.toUpperCase()}...
+                        Analyzing request and thinking with {modelSettings.provider.toUpperCase()}...
                       </span>
                     </div>
+                    
+                    {/* Show tool decision while loading */}
+                    {currentToolDecision && (
+                      <ToolDecisionDisplay toolDecision={currentToolDecision} />
+                    )}
                     
                     {/* Real-time Tool Progress Display */}
                     {(toolsActive || tools.length > 0) && (
@@ -652,7 +753,7 @@ Please try again, or check the edge function logs in the Supabase dashboard if y
         <CardFooter className="border-t p-4">
           <div className="flex w-full gap-2">
             <Input
-              placeholder={`Ask me anything! I can search GitHub, the web, and access your knowledge base! (Using ${modelSettings.provider.toUpperCase()})`}
+              placeholder={`Ask me anything! I'll analyze your request and use the right tools automatically! (Using ${modelSettings.provider.toUpperCase()})`}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyPress}
