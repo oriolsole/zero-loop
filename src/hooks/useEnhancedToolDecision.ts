@@ -57,226 +57,66 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       return decision;
     }
     
-    // Fallback to original single-step analysis with enhanced support
-    const contextInfo = analyzeConversationContext(message, conversationHistory);
-    
-    const githubPatterns = [
-      { pattern: /github\.com\/[\w-]+\/[\w-]+/i, weight: 1.0, context: 'direct_url' },
-      { pattern: /\b(pull request|pr|merge|commit|branch|fork|clone)\b/i, weight: 0.9, context: 'git_workflow' },
-      { pattern: /\b(analyze|examine|look at|check|review).*(repository|repo|github|code)/i, weight: 0.8, context: 'analysis_request' },
-      { pattern: /\b(issue|releases?|contributors?|readme|documentation)\b/i, weight: 0.7, context: 'repo_content' },
-      { pattern: /\b(file structure|directory structure|project structure|files|folders)\b/i, weight: 0.6, context: 'structure_query' }
-    ];
-    
-    const searchPatterns = [
-      { pattern: /\b(search|find|look up|lookup|google)\b/i, weight: 0.9, context: 'explicit_search' },
-      { pattern: /\b(latest|current|recent|today|news)\b/i, weight: 0.8, context: 'current_info' },
-      { pattern: /\b(what is|who is|how to|why does)\b/i, weight: 0.7, context: 'question' },
-      { pattern: /\b(tutorial|guide|example|documentation)\b/i, weight: 0.6, context: 'learning' }
-    ];
-    
-    const knowledgePatterns = [
-      { pattern: /\b(my knowledge|knowledge base|my notes|remember)\b/i, weight: 1.0, context: 'personal_data' },
-      { pattern: /\b(search my|find in my|look in my)\b/i, weight: 0.9, context: 'personal_search' },
-      { pattern: /\b(previous|earlier|before|conversation|history)\b/i, weight: 0.8, context: 'conversation_history' },
-      { pattern: /\b(stored|saved|documented|recorded)\b/i, weight: 0.7, context: 'stored_data' }
-    ];
-
-    // NEW: Jira-specific patterns
-    const jiraPatterns = [
-      { pattern: /\b(jira|atlassian)\b/i, weight: 1.0, context: 'jira_platform' },
-      { pattern: /\b(connect to jira|jira api|jira integration|access jira)\b/i, weight: 0.9, context: 'jira_connection' },
-      { pattern: /\b(search (in )?jira|find (in )?jira|retrieve.*jira)\b/i, weight: 0.9, context: 'jira_search' },
-      { pattern: /\b(projects?|issues?|tickets?|epic|story|bug|sprint)\b/i, weight: 0.8, context: 'jira_entities' },
-      { pattern: /\b(create (issue|ticket)|update (issue|ticket)|comment|assign)\b/i, weight: 0.7, context: 'jira_actions' },
-      { pattern: /\b(jql|jira query)\b/i, weight: 0.8, context: 'jira_query' }
-    ];
-
-    // Web scraping specific patterns
-    const scrapingPatterns = [
-      { pattern: /https?:\/\/[^\s]+/g, weight: 1.0, context: 'direct_url' },
-      { pattern: /\b(extract|scrape|get content|full article|detailed|comprehensive)\b/i, weight: 0.8, context: 'detailed_content' },
-      { pattern: /\b(news today|current news|latest news|breaking news)\b/i, weight: 0.9, context: 'news_request' },
-      { pattern: /\b(article|blog post|webpage|website content)\b/i, weight: 0.7, context: 'content_request' }
-    ];
-
-    const contextReferencePatterns = [
-      /\b(its?|this|that|the)\s+(file structure|directory structure|structure|files|folders)\b/i,
-      /\b(what|how).*(its?|this|that)\b/i,
-      /\b(structure|files|folders|contents?)\s+(of\s+)?(it|this|that)\b/i
-    ];
-
-    const complexityIndicators = {
-      simple: [/\b(what is|who is|simple|quick|brief)\b/i],
-      moderate: [/\b(explain|describe|compare|analyze)\b/i],
-      complex: [/\b(comprehensive|detailed|in-depth|thorough|complete)\b/i, /\band\b.*\band\b/i]
-    };
-
-    const referencesContext = contextReferencePatterns.some(pattern => pattern.test(message));
-    const contextBoost = referencesContext && contextInfo.referencesGitHub ? 0.8 : 0;
-
-    let detectedType: EnhancedToolDecision['detectedType'] = 'general';
-    let shouldUseTools = false;
-    let reasoning = '';
-    let suggestedTools: string[] = [];
-    let confidence = 0.6;
-    let complexity: EnhancedToolDecision['complexity'] = 'simple';
-    let estimatedSteps = 1;
-    let fallbackStrategy: string | undefined;
-
-    if (complexityIndicators.complex.some(pattern => pattern.test(message))) {
-      complexity = 'complex';
-      estimatedSteps = 4;
-    } else if (complexityIndicators.moderate.some(pattern => pattern.test(message))) {
-      complexity = 'moderate';
-      estimatedSteps = 2;
-    }
-
-    let githubScore = 0;
-    let searchScore = 0;
-    let knowledgeScore = 0;
-    let scrapingScore = 0;
-    let jiraScore = 0;
-    
-    githubPatterns.forEach(({ pattern, weight }) => {
-      if (pattern.test(message)) githubScore += weight;
-    });
-    
-    if (contextBoost > 0) {
-      githubScore += contextBoost;
-    }
-    
-    searchPatterns.forEach(({ pattern, weight }) => {
-      if (pattern.test(message)) searchScore += weight;
-    });
-    
-    knowledgePatterns.forEach(({ pattern, weight }) => {
-      if (pattern.test(message)) knowledgeScore += weight;
-    });
-
-    scrapingPatterns.forEach(({ pattern, weight }) => {
-      if (pattern.test(message)) scrapingScore += weight;
-    });
-
-    // NEW: Calculate Jira score
-    jiraPatterns.forEach(({ pattern, weight }) => {
-      if (pattern.test(message)) jiraScore += weight;
-    });
-
-    // Check for URLs and detailed content needs
-    const hasUrls = /https?:\/\/[^\s]+/g.test(message);
-    const needsDetailedContent = /\b(detailed|comprehensive|full|complete|in-depth|news today|current news|latest news)\b/i.test(message);
-
-    // Enhanced decision logic - Jira gets priority since it's specific
-    if (jiraScore >= 0.6) {
-      detectedType = 'jira';
-      shouldUseTools = true;
-      reasoning = `Jira-related request detected (score: ${jiraScore.toFixed(1)}) - requires Jira tools for project/issue management`;
-      suggestedTools = ['execute_jira-tools'];
-      confidence = Math.min(0.95, 0.7 + jiraScore * 0.2);
-      fallbackStrategy = 'If Jira access fails, provide guidance on Jira setup and API configuration';
-    } else if (hasUrls && scrapingScore >= 0.7) {
-      detectedType = 'scrape-content';
-      shouldUseTools = true;
-      reasoning = `Direct web scraping request detected - user provided specific URL(s) and wants detailed content extraction`;
-      suggestedTools = ['execute_web-scraper'];
-      confidence = 0.95;
-      fallbackStrategy = 'If scraping fails, try to provide information about the URL or suggest manual access';
-    } else if (needsDetailedContent && searchScore >= 0.7) {
-      detectedType = 'search-and-scrape';
-      shouldUseTools = true;
-      reasoning = `Comprehensive information request detected - requires web search followed by content extraction for detailed answers`;
-      suggestedTools = ['execute_web-search', 'execute_web-scraper'];
-      confidence = 0.9;
-      complexity = 'complex';
-      estimatedSteps = 4;
-      fallbackStrategy = 'If scraping fails, provide summary from search results; if search fails, use knowledge base';
-    } else if (githubScore >= 0.6 || (referencesContext && contextInfo.referencesGitHub)) {
-      detectedType = 'github';
-      shouldUseTools = true;
-      reasoning = contextInfo.referencesGitHub 
-        ? `Context-aware GitHub request detected - references previous GitHub repository discussion`
-        : `GitHub repository or code-related request detected - requires GitHub tools for repository analysis`;
-      suggestedTools = ['execute_github-tools'];
-      confidence = Math.min(0.95, 0.7 + githubScore * 0.2);
-      fallbackStrategy = 'If GitHub access fails, provide general guidance about repository structure and best practices';
-    } else if (knowledgeScore >= 0.7) {
-      detectedType = 'knowledge';
-      shouldUseTools = true;
-      reasoning = 'Knowledge base query detected - requires search through stored documents and conversations';
-      suggestedTools = ['execute_knowledge-search-v2'];
-      confidence = 0.85;
-      fallbackStrategy = 'If no results found, suggest alternative search terms or approaches';
-    } else if (searchScore >= 0.6) {
-      const needsMultipleTools = searchScore > 0.8 || complexity === 'complex';
-      detectedType = 'search';
-      shouldUseTools = true;
-      reasoning = 'Information search query detected - requires web search and/or knowledge base search';
-      suggestedTools = needsMultipleTools ? 
-        ['execute_web-search', 'execute_knowledge-search-v2'] : 
-        ['execute_web-search'];
-      confidence = 0.8;
-      fallbackStrategy = 'If web search fails, try knowledge base search or provide general guidance';
-    } else {
-      detectedType = 'general';
-      shouldUseTools = false;
-      reasoning = 'General conversation or question - can be answered without external tools';
-      suggestedTools = [];
-      confidence = 0.7;
-      estimatedSteps = 1;
-    }
-
-    if (shouldUseTools) {
-      estimatedSteps = Math.max(estimatedSteps, suggestedTools.length + 1);
-    }
-
-    const decision: EnhancedToolDecision = {
-      shouldUseTools,
-      detectedType,
-      reasoning,
-      confidence,
-      suggestedTools,
-      complexity,
-      estimatedSteps,
-      fallbackStrategy
-    };
-
+    // Simplified tool decision logic - let the model decide naturally
+    const decision = createSimpleToolDecision(message, conversationHistory);
     setToolDecision(decision);
     return decision;
   }, [detectPlan]);
 
-  const analyzeConversationContext = (currentMessage: string, conversationHistory: any[]) => {
-    const contextInfo = {
-      referencesGitHub: false,
-      githubRepo: undefined as { owner: string; repo: string } | undefined,
-      referencePrevious: false
-    };
-
-    const referenceWords = /\b(its?|this|that|the)\b/i;
-    contextInfo.referencePrevious = referenceWords.test(currentMessage);
-
-    const recentHistory = conversationHistory.slice(-5);
+  const createSimpleToolDecision = (message: string, conversationHistory: any[]): EnhancedToolDecision => {
+    const lowerMessage = message.toLowerCase();
     
-    for (const historyItem of recentHistory) {
-      if (historyItem.content) {
-        const githubUrlMatch = historyItem.content.match(/github\.com\/([\w-]+)\/([\w-]+)/i);
-        if (githubUrlMatch) {
-          contextInfo.referencesGitHub = true;
-          contextInfo.githubRepo = {
-            owner: githubUrlMatch[1],
-            repo: githubUrlMatch[2]
-          };
-          break;
-        }
-        
-        const githubKeywords = /\b(repository|repo|github|git)\b/i;
-        if (githubKeywords.test(historyItem.content)) {
-          contextInfo.referencesGitHub = true;
-        }
-      }
+    // Simple intent detection - does this need external data/tools?
+    const needsExternalData = requiresExternalTools(message);
+    
+    if (!needsExternalData) {
+      return {
+        shouldUseTools: false,
+        detectedType: 'general',
+        reasoning: 'This appears to be a general question that can be answered with existing knowledge',
+        confidence: 0.8,
+        suggestedTools: [],
+        complexity: 'simple',
+        estimatedSteps: 1
+      };
     }
 
-    return contextInfo;
+    // If external tools are needed, let the model decide which ones
+    return {
+      shouldUseTools: true,
+      detectedType: 'general', // Let model decide specific type
+      reasoning: 'This request may benefit from external tools - letting the model choose the most appropriate ones',
+      confidence: 0.7,
+      suggestedTools: [], // Don't pre-suggest tools, let model decide
+      complexity: 'moderate',
+      estimatedSteps: 2,
+      fallbackStrategy: 'If no tools are used, provide response based on existing knowledge'
+    };
+  };
+
+  const requiresExternalTools = (message: string): boolean => {
+    const lowerMessage = message.toLowerCase();
+    
+    // Very basic indicators that external data might be needed
+    const externalDataIndicators = [
+      'search', 'find', 'look up', 'current', 'latest', 'recent', 'today',
+      'github', 'repository', 'repo', 'jira', 'knowledge base',
+      'what is', 'who is', 'how to', 'analyze', 'check'
+    ];
+    
+    // Simple conversational responses that don't need tools
+    const conversationalPatterns = [
+      'hello', 'hi', 'hey', 'thanks', 'thank you', 'good morning',
+      'good afternoon', 'good evening', 'how are you', 'what can you do'
+    ];
+    
+    // Check if it's clearly conversational
+    if (conversationalPatterns.some(pattern => lowerMessage.includes(pattern))) {
+      return false;
+    }
+    
+    // Check if it might need external data
+    return externalDataIndicators.some(indicator => lowerMessage.includes(indicator));
   };
 
   const startExecution = useCallback(() => {
