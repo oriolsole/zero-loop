@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -238,7 +237,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
     let selfReflection = '';
     let toolProgress: any[] = [];
 
-    // Check if AI wants to call any tools (only for OpenAI format)
+    // Enhanced tool execution with detailed progress tracking
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       console.log('Processing', assistantMessage.tool_calls.length, 'tool calls');
       const toolResults = [];
@@ -256,12 +255,15 @@ Remember: You can use multiple tools in sequence and should reflect on their out
         
         console.log('Executing tool:', functionName, 'with parameters:', parameters);
         
-        // Track tool progress
+        // Enhanced tool progress tracking
         const toolProgressItem = {
+          id: `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           name: functionName,
-          status: 'executing',
+          displayName: functionName.replace('execute_', '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          status: 'starting',
+          startTime: new Date().toISOString(),
           parameters,
-          startTime: new Date().toISOString()
+          progress: 0
         };
         toolProgress.push(toolProgressItem);
         
@@ -279,8 +281,16 @@ Remember: You can use multiple tools in sequence and should reflect on their out
             content: JSON.stringify(errorResult)
           });
           
-          toolProgressItem.status = 'failed';
-          toolProgressItem.error = 'Tool not found';
+          // Update progress with failure
+          const progressIndex = toolProgress.findIndex(t => t.name === functionName);
+          if (progressIndex !== -1) {
+            toolProgress[progressIndex] = {
+              ...toolProgress[progressIndex],
+              status: 'failed',
+              endTime: new Date().toISOString(),
+              error: 'Tool not found'
+            };
+          }
           
           toolsUsed.push({
             name: functionName,
@@ -293,7 +303,16 @@ Remember: You can use multiple tools in sequence and should reflect on their out
 
         try {
           console.log('Using MCP endpoint:', targetMcp.endpoint, 'for tool:', targetMcp.title);
-          let mcpResult;
+          
+          // Update progress to executing
+          const progressIndex = toolProgress.findIndex(t => t.name === functionName);
+          if (progressIndex !== -1) {
+            toolProgress[progressIndex] = {
+              ...toolProgress[progressIndex],
+              status: 'executing',
+              progress: 25
+            };
+          }
           
           // Add userId to parameters for tools that need it
           const toolParameters = {
@@ -302,6 +321,12 @@ Remember: You can use multiple tools in sequence and should reflect on their out
           };
           
           console.log('Calling edge function:', targetMcp.endpoint, 'with parameters:', toolParameters);
+          
+          // Simulate progress updates during execution
+          if (progressIndex !== -1) {
+            toolProgress[progressIndex].progress = 50;
+          }
+          
           const { data: edgeResult, error: edgeError } = await supabase.functions.invoke(targetMcp.endpoint, {
             body: toolParameters
           });
@@ -313,7 +338,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
             throw new Error(`Edge function error: ${edgeError.message}`);
           }
           
-          mcpResult = edgeResult;
+          let mcpResult = edgeResult;
           
           // Handle different response formats
           let processedResult = mcpResult;
@@ -331,9 +356,16 @@ Remember: You can use multiple tools in sequence and should reflect on their out
             content: JSON.stringify(processedResult)
           });
 
-          toolProgressItem.status = 'completed';
-          toolProgressItem.endTime = new Date().toISOString();
-          toolProgressItem.result = processedResult;
+          // Update progress with completion
+          if (progressIndex !== -1) {
+            toolProgress[progressIndex] = {
+              ...toolProgress[progressIndex],
+              status: 'completed',
+              endTime: new Date().toISOString(),
+              progress: 100,
+              result: processedResult
+            };
+          }
 
           toolsUsed.push({
             name: functionName,
@@ -358,9 +390,16 @@ Remember: You can use multiple tools in sequence and should reflect on their out
             content: JSON.stringify(errorResult)
           });
 
-          toolProgressItem.status = 'failed';
-          toolProgressItem.error = error.message;
-          toolProgressItem.endTime = new Date().toISOString();
+          // Update progress with failure
+          const progressIndex = toolProgress.findIndex(t => t.name === functionName);
+          if (progressIndex !== -1) {
+            toolProgress[progressIndex] = {
+              ...toolProgress[progressIndex],
+              status: 'failed',
+              endTime: new Date().toISOString(),
+              error: error.message
+            };
+          }
 
           toolsUsed.push({
             name: functionName,
@@ -439,10 +478,18 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
         fallbackReason = followUpData.fallback_reason;
       }
       
-      // Generate self-reflection summary
+      // Generate enhanced self-reflection summary
       const successfulTools = toolsUsed.filter(t => t.success).length;
       const failedTools = toolsUsed.filter(t => !t.success).length;
-      selfReflection = `Used ${toolsUsed.length} tool(s): ${successfulTools} succeeded, ${failedTools} failed.`;
+      const totalExecutionTime = toolProgress.reduce((acc, tool) => {
+        if (tool.startTime && tool.endTime) {
+          const duration = new Date(tool.endTime).getTime() - new Date(tool.startTime).getTime();
+          return acc + duration;
+        }
+        return acc;
+      }, 0);
+      
+      selfReflection = `Used ${toolsUsed.length} tool(s): ${successfulTools} succeeded, ${failedTools} failed. Total execution time: ${Math.round(totalExecutionTime / 1000 * 100) / 100}s`;
       
       if (failedTools > 0) {
         const failedToolNames = toolsUsed.filter(t => !t.success).map(t => t.name).join(', ');
@@ -479,7 +526,7 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
           success: t.success,
           result: t.result
         })),
-        toolProgress,
+        toolProgress, // Enhanced tool progress information
         selfReflection,
         sessionId,
         fallbackUsed,

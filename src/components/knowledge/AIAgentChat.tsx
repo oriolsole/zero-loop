@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -33,6 +32,8 @@ import { toast } from '@/components/ui/sonner';
 import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings, ModelProvider } from '@/services/modelProviderService';
+import ToolProgressStream from './ToolProgressStream';
+import { useToolProgress } from '@/hooks/useToolProgress';
 
 // Tool Progress Component with enhanced feedback
 const ToolProgress: React.FC<{ toolProgress: any[] }> = ({ toolProgress }) => {
@@ -88,8 +89,19 @@ const AIAgentChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
-  const [currentToolProgress, setCurrentToolProgress] = useState<any[]>([]);
   const [debugInfo, setDebugInfo] = useState<string>('');
+  
+  // Add tool progress hook
+  const {
+    tools,
+    isActive: toolsActive,
+    startTool,
+    updateTool,
+    completeTool,
+    failTool,
+    clearTools,
+    setToolProgress
+  } = useToolProgress();
   
   // Create the missing scrollAreaRef
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -161,7 +173,7 @@ const AIAgentChat: React.FC = () => {
     addMessage(userMessage);
     setInput('');
     setIsLoading(true);
-    setCurrentToolProgress([]);
+    clearTools(); // Clear previous tool progress
     setDebugInfo('Starting AI agent request...');
 
     try {
@@ -201,6 +213,65 @@ const AIAgentChat: React.FC = () => {
         throw new Error(data.error || 'Failed to get response from AI agent');
       }
 
+      // Process tool progress if available
+      if (data.toolProgress && data.toolProgress.length > 0) {
+        console.log('Processing tool progress:', data.toolProgress);
+        
+        data.toolProgress.forEach((toolItem: any) => {
+          const toolId = startTool(
+            toolItem.name || 'unknown-tool',
+            toolItem.name?.replace('execute_', '') || 'Unknown Tool',
+            toolItem.parameters
+          );
+
+          // Simulate real-time progress updates
+          if (toolItem.status === 'executing') {
+            const progressInterval = setInterval(() => {
+              setToolProgress(toolId, Math.min(90, Math.random() * 80 + 10));
+            }, 200);
+
+            setTimeout(() => {
+              clearInterval(progressInterval);
+              if (toolItem.status === 'completed') {
+                completeTool(toolId, toolItem.result);
+              } else if (toolItem.status === 'failed') {
+                failTool(toolId, toolItem.error || 'Tool execution failed');
+              }
+            }, 1500);
+          } else {
+            // Update tool status immediately
+            updateTool(toolId, {
+              status: toolItem.status,
+              endTime: toolItem.endTime,
+              result: toolItem.result,
+              error: toolItem.error
+            });
+          }
+        });
+      }
+
+      // Process tools used for legacy support
+      if (data.toolsUsed && data.toolsUsed.length > 0 && (!data.toolProgress || data.toolProgress.length === 0)) {
+        console.log('Processing legacy tools used:', data.toolsUsed);
+        
+        data.toolsUsed.forEach((tool: any, index: number) => {
+          const toolId = startTool(
+            tool.name,
+            tool.name.replace('execute_', ''),
+            tool.parameters
+          );
+
+          // Simulate execution time
+          setTimeout(() => {
+            if (tool.success) {
+              completeTool(toolId, tool.result);
+            } else {
+              failTool(toolId, tool.result?.error || 'Tool execution failed');
+            }
+          }, (index + 1) * 800);
+        });
+      }
+
       const assistantMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -211,16 +282,6 @@ const AIAgentChat: React.FC = () => {
       };
 
       addMessage(assistantMessage);
-
-      // Show tool progress if available
-      if (data.toolProgress && data.toolProgress.length > 0) {
-        setCurrentToolProgress(data.toolProgress);
-        
-        // Clear tool progress after a delay
-        setTimeout(() => {
-          setCurrentToolProgress([]);
-        }, 5000);
-      }
 
       // Enhanced tool feedback
       if (data.toolsUsed && data.toolsUsed.length > 0) {
@@ -523,6 +584,7 @@ const AIAgentChat: React.FC = () => {
                 </div>
               ))}
               
+              {/* Enhanced loading state with real-time tool progress */}
               {isLoading && (
                 <div className="flex justify-start">
                   <Avatar className="h-8 w-8 mt-0.5">
@@ -538,8 +600,31 @@ const AIAgentChat: React.FC = () => {
                       </span>
                     </div>
                     
-                    {/* Real-time Tool Progress */}
-                    <ToolProgress toolProgress={currentToolProgress} />
+                    {/* Real-time Tool Progress Display */}
+                    {(toolsActive || tools.length > 0) && (
+                      <ToolProgressStream 
+                        tools={tools}
+                        isActive={toolsActive}
+                        className="mt-3"
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Show completed tool progress after loading finishes */}
+              {!isLoading && tools.length > 0 && (
+                <div className="flex justify-start">
+                  <Avatar className="h-8 w-8 mt-0.5">
+                    <AvatarFallback>
+                      <Bot className="h-4 w-4" />
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="ml-3 max-w-[80%]">
+                    <ToolProgressStream 
+                      tools={tools}
+                      isActive={false}
+                    />
                   </div>
                 </div>
               )}
