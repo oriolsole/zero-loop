@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
@@ -158,6 +159,13 @@ export const useLoopStore = create<LoopState>()(
     },
     {
       name: 'intelligence-loop-storage',
+      partialize: (state) => ({
+        domains: state.domains,
+        activeDomainId: state.activeDomainId,
+        loopDelay: state.loopDelay,
+        loopHistory: state.loopHistory,
+        useRemoteLogging: state.useRemoteLogging,
+      }),
       onRehydrateStorage: () => {
         return (state) => {
           if (state) {

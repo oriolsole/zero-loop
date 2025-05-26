@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -187,7 +186,7 @@ const ModelSettingsForm = () => {
                 <Zap className="h-5 w-5 text-purple-500" />
                 <div className="flex-1">
                   <Label htmlFor="npaw" className="font-medium">NPAW DeepSeek</Label>
-                  <p className="text-sm text-muted-foreground">Use NPAW's DeepSeek-V3 model</p>
+                  <p className="text-sm text-muted-foreground">Use NPAW's DeepSeek-V3 or Mistral7B models</p>
                 </div>
               </div>
               

@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -57,11 +56,12 @@ serve(async (req) => {
       const provider = requestData.provider || 'openai';
       
       if (provider === 'npaw') {
-        // Return NPAW models
+        // Return both NPAW models
         return new Response(
           JSON.stringify({ 
             models: [
-              { id: 'DeepSeek-V3', name: 'DeepSeek-V3', provider: 'npaw' }
+              { id: 'DeepSeek-V3', name: 'DeepSeek-V3', provider: 'npaw' },
+              { id: 'Mistral7B', name: 'Mistral7B', provider: 'npaw' }
             ] 
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -135,6 +135,7 @@ serve(async (req) => {
     
     if (provider === 'npaw') {
       console.log('NPAW API Key available:', !!npawApiKey);
+      console.log('NPAW Model requested:', requestData.model);
       
       if (!npawApiKey) {
         console.error('NPAW API key not configured');
@@ -144,11 +145,11 @@ serve(async (req) => {
         );
       }
       
-      // Try HTTP first as HTTPS on port 5500 might have SSL issues
+      // Use HTTP as HTTPS on port 5500 might have SSL issues
       apiUrl = 'http://ai2.npaw.com:5500/generate';
       authHeader = { 'npaw-api-key': npawApiKey };
       requestBody = {
-        model: requestData.model || 'DeepSeek-V3',
+        model: requestData.model || 'DeepSeek-V3', // Default to DeepSeek-V3 but allow both models
         messages: requestData.messages,
         temperature: requestData.temperature || 0.7,
         max_completion_tokens: requestData.max_tokens || 1000,

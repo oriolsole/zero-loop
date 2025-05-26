@@ -49,7 +49,8 @@ export function saveModelSettings(settings: ModelSettings): void {
  */
 export function getNpawModels(): ProviderModel[] {
   return [
-    { id: 'DeepSeek-V3', name: 'DeepSeek-V3', provider: 'npaw' }
+    { id: 'DeepSeek-V3', name: 'DeepSeek-V3', provider: 'npaw' },
+    { id: 'Mistral7B', name: 'Mistral7B', provider: 'npaw' }
   ];
 }
 
