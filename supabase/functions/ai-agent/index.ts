@@ -227,6 +227,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
     let finalResponse = assistantMessage.content;
     let toolsUsed: any[] = [];
     let selfReflection = '';
+    let toolProgress: any[] = [];
 
     // Check if AI wants to call any tools (only for OpenAI format)
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
@@ -238,33 +239,59 @@ Remember: You can use multiple tools in sequence and should reflect on their out
         
         console.log('Executing tool:', functionName, 'with parameters:', parameters);
         
+        // Track tool progress
+        const toolProgressItem = {
+          name: functionName,
+          status: 'executing',
+          parameters,
+          startTime: new Date().toISOString()
+        };
+        toolProgress.push(toolProgressItem);
+        
         // Extract MCP ID from function name
         const mcpKey = functionName.replace('execute_', '');
         const targetMcp = mcps?.find(m => m.default_key === mcpKey || m.id === mcpKey);
         
         if (!targetMcp) {
+          console.error('Tool not found:', mcpKey);
           toolResults.push({
             tool_call_id: toolCall.id,
             role: 'tool',
             content: JSON.stringify({ error: 'Tool not found' })
           });
+          
+          toolProgressItem.status = 'failed';
+          toolProgressItem.error = 'Tool not found';
+          
+          toolsUsed.push({
+            name: functionName,
+            parameters,
+            result: { error: 'Tool not found' },
+            success: false
+          });
           continue;
         }
 
         try {
+          console.log('Using MCP endpoint:', targetMcp.endpoint);
           let mcpResult;
           
+          // Check if endpoint looks like an Edge Function name (no protocol)
           if (targetMcp.endpoint.indexOf('http') !== 0) {
+            console.log('Calling Edge Function:', targetMcp.endpoint);
             const { data: edgeResult, error: edgeError } = await supabase.functions.invoke(targetMcp.endpoint, {
               body: parameters
             });
             
             if (edgeError) {
+              console.error('Edge function error:', edgeError);
               throw new Error(`Edge function error: ${edgeError.message}`);
             }
             
             mcpResult = edgeResult;
+            console.log('Edge function result:', mcpResult);
           } else {
+            console.log('Calling external API:', targetMcp.endpoint);
             const apiResponse = await fetch(targetMcp.endpoint, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -284,6 +311,10 @@ Remember: You can use multiple tools in sequence and should reflect on their out
             content: JSON.stringify(mcpResult)
           });
 
+          toolProgressItem.status = 'completed';
+          toolProgressItem.endTime = new Date().toISOString();
+          toolProgressItem.result = mcpResult;
+
           toolsUsed.push({
             name: functionName,
             parameters,
@@ -300,6 +331,10 @@ Remember: You can use multiple tools in sequence and should reflect on their out
             role: 'tool',
             content: JSON.stringify(errorResult)
           });
+
+          toolProgressItem.status = 'failed';
+          toolProgressItem.error = error.message;
+          toolProgressItem.endTime = new Date().toISOString();
 
           toolsUsed.push({
             name: functionName,
@@ -393,8 +428,10 @@ Be transparent about any limitations or failures.`
         toolsUsed: toolsUsed.map(t => ({
           name: t.name,
           parameters: t.parameters,
-          success: t.success
+          success: t.success,
+          result: t.result
         })),
+        toolProgress,
         selfReflection,
         sessionId,
         fallbackUsed,

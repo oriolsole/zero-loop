@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -5,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
 import { 
   Send, 
   Bot, 
@@ -19,7 +21,10 @@ import {
   Settings,
   Cloud,
   HardDrive,
-  Zap
+  Zap,
+  CheckCircle,
+  XCircle,
+  PlayCircle
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { supabase } from '@/integrations/supabase/client';
@@ -27,6 +32,38 @@ import { toast } from '@/components/ui/sonner';
 import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings, ModelProvider } from '@/services/modelProviderService';
+
+// Tool Progress Component
+const ToolProgress: React.FC<{ toolProgress: any[] }> = ({ toolProgress }) => {
+  if (!toolProgress || toolProgress.length === 0) return null;
+
+  return (
+    <div className="mt-3 p-3 rounded-lg bg-muted/30 border">
+      <div className="flex items-center gap-2 mb-2">
+        <Wrench className="h-4 w-4" />
+        <span className="text-sm font-medium">Tools in Progress</span>
+      </div>
+      <div className="space-y-2">
+        {toolProgress.map((tool, index) => (
+          <div key={index} className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-1">
+              {tool.status === 'executing' && <PlayCircle className="h-4 w-4 text-blue-500 animate-pulse" />}
+              {tool.status === 'completed' && <CheckCircle className="h-4 w-4 text-green-500" />}
+              {tool.status === 'failed' && <XCircle className="h-4 w-4 text-red-500" />}
+              <span className="text-sm">{tool.name.replace('execute_', '')}</span>
+            </div>
+            <Badge 
+              variant={tool.status === 'completed' ? 'default' : tool.status === 'failed' ? 'destructive' : 'secondary'}
+              className="text-xs"
+            >
+              {tool.status}
+            </Badge>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
@@ -45,6 +82,7 @@ const AIAgentChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
+  const [currentToolProgress, setCurrentToolProgress] = useState<any[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -52,7 +90,7 @@ const AIAgentChat: React.FC = () => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [conversations]);
+  }, [conversations, currentToolProgress]);
 
   // Load model settings on component mount and when they change
   useEffect(() => {
@@ -114,6 +152,7 @@ const AIAgentChat: React.FC = () => {
     addMessage(userMessage);
     setInput('');
     setIsLoading(true);
+    setCurrentToolProgress([]);
 
     try {
       const conversationHistory = getConversationHistory();
@@ -147,6 +186,16 @@ const AIAgentChat: React.FC = () => {
       };
 
       addMessage(assistantMessage);
+
+      // Show tool progress if available
+      if (data.toolProgress && data.toolProgress.length > 0) {
+        setCurrentToolProgress(data.toolProgress);
+        
+        // Clear tool progress after a delay
+        setTimeout(() => {
+          setCurrentToolProgress([]);
+        }, 5000);
+      }
 
       // Check if fallback was used and show appropriate notification
       if (data.fallbackUsed) {
@@ -419,13 +468,16 @@ const AIAgentChat: React.FC = () => {
                       <Bot className="h-4 w-4" />
                     </AvatarFallback>
                   </Avatar>
-                  <div className="ml-3 bg-secondary rounded-lg px-4 py-3">
+                  <div className="ml-3 bg-secondary rounded-lg px-4 py-3 max-w-[80%]">
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       <span className="text-sm">
                         Thinking with {modelSettings.provider.toUpperCase()}...
                       </span>
                     </div>
+                    
+                    {/* Real-time Tool Progress */}
+                    <ToolProgress toolProgress={currentToolProgress} />
                   </div>
                 </div>
               )}
