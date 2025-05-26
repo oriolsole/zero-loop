@@ -186,6 +186,8 @@ Remember: You can use multiple tools in sequence and should reflect on their out
     let finalResponse = assistantMessage.content;
     let toolsUsed: any[] = [];
     let selfReflection = '';
+    let fallbackUsed = data.fallback_used || false;
+    let fallbackReason = data.fallback_reason || '';
 
     // Check if AI wants to call any tools
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
@@ -309,6 +311,12 @@ Be transparent about any limitations or failures.`
       const followUpData = followUpResponse.data;
       finalResponse = followUpData.choices[0].message.content;
       
+      // Check if fallback was used in follow-up
+      if (followUpData.fallback_used) {
+        fallbackUsed = true;
+        fallbackReason = followUpData.fallback_reason;
+      }
+      
       // Generate self-reflection summary
       selfReflection = `Used ${toolsUsed.length} tool(s). ${toolsUsed.filter(t => t.success).length} succeeded, ${toolsUsed.filter(t => !t.success).length} failed.`;
     }
@@ -336,7 +344,9 @@ Be transparent about any limitations or failures.`
           success: t.success
         })),
         selfReflection,
-        sessionId
+        sessionId,
+        fallbackUsed,
+        fallbackReason
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -134,8 +134,18 @@ serve(async (req) => {
     let requestBody;
     
     if (provider === 'npaw') {
-      // NPAW DeepSeek API
-      apiUrl = 'https://ai2.npaw.com:5500/generate';
+      console.log('NPAW API Key available:', !!npawApiKey);
+      
+      if (!npawApiKey) {
+        console.error('NPAW API key not configured');
+        return new Response(
+          JSON.stringify({ error: 'NPAW API key not configured' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Try HTTP first as HTTPS on port 5500 might have SSL issues
+      apiUrl = 'http://ai2.npaw.com:5500/generate';
       authHeader = { 'npaw-api-key': npawApiKey };
       requestBody = {
         model: requestData.model || 'DeepSeek-V3',
@@ -146,6 +156,9 @@ serve(async (req) => {
         tool_choice: requestData.tool_choice || 'auto',
         response_format: requestData.response_format || 'auto'
       };
+      
+      console.log('NPAW Request body:', JSON.stringify(requestBody, null, 2));
+      
     } else if (provider === 'local' && localModelUrl) {
       // Local model API
       const baseApiUrl = ensureApiPrefix(localModelUrl);
@@ -171,41 +184,172 @@ serve(async (req) => {
       
     console.log(`Calling ${provider} API at: ${apiUrl}`);
     
-    // Make the API call
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        ...authHeader,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    // Check for API errors
-    if (!response.ok) {
-      let errorBody = {};
-      try {
-        errorBody = await response.json();
-      } catch (e) {
-        // Ignore if we can't parse as JSON
-      }
-      console.error(`${provider} API error:`, response.status, errorBody);
-      return new Response(
-        JSON.stringify({ 
-          error: `${provider} API error: ${response.status}`,
-          details: errorBody
-        }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Parse and return the response
-    const data = await response.json();
+    // Create a timeout controller for the request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
     
-    return new Response(
-      JSON.stringify(data),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    try {
+      // Make the API call with timeout
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          ...authHeader,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      // Check for API errors
+      if (!response.ok) {
+        let errorBody = {};
+        try {
+          errorBody = await response.json();
+        } catch (e) {
+          // Ignore if we can't parse as JSON
+        }
+        console.error(`${provider} API error:`, response.status, response.statusText, errorBody);
+        
+        // If NPAW fails, fallback to OpenAI
+        if (provider === 'npaw') {
+          console.log('NPAW failed, falling back to OpenAI...');
+          
+          const fallbackResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openaiApiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: requestData.messages,
+              temperature: requestData.temperature || 0.7,
+              max_tokens: requestData.max_tokens || 1000
+            })
+          });
+          
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            console.log('Fallback to OpenAI successful');
+            return new Response(
+              JSON.stringify({
+                ...fallbackData,
+                fallback_used: true,
+                fallback_reason: `NPAW API error: ${response.status}`
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            error: `${provider} API error: ${response.status} ${response.statusText}`,
+            details: errorBody
+          }),
+          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Parse and return the response
+      const data = await response.json();
+      console.log(`${provider} API response received successfully`);
+      
+      return new Response(
+        JSON.stringify(data),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+      
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        console.error(`${provider} API request timed out`);
+        
+        // If NPAW times out, fallback to OpenAI
+        if (provider === 'npaw') {
+          console.log('NPAW timed out, falling back to OpenAI...');
+          
+          try {
+            const fallbackResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${openaiApiKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: requestData.messages,
+                temperature: requestData.temperature || 0.7,
+                max_tokens: requestData.max_tokens || 1000
+              })
+            });
+            
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              console.log('Fallback to OpenAI successful after timeout');
+              return new Response(
+                JSON.stringify({
+                  ...fallbackData,
+                  fallback_used: true,
+                  fallback_reason: 'NPAW API timeout'
+                }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+          } catch (fallbackError) {
+            console.error('Fallback to OpenAI also failed:', fallbackError);
+          }
+        }
+        
+        return new Response(
+          JSON.stringify({ error: `${provider} API request timed out` }),
+          { status: 408, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.error(`${provider} API request failed:`, error);
+      
+      // If NPAW fails with connection error, fallback to OpenAI
+      if (provider === 'npaw') {
+        console.log('NPAW connection failed, falling back to OpenAI...');
+        
+        try {
+          const fallbackResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openaiApiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: requestData.messages,
+              temperature: requestData.temperature || 0.7,
+              max_tokens: requestData.max_tokens || 1000
+            })
+          });
+          
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            console.log('Fallback to OpenAI successful after connection error');
+            return new Response(
+              JSON.stringify({
+                ...fallbackData,
+                fallback_used: true,
+                fallback_reason: `NPAW connection error: ${error.message}`
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } catch (fallbackError) {
+          console.error('Fallback to OpenAI also failed:', fallbackError);
+        }
+      }
+      
+      throw error;
+    }
 
   } catch (error) {
     console.error("Error processing request:", error);

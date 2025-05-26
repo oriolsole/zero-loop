@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -46,7 +45,6 @@ const AIAgentChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -149,7 +147,12 @@ const AIAgentChat: React.FC = () => {
 
       addMessage(assistantMessage);
 
-      if (data.toolsUsed && data.toolsUsed.length > 0) {
+      // Check if fallback was used and show appropriate notification
+      if (data.fallbackUsed) {
+        toast.warning(`Using OpenAI fallback`, {
+          description: `${modelSettings.provider.toUpperCase()} failed: ${data.fallbackReason}`
+        });
+      } else if (data.toolsUsed && data.toolsUsed.length > 0) {
         const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
         const failCount = data.toolsUsed.length - successCount;
         
@@ -275,11 +278,11 @@ const AIAgentChat: React.FC = () => {
                 AI Agent Chat
               </CardTitle>
               
-              {/* Model Display */}
+              {/* Enhanced Model Display */}
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="flex items-center gap-1">
                   {getProviderIcon(modelSettings.provider)}
-                  <span className="text-xs">
+                  <span className="text-xs font-medium">
                     {modelSettings.provider.toUpperCase()}
                     {modelSettings.selectedModel && ` - ${modelSettings.selectedModel}`}
                   </span>
@@ -331,8 +334,10 @@ const AIAgentChat: React.FC = () => {
                     <span>Currently using:</span>
                     <Badge variant="secondary" className="flex items-center gap-1">
                       {getProviderIcon(modelSettings.provider)}
-                      {modelSettings.provider.toUpperCase()}
-                      {modelSettings.selectedModel && ` - ${modelSettings.selectedModel}`}
+                      <span className="font-medium">
+                        {modelSettings.provider.toUpperCase()}
+                        {modelSettings.selectedModel && ` - ${modelSettings.selectedModel}`}
+                      </span>
                     </Badge>
                   </div>
                 </div>
