@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { getModelSettings } from '@/services/modelProviderService';
@@ -86,7 +85,7 @@ export const useMultiToolOrchestrator = () => {
           
           const completedExecution: ToolExecution = {
             ...startedExecution,
-            status: 'completed',
+            status: 'completed' as const,
             result,
             endTime: new Date().toISOString()
           };
@@ -116,7 +115,7 @@ export const useMultiToolOrchestrator = () => {
         } catch (error) {
           const failedExecution: ToolExecution = {
             ...startedExecution,
-            status: 'failed',
+            status: 'failed' as const,
             error: error.message,
             endTime: new Date().toISOString()
           };
