@@ -1,4 +1,3 @@
-
 // Define your default MCPs
 import { MCP } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
@@ -190,5 +189,100 @@ export const defaultMCPs: MCP[] = [
         default: []
       }
     ]
+  },
+  {
+    id: uuidv4(),
+    title: "Jira Tools",
+    description: "Interact with Jira projects, issues, and workflows. Create, update, search issues and manage project data.",
+    endpoint: "jira-tools",
+    icon: "kanban-square",
+    parameters: [
+      {
+        name: "action",
+        type: "string",
+        description: "The Jira action to perform",
+        required: true,
+        enum: ["get_project", "create_issue", "update_issue", "search_issues", "get_issue", "list_projects", "get_issue_types", "add_comment"]
+      },
+      {
+        name: "project_key",
+        type: "string",
+        description: "Jira project key (e.g., 'PROJ', 'DEV')",
+        required: false
+      },
+      {
+        name: "issue_key",
+        type: "string",
+        description: "Jira issue key (e.g., 'PROJ-123')",
+        required: false
+      },
+      {
+        name: "summary",
+        type: "string",
+        description: "Issue summary/title",
+        required: false
+      },
+      {
+        name: "description",
+        type: "string",
+        description: "Issue description",
+        required: false
+      },
+      {
+        name: "issue_type",
+        type: "string",
+        description: "Type of issue",
+        required: false,
+        enum: ["Bug", "Task", "Story", "Epic", "Subtask"]
+      },
+      {
+        name: "priority",
+        type: "string",
+        description: "Issue priority",
+        required: false,
+        enum: ["Highest", "High", "Medium", "Low", "Lowest"]
+      },
+      {
+        name: "assignee",
+        type: "string",
+        description: "Assignee username or email",
+        required: false
+      },
+      {
+        name: "jql",
+        type: "string",
+        description: "Jira Query Language (JQL) for advanced searches",
+        required: false
+      },
+      {
+        name: "comment",
+        type: "string",
+        description: "Comment text to add to issue",
+        required: false
+      },
+      {
+        name: "limit",
+        type: "number",
+        description: "Maximum number of results to return (default: 50)",
+        required: false,
+        default: 50
+      }
+    ],
+    isDefault: true,
+    default_key: "jira-tools",
+    category: "Project Management",
+    tags: ["jira", "project", "issues", "workflow", "agile"],
+    sampleUseCases: [
+      "Create a new bug report in project ABC",
+      "Search for open issues assigned to me",
+      "Get project information and available issue types",
+      "Update issue status and add progress comments",
+      "List all projects and their details",
+      "Search issues using JQL queries"
+    ],
+    suggestedPrompt: "Create a new bug issue in project XYZ with high priority",
+    requiresAuth: true,
+    authType: "api_key",
+    requirestoken: "jira"
   }
 ];
