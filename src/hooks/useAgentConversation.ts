@@ -79,11 +79,11 @@ export const useAgentConversation = () => {
           user_id: user.id,
           role: message.role,
           content: message.content,
-          message_type: message.messageType,
-          tools_used: message.toolsUsed,
-          self_reflection: message.selfReflection,
-          tool_decision: message.toolDecision,
-          tool_progress: message.toolProgress,
+          message_type: message.messageType || null,
+          tools_used: message.toolsUsed || null,
+          self_reflection: message.selfReflection || null,
+          tool_decision: message.toolDecision || null,
+          tool_progress: message.toolProgress || null,
           created_at: message.timestamp.toISOString()
         });
     } catch (error) {
@@ -117,10 +117,10 @@ export const useAgentConversation = () => {
         role: row.role as ConversationMessage['role'],
         content: row.content,
         timestamp: new Date(row.created_at),
-        messageType: row.message_type,
+        messageType: row.message_type as ConversationMessage['messageType'] || undefined,
         toolsUsed: Array.isArray(row.tools_used) ? row.tools_used : [],
-        selfReflection: row.self_reflection,
-        toolDecision: row.tool_decision,
+        selfReflection: row.self_reflection || undefined,
+        toolDecision: row.tool_decision || undefined,
         toolProgress: Array.isArray(row.tool_progress) ? row.tool_progress : []
       }));
 
