@@ -6,7 +6,7 @@ import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
 import { generateSystemPrompt } from './system-prompts.ts';
 import { extractAssistantMessage } from './response-handler.ts';
-import { detectComplexQuery, shouldUseLearningLoop } from './learning-loop-detector.ts';
+import { detectQueryComplexity, shouldUseLearningLoop } from './learning-loop-detector.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 import { getRelevantKnowledge } from './knowledge-retrieval.ts';
 
@@ -53,11 +53,11 @@ serve(async (req) => {
       });
     }
 
-    // Check if this requires learning loop integration
-    const complexityAnalysis = await detectComplexQuery(message, conversationHistory);
-    const useKnowledgeLoop = shouldUseLearningLoop(complexityAnalysis);
+    // Use AI to determine query complexity
+    const complexityDecision = await detectQueryComplexity(message, conversationHistory, supabase, modelSettings);
+    const useKnowledgeLoop = shouldUseLearningLoop(complexityDecision);
 
-    console.log('Query complexity analysis:', complexityAnalysis);
+    console.log('AI complexity decision:', complexityDecision);
     console.log('Using learning loop:', useKnowledgeLoop);
 
     if (useKnowledgeLoop) {
@@ -69,7 +69,7 @@ serve(async (req) => {
         sessionId, 
         modelSettings, 
         supabase,
-        complexityAnalysis
+        complexityDecision
       );
     } else {
       // Use standard tool chaining for simple queries
@@ -111,9 +111,10 @@ async function handleComplexQueryWithLearningLoop(
   sessionId: string | null,
   modelSettings: any,
   supabase: any,
-  complexityAnalysis: any
+  complexityDecision: any
 ): Promise<Response> {
   console.log('Starting complex query with learning loop integration');
+  console.log('AI reasoning:', complexityDecision.reasoning);
   
   // 1. Retrieve relevant existing knowledge
   const relevantKnowledge = await getRelevantKnowledge(message, userId, supabase);
@@ -145,7 +146,9 @@ async function handleComplexQueryWithLearningLoop(
 
 **LEARNING LOOP MODE ACTIVATED**
 
-You are now in learning loop mode for a complex query. Your goal is to:
+You are now in learning loop mode for a complex query. The AI classifier determined this query is COMPLEX because: ${complexityDecision.reasoning}
+
+Your goal is to:
 1. Break down the complex question into steps
 2. Use tools iteratively to gather information
 3. Build knowledge progressively across iterations
@@ -154,10 +157,6 @@ You are now in learning loop mode for a complex query. Your goal is to:
 
 Relevant existing knowledge:
 ${relevantKnowledge?.map(node => `- ${node.title}: ${node.description}`).join('\n') || 'No relevant prior knowledge found'}
-
-Query complexity: ${complexityAnalysis.complexity}
-Suggested approach: ${complexityAnalysis.suggestedApproach}
-Required steps: ${complexityAnalysis.requiredSteps?.join(', ') || 'Not specified'}
 
 Continue until you have enough information to provide a comprehensive answer.`;
 
@@ -268,7 +267,7 @@ Continue until you have enough information to provide a comprehensive answer.`;
       finalResponse,
       accumulatedContext,
       userId,
-      complexityAnalysis,
+      complexityDecision,
       supabase
     );
   }
@@ -295,6 +294,7 @@ Continue until you have enough information to provide a comprehensive answer.`;
       iterations: iteration,
       accumulatedContext: accumulatedContext.length,
       toolsUsed: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
+      aiReasoning: complexityDecision.reasoning,
       sessionId
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

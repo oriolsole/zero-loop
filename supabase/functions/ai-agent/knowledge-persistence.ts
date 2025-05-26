@@ -11,7 +11,7 @@ export async function persistInsightAsKnowledgeNode(
   finalResponse: string,
   accumulatedContext: any[],
   userId: string,
-  complexityAnalysis: any,
+  complexityDecision: any,
   supabase: any
 ): Promise<boolean> {
   try {
@@ -22,7 +22,7 @@ export async function persistInsightAsKnowledgeNode(
       originalMessage,
       finalResponse,
       accumulatedContext,
-      complexityAnalysis,
+      complexityDecision,
       supabase
     );
 
@@ -54,7 +54,8 @@ export async function persistInsightAsKnowledgeNode(
         metadata: {
           source: 'ai-agent-learning-loop',
           original_query: originalMessage,
-          complexity: complexityAnalysis.complexity,
+          ai_classification: complexityDecision.classification,
+          ai_reasoning: complexityDecision.reasoning,
           iterations_used: accumulatedContext.length,
           tools_involved: insight.toolsInvolved,
           created_by: 'unified-ai-agent',

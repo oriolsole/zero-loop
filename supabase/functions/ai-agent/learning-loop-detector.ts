@@ -1,225 +1,142 @@
 
 /**
- * Learning Loop Detection and Complexity Analysis
+ * AI-Powered Learning Loop Detection
+ * Uses LLM reasoning instead of rigid pattern matching
  */
 
-export interface ComplexityAnalysis {
-  complexity: 'simple' | 'moderate' | 'complex';
-  confidence: number;
-  suggestedApproach: string;
-  requiredSteps?: string[];
-  estimatedIterations: number;
+export interface ComplexityDecision {
+  classification: 'SIMPLE' | 'COMPLEX';
   reasoning: string;
+  confidence: number;
 }
 
 /**
- * Detect if a query requires learning loop integration
+ * Use AI to determine if a query requires learning loop integration
  */
-export async function detectComplexQuery(
+export async function detectQueryComplexity(
   message: string,
-  conversationHistory: any[] = []
-): Promise<ComplexityAnalysis> {
-  const lowerMessage = message.toLowerCase();
-  
-  // Simple pattern-based detection
-  const complexityIndicators = {
-    simple: [
-      'what is', 'define', 'explain briefly', 'quick question',
-      'hello', 'hi', 'thanks', 'thank you'
-    ],
-    moderate: [
-      'compare', 'analyze', 'research', 'find information about',
-      'tell me about', 'how does', 'what are the benefits'
-    ],
-    complex: [
-      'comprehensive analysis', 'deep dive', 'complete overview',
-      'research and compare', 'analyze trends', 'investigate',
-      'build a strategy', 'create a plan', 'synthesize information',
-      'multi-step', 'detailed research', 'thorough investigation'
-    ]
-  };
+  conversationHistory: any[] = [],
+  supabase: any,
+  modelSettings?: any
+): Promise<ComplexityDecision> {
+  try {
+    console.log('Using AI to classify query complexity:', message);
 
-  // Multi-tool indicators
-  const multiToolIndicators = [
-    'search and analyze', 'compare multiple', 'research different',
-    'find latest and compare', 'analyze trends over time',
-    'investigate and report', 'comprehensive research'
-  ];
+    // Prepare context from conversation history
+    const recentContext = conversationHistory
+      .slice(-3) // Last 3 messages for context
+      .map(msg => `${msg.role}: ${msg.content}`)
+      .join('\n');
 
-  // Question complexity indicators
-  const hasMultipleQuestions = (message.match(/\?/g) || []).length > 1;
-  const hasComplexConjunctions = /\b(and then|after that|subsequently|furthermore|moreover|additionally)\b/i.test(message);
-  const hasTimeComparisons = /\b(compare.*over time|trend|historical|evolution|changes|development)\b/i.test(message);
-  const hasMultipleEntities = /\b(compare.*between|versus|vs|against|different.*approaches)\b/i.test(message);
+    const classificationPrompt = `You are an AI reasoning engine. Classify the complexity of the following user query.
 
-  // Calculate base complexity
-  let complexity: 'simple' | 'moderate' | 'complex' = 'simple';
-  let confidence = 0.5;
-  let reasoning = '';
+SIMPLE: A direct answer using a single tool or simple response is sufficient.
+COMPLEX: The task requires multiple steps, reasoning, tool chaining, or iterative analysis.
 
-  // Check for complex indicators
-  if (complexityIndicators.complex.some(indicator => lowerMessage.includes(indicator))) {
-    complexity = 'complex';
-    confidence = 0.8;
-    reasoning = 'Contains complex analysis keywords';
-  } else if (multiToolIndicators.some(indicator => lowerMessage.includes(indicator))) {
-    complexity = 'complex';
-    confidence = 0.9;
-    reasoning = 'Requires multiple tool coordination';
-  } else if (complexityIndicators.moderate.some(indicator => lowerMessage.includes(indicator))) {
-    complexity = 'moderate';
-    confidence = 0.7;
-    reasoning = 'Contains moderate complexity keywords';
-  }
+Consider:
+- Does this need multiple information sources?
+- Does it require analysis, comparison, or synthesis?
+- Would breaking it into steps provide a better answer?
+- Does it involve planning, strategy, or deep investigation?
 
-  // Upgrade complexity based on structural indicators
-  if (hasMultipleQuestions || hasComplexConjunctions || hasTimeComparisons || hasMultipleEntities) {
-    if (complexity === 'simple') {
-      complexity = 'moderate';
-      confidence = Math.max(confidence, 0.6);
-      reasoning += '; Complex question structure detected';
-    } else if (complexity === 'moderate') {
-      complexity = 'complex';
-      confidence = Math.max(confidence, 0.8);
-      reasoning += '; Multiple complexity factors detected';
+Recent conversation context:
+${recentContext || 'No prior context'}
+
+Current query: "${message}"
+
+Respond in JSON format:
+{
+  "classification": "SIMPLE" or "COMPLEX",
+  "reasoning": "Brief explanation in one sentence",
+  "confidence": 0.0-1.0
+}`;
+
+    const classificationMessages = [
+      {
+        role: 'system',
+        content: classificationPrompt
+      },
+      {
+        role: 'user',
+        content: message
+      }
+    ];
+
+    // Call AI model for classification
+    const response = await supabase.functions.invoke('ai-model-proxy', {
+      body: {
+        messages: classificationMessages,
+        temperature: 0.1, // Low temperature for consistent classification
+        max_tokens: 150,
+        ...(modelSettings && {
+          provider: modelSettings.provider,
+          model: modelSettings.selectedModel,
+          localModelUrl: modelSettings.localModelUrl
+        })
+      }
+    });
+
+    if (response.error) {
+      console.error('Error in AI complexity classification:', response.error);
+      return fallbackClassification(message);
     }
-  }
 
-  // Message length consideration
+    const classificationMessage = response.data?.choices?.[0]?.message?.content;
+    if (!classificationMessage) {
+      console.error('No classification response received');
+      return fallbackClassification(message);
+    }
+
+    try {
+      const decision = JSON.parse(classificationMessage);
+      
+      // Validate the response
+      if (!decision.classification || !['SIMPLE', 'COMPLEX'].includes(decision.classification)) {
+        console.error('Invalid classification response:', decision);
+        return fallbackClassification(message);
+      }
+
+      console.log('AI complexity decision:', decision);
+      return {
+        classification: decision.classification,
+        reasoning: decision.reasoning || 'No reasoning provided',
+        confidence: Math.min(Math.max(decision.confidence || 0.5, 0), 1)
+      };
+
+    } catch (parseError) {
+      console.error('Error parsing classification JSON:', parseError);
+      return fallbackClassification(message);
+    }
+
+  } catch (error) {
+    console.error('Error in detectQueryComplexity:', error);
+    return fallbackClassification(message);
+  }
+}
+
+/**
+ * Determine if learning loop should be used based on AI classification
+ */
+export function shouldUseLearningLoop(decision: ComplexityDecision): boolean {
+  return decision.classification === 'COMPLEX';
+}
+
+/**
+ * Fallback classification for when AI classification fails
+ */
+function fallbackClassification(message: string): ComplexityDecision {
+  console.log('Using fallback classification');
+  
+  // Simple heuristics as absolute fallback
   const wordCount = message.split(/\s+/).length;
-  if (wordCount > 50) {
-    if (complexity === 'simple') {
-      complexity = 'moderate';
-      confidence = Math.max(confidence, 0.6);
-      reasoning += '; Long query suggests complexity';
-    }
-  }
-
-  // Conversation history consideration
-  const hasContext = conversationHistory.length > 2;
-  if (hasContext && complexity !== 'simple') {
-    confidence = Math.min(confidence + 0.1, 0.95);
-    reasoning += '; Conversation context adds complexity';
-  }
-
-  // Generate suggested approach and steps
-  const suggestedApproach = generateApproach(complexity, message);
-  const requiredSteps = generateRequiredSteps(complexity, message);
-  const estimatedIterations = estimateIterations(complexity, requiredSteps);
-
+  const hasMultipleQuestions = (message.match(/\?/g) || []).length > 1;
+  const hasComplexKeywords = /\b(compare|analyze|research|investigate|strategy|comprehensive|detailed)\b/i.test(message);
+  
+  const isComplex = wordCount > 30 || hasMultipleQuestions || hasComplexKeywords;
+  
   return {
-    complexity,
-    confidence,
-    suggestedApproach,
-    requiredSteps,
-    estimatedIterations,
-    reasoning
+    classification: isComplex ? 'COMPLEX' : 'SIMPLE',
+    reasoning: 'Fallback classification due to AI classification failure',
+    confidence: 0.6
   };
-}
-
-/**
- * Determine if learning loop should be used based on complexity analysis
- */
-export function shouldUseLearningLoop(analysis: ComplexityAnalysis): boolean {
-  // Use learning loop for complex queries or moderate queries with high confidence
-  if (analysis.complexity === 'complex') {
-    return true;
-  }
-  
-  if (analysis.complexity === 'moderate' && analysis.confidence > 0.7) {
-    return true;
-  }
-
-  // Use learning loop if estimated iterations > 1
-  if (analysis.estimatedIterations > 1) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Generate suggested approach based on complexity
- */
-function generateApproach(complexity: string, message: string): string {
-  const lowerMessage = message.toLowerCase();
-  
-  switch (complexity) {
-    case 'complex':
-      if (lowerMessage.includes('compare') || lowerMessage.includes('analyze')) {
-        return 'Multi-step research and comparative analysis';
-      } else if (lowerMessage.includes('strategy') || lowerMessage.includes('plan')) {
-        return 'Strategic planning with research and synthesis';
-      } else {
-        return 'Comprehensive research with iterative refinement';
-      }
-    
-    case 'moderate':
-      if (lowerMessage.includes('research')) {
-        return 'Focused research with synthesis';
-      } else {
-        return 'Multi-source information gathering';
-      }
-    
-    default:
-      return 'Direct response with minimal tool usage';
-  }
-}
-
-/**
- * Generate required steps based on complexity and message content
- */
-function generateRequiredSteps(complexity: string, message: string): string[] {
-  const lowerMessage = message.toLowerCase();
-  const steps: string[] = [];
-
-  if (complexity === 'simple') {
-    steps.push('Direct response or single tool usage');
-    return steps;
-  }
-
-  // Research step
-  if (lowerMessage.includes('research') || lowerMessage.includes('find') || lowerMessage.includes('search')) {
-    steps.push('Research and information gathering');
-  }
-
-  // Analysis step
-  if (lowerMessage.includes('analyze') || lowerMessage.includes('compare') || lowerMessage.includes('evaluate')) {
-    steps.push('Analysis and comparison');
-  }
-
-  // Synthesis step for complex queries
-  if (complexity === 'complex') {
-    steps.push('Synthesis and insight generation');
-  }
-
-  // Strategy/planning step
-  if (lowerMessage.includes('strategy') || lowerMessage.includes('plan') || lowerMessage.includes('recommend')) {
-    steps.push('Strategic planning and recommendations');
-  }
-
-  // Default steps if none detected
-  if (steps.length === 0) {
-    if (complexity === 'moderate') {
-      steps.push('Information gathering', 'Basic analysis');
-    } else {
-      steps.push('Comprehensive research', 'Analysis', 'Synthesis');
-    }
-  }
-
-  return steps;
-}
-
-/**
- * Estimate number of iterations needed
- */
-function estimateIterations(complexity: string, requiredSteps: string[]): number {
-  switch (complexity) {
-    case 'complex':
-      return Math.min(Math.max(requiredSteps.length, 2), 4);
-    case 'moderate':
-      return Math.min(requiredSteps.length, 2);
-    default:
-      return 1;
-  }
 }
