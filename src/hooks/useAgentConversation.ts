@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -70,11 +69,11 @@ export function useAgentConversation() {
         toolsUsed: Array.isArray(row.tools_used) ? row.tools_used as any[] : undefined,
         selfReflection: row.self_reflection || undefined,
         toolDecision: row.tool_decision ? {
-          shouldUseTools: row.tool_decision.should_use_tools,
-          detectedType: row.tool_decision.detected_type,
-          reasoning: row.tool_decision.reasoning,
-          confidence: row.tool_decision.confidence,
-          suggestedTools: row.tool_decision.suggested_tools
+          shouldUseTools: (row.tool_decision as any).should_use_tools,
+          detectedType: (row.tool_decision as any).detected_type,
+          reasoning: (row.tool_decision as any).reasoning,
+          confidence: (row.tool_decision as any).confidence,
+          suggestedTools: (row.tool_decision as any).suggested_tools
         } : undefined
       }));
 

@@ -17,6 +17,7 @@ export type Database = {
           role: string
           self_reflection: string | null
           session_id: string
+          tool_decision: Json | null
           tools_used: Json | null
           user_id: string
         }
@@ -27,6 +28,7 @@ export type Database = {
           role: string
           self_reflection?: string | null
           session_id: string
+          tool_decision?: Json | null
           tools_used?: Json | null
           user_id: string
         }
@@ -37,6 +39,7 @@ export type Database = {
           role?: string
           self_reflection?: string | null
           session_id?: string
+          tool_decision?: Json | null
           tools_used?: Json | null
           user_id?: string
         }
