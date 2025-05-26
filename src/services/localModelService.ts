@@ -64,7 +64,7 @@ export async function fetchLocalModels(localUrl: string): Promise<ModelResponse 
 }
 
 /**
- * Get the stored model settings from local storage
+ * Get the stored model settings from local storage (legacy support)
  */
 export function getLocalModelSettings(): ModelSettings {
   try {
@@ -80,7 +80,7 @@ export function getLocalModelSettings(): ModelSettings {
 }
 
 /**
- * Save model settings to local storage
+ * Save model settings to local storage (legacy support)
  */
 export function saveLocalModelSettings(settings: ModelSettings): void {
   try {
@@ -88,91 +88,4 @@ export function saveLocalModelSettings(settings: ModelSettings): void {
   } catch (error) {
     console.error('Error saving local model settings:', error);
   }
-}
-
-/**
- * Create a client that can work with both local and remote models
- */
-export function createModelClient(localModelUrl: string | null, selectedModel: string | null) {
-  // Use direct local access or fallback to edge function
-  const useLocalAccess = localModelUrl && !isLocalUrl(localModelUrl);
-  
-  return {
-    async getAvailableModels() {
-      if (useLocalAccess) {
-        return fetchLocalModels(localModelUrl!);
-      } else {
-        // Fallback to edge function for non-local URLs
-        // This will still fail for localhost but at least provides a clear path
-        try {
-          const { supabase } = await import('@/integrations/supabase/client');
-          const { data, error } = await supabase.functions.invoke('ai-model-proxy', {
-            body: { 
-              operation: 'getAvailableModels', 
-              localUrl: localModelUrl 
-            }
-          });
-          
-          if (error) throw error;
-          return data;
-        } catch (error) {
-          console.error('Error fetching models via edge function:', error);
-          return null;
-        }
-      }
-    },
-    
-    async completeWithModel(prompt: string) {
-      if (!selectedModel) {
-        throw new Error('No model selected');
-      }
-      
-      if (useLocalAccess) {
-        // Direct local access
-        try {
-          let baseUrl = localModelUrl!;
-          if (!baseUrl.endsWith('/')) baseUrl += '/';
-          const completionUrl = `${baseUrl}v1/chat/completions`;
-          
-          const response = await fetch(completionUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: selectedModel,
-              messages: [{ role: 'user', content: prompt }],
-            })
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP error ${response.status}: ${errorText}`);
-          }
-          
-          const data = await response.json();
-          return data.choices[0]?.message?.content || '';
-        } catch (error) {
-          console.error('Error calling local model API:', error);
-          throw error;
-        }
-      } else {
-        // Use edge function for non-local URLs
-        try {
-          const { supabase } = await import('@/integrations/supabase/client');
-          const { data, error } = await supabase.functions.invoke('ai-model-proxy', {
-            body: { 
-              operation: 'complete',
-              prompt,
-              model: selectedModel
-            }
-          });
-          
-          if (error) throw error;
-          return data?.completion || '';
-        } catch (error) {
-          console.error('Error completing with model via edge function:', error);
-          throw error;
-        }
-      }
-    }
-  };
 }
