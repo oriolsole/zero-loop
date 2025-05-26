@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { getModelSettings } from '@/services/modelProviderService';
@@ -14,6 +15,7 @@ export interface DynamicPlanStep {
   startTime?: string;
   endTime?: string;
   reasoning?: string;
+  extractedContent?: string;
 }
 
 export interface DynamicExecutionPlan {
@@ -28,6 +30,7 @@ export interface DynamicExecutionPlan {
   startTime?: string;
   endTime?: string;
   finalResult?: string;
+  accumulatedFindings?: Record<string, any>;
 }
 
 export const useDynamicPlanOrchestrator = () => {
@@ -43,7 +46,7 @@ export const useDynamicPlanOrchestrator = () => {
     const planId = `dynamic-plan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     const steps = await convertStepsToExecutable(suggestedSteps, planId);
-    const totalEstimatedTime = steps.length * 5; // Estimate 5 seconds per step
+    const totalEstimatedTime = steps.length * 8;
     
     const plan: DynamicExecutionPlan = {
       id: planId,
@@ -54,7 +57,8 @@ export const useDynamicPlanOrchestrator = () => {
       currentStepIndex: 0,
       isAdaptive: true,
       totalEstimatedTime,
-      startTime: new Date().toISOString()
+      startTime: new Date().toISOString(),
+      accumulatedFindings: {}
     };
 
     setCurrentPlan(plan);
@@ -70,17 +74,18 @@ export const useDynamicPlanOrchestrator = () => {
     setIsExecuting(true);
     setCurrentPlan(prev => prev ? { ...prev, status: 'executing' } : null);
 
-    const results: any[] = [];
+    const accumulatedContent: string[] = [];
+    const findings: Record<string, any> = {};
 
     try {
       for (let i = 0; i < plan.steps.length; i++) {
         const step = plan.steps[i];
         
-        // Update step to executing
         const updatedStep = { 
           ...step, 
           status: 'executing' as const, 
-          startTime: new Date().toISOString() 
+          startTime: new Date().toISOString(),
+          reasoning: `Executing ${step.description} to gather information for: ${originalRequest}`
         };
         
         setCurrentPlan(prev => prev ? {
@@ -92,38 +97,56 @@ export const useDynamicPlanOrchestrator = () => {
         onStepUpdate(updatedStep);
 
         try {
-          // Execute the step with REAL tools
-          const result = await executeStepWithRealTools(step, results, originalRequest, user?.id);
+          const result = await executeStepWithRealTools(step, accumulatedContent, originalRequest, user?.id);
           
+          // Extract and structure content from search results
+          const extractedContent = extractContentFromResult(result, step.tool);
+          if (extractedContent) {
+            accumulatedContent.push(extractedContent);
+            findings[step.tool] = extractedContent;
+          }
+
           const completedStep = {
             ...updatedStep,
             status: 'completed' as const,
             result,
+            extractedContent,
             endTime: new Date().toISOString()
           };
 
-          results.push(result);
-
           setCurrentPlan(prev => prev ? {
             ...prev,
-            steps: prev.steps.map((s, idx) => idx === i ? completedStep : s)
+            steps: prev.steps.map((s, idx) => idx === i ? completedStep : s),
+            accumulatedFindings: findings
           } : null);
 
           onStepUpdate(completedStep);
 
-          // After each step, ask AI if we need to adapt the plan
+          // Intelligent adaptation: analyze if we need more steps
           if (i < plan.steps.length - 1) {
-            const shouldAdapt = await shouldAdaptPlan(originalRequest, results, plan.steps.slice(i + 1));
-            if (shouldAdapt.needsAdaptation) {
-              const newSteps = await adaptPlan(originalRequest, results, shouldAdapt.reasoning);
+            const adaptationResult = await intelligentAdaptation(
+              originalRequest, 
+              accumulatedContent, 
+              plan.steps.slice(i + 1)
+            );
+            
+            if (adaptationResult.needsAdaptation) {
+              const newSteps = await generateAdaptiveSteps(
+                originalRequest, 
+                accumulatedContent, 
+                adaptationResult.reasoning
+              );
               
-              setCurrentPlan(prev => prev ? {
-                ...prev,
-                steps: [
-                  ...prev.steps.slice(0, i + 1),
-                  ...newSteps
-                ]
-              } : null);
+              if (newSteps.length > 0) {
+                setCurrentPlan(prev => prev ? {
+                  ...prev,
+                  steps: [
+                    ...prev.steps.slice(0, i + 1),
+                    ...newSteps,
+                    ...prev.steps.slice(i + 1).filter(s => !s.description.includes('Organize'))
+                  ]
+                } : null);
+              }
             }
           }
 
@@ -142,12 +165,11 @@ export const useDynamicPlanOrchestrator = () => {
 
           onStepUpdate(failedStep);
           console.error('Step failed:', error);
-          // Continue with next step instead of stopping
         }
       }
 
-      // Synthesize final result
-      const finalResult = await synthesizeFinalResult(originalRequest, results);
+      // Comprehensive synthesis of all findings
+      const finalResult = await comprehensiveSynthesis(originalRequest, accumulatedContent, findings);
       
       setCurrentPlan(prev => prev ? {
         ...prev,
@@ -190,6 +212,7 @@ export const useDynamicPlanOrchestrator = () => {
   };
 };
 
+// Enhanced step conversion with better tool inference
 async function convertStepsToExecutable(suggestedSteps: string[], planId: string): Promise<DynamicPlanStep[]> {
   return suggestedSteps.map((step, index) => ({
     id: `${planId}-step-${index + 1}`,
@@ -202,28 +225,30 @@ async function convertStepsToExecutable(suggestedSteps: string[], planId: string
 
 function inferToolFromStep(step: string): string {
   const lowerStep = step.toLowerCase();
-  if (lowerStep.includes('search') || lowerStep.includes('find') || lowerStep.includes('look')) {
+  if (lowerStep.includes('search') || lowerStep.includes('find') || lowerStep.includes('news') || lowerStep.includes('current')) {
     return 'execute_web-search';
   }
   if (lowerStep.includes('github') || lowerStep.includes('repo') || lowerStep.includes('code')) {
     return 'execute_github-tools';
   }
-  if (lowerStep.includes('knowledge') || lowerStep.includes('remember') || lowerStep.includes('note')) {
+  if (lowerStep.includes('knowledge') || lowerStep.includes('remember')) {
     return 'execute_knowledge-search-v2';
   }
-  if (lowerStep.includes('synthesize') || lowerStep.includes('combine') || lowerStep.includes('organize')) {
-    return 'synthesize_results';
-  }
-  return 'execute_web-search'; // default
+  return 'execute_web-search';
 }
 
 function inferParametersFromStep(step: string): Record<string, any> {
-  // Extract key terms for search parameters
   const keywords = step.replace(/^(search|find|look for|get|fetch)\s+/i, '');
   return { query: keywords };
 }
 
-async function executeStepWithRealTools(step: DynamicPlanStep, previousResults: any[], originalRequest: string, userId?: string): Promise<any> {
+// Enhanced tool execution with proper result extraction
+async function executeStepWithRealTools(
+  step: DynamicPlanStep, 
+  previousContent: string[], 
+  originalRequest: string, 
+  userId?: string
+): Promise<any> {
   if (!userId) {
     throw new Error('User not authenticated');
   }
@@ -231,7 +256,6 @@ async function executeStepWithRealTools(step: DynamicPlanStep, previousResults: 
   const modelSettings = getModelSettings();
 
   try {
-    // Call the actual AI agent with the specific tool
     const { data, error } = await supabase.functions.invoke('ai-agent', {
       body: {
         message: step.description,
@@ -253,26 +277,68 @@ async function executeStepWithRealTools(step: DynamicPlanStep, previousResults: 
       throw new Error(data?.error || 'Tool execution failed');
     }
 
-    return data.message || `Executed ${step.tool} successfully`;
+    return data.message || data.toolResults || `Executed ${step.tool} successfully`;
 
   } catch (error) {
     console.error(`Tool execution failed for ${step.tool}:`, error);
-    // Return a fallback result instead of failing completely
-    return `Tool ${step.tool} encountered an issue: ${error.message}`;
+    throw error;
   }
 }
 
-async function shouldAdaptPlan(originalRequest: string, results: any[], remainingSteps: DynamicPlanStep[]): Promise<{needsAdaptation: boolean, reasoning: string}> {
-  // Ask AI if plan needs adaptation based on results so far
+// Extract meaningful content from tool results
+function extractContentFromResult(result: any, toolType: string): string | null {
+  if (!result) return null;
+  
+  try {
+    if (typeof result === 'string') {
+      return result;
+    }
+    
+    if (result.data && Array.isArray(result.data)) {
+      return result.data.map((item: any) => {
+        if (item.title && item.snippet) {
+          return `${item.title}: ${item.snippet}`;
+        }
+        return JSON.stringify(item);
+      }).join('\n\n');
+    }
+    
+    if (result.results && Array.isArray(result.results)) {
+      return result.results.map((item: any) => {
+        if (item.title && item.snippet) {
+          return `${item.title}: ${item.snippet}`;
+        }
+        return JSON.stringify(item);
+      }).join('\n\n');
+    }
+    
+    return JSON.stringify(result);
+  } catch (error) {
+    console.error('Error extracting content:', error);
+    return null;
+  }
+}
+
+// Intelligent adaptation logic
+async function intelligentAdaptation(
+  originalRequest: string, 
+  accumulatedContent: string[], 
+  remainingSteps: DynamicPlanStep[]
+): Promise<{needsAdaptation: boolean, reasoning: string}> {
+  if (accumulatedContent.length === 0) {
+    return { needsAdaptation: true, reasoning: 'No content gathered yet, need more searches' };
+  }
+
   try {
     const modelSettings = getModelSettings();
     
-    const adaptationPrompt = `Based on the results so far, should we adapt the remaining plan steps?
+    const adaptationPrompt = `Analyze the content gathered so far and determine if we need additional searches.
 
 Original Request: ${originalRequest}
-Results So Far: ${JSON.stringify(results.slice(-2))}
+Content Gathered: ${accumulatedContent.slice(-1000)} // Last 1000 chars
 Remaining Steps: ${remainingSteps.map(s => s.description).join(', ')}
 
+Based on this analysis, do we have sufficient information to provide a comprehensive answer?
 Respond with JSON: {"needsAdaptation": boolean, "reasoning": "explanation"}`;
 
     const { data } = await supabase.functions.invoke('ai-model-proxy', {
@@ -294,42 +360,35 @@ Respond with JSON: {"needsAdaptation": boolean, "reasoning": "explanation"}`;
       return JSON.parse(jsonMatch[0]);
     }
   } catch (error) {
-    console.error('Plan adaptation check failed:', error);
+    console.error('Adaptation analysis failed:', error);
   }
   
-  return { needsAdaptation: false, reasoning: 'No adaptation needed' };
+  return { needsAdaptation: false, reasoning: 'Continue with current plan' };
 }
 
-async function adaptPlan(originalRequest: string, results: any[], reasoning: string): Promise<DynamicPlanStep[]> {
-  // Generate new steps based on current results
-  const planId = `adapted-${Date.now()}`;
-  return [
-    {
-      id: `${planId}-adapted-1`,
-      description: `Adapted step: Continue based on previous findings`,
-      tool: 'execute_web-search',
-      parameters: { query: originalRequest },
-      status: 'pending'
-    }
-  ];
-}
-
-async function synthesizeFinalResult(originalRequest: string, results: any[]): Promise<string> {
+// Generate adaptive steps based on content gaps
+async function generateAdaptiveSteps(
+  originalRequest: string, 
+  accumulatedContent: string[], 
+  reasoning: string
+): Promise<DynamicPlanStep[]> {
   try {
     const modelSettings = getModelSettings();
     
-    const synthesisPrompt = `Synthesize these results into a comprehensive answer for the user.
+    const stepPrompt = `Based on the content gathered so far, suggest 1-2 specific additional search queries.
 
 Original Request: ${originalRequest}
-Results: ${JSON.stringify(results)}
+Content So Far: ${accumulatedContent.join('\n')}
+Gap Analysis: ${reasoning}
 
-Provide a well-organized, helpful response that directly addresses the user's request.`;
+Suggest specific search queries that would fill the information gaps.
+Respond with JSON: {"queries": ["query1", "query2"]}`;
 
     const { data } = await supabase.functions.invoke('ai-model-proxy', {
       body: {
-        messages: [{ role: 'user', content: synthesisPrompt }],
+        messages: [{ role: 'user', content: stepPrompt }],
         temperature: 0.4,
-        max_tokens: 800,
+        max_tokens: 300,
         ...(modelSettings && {
           provider: modelSettings.provider,
           model: modelSettings.selectedModel
@@ -337,9 +396,67 @@ Provide a well-organized, helpful response that directly addresses the user's re
       }
     });
 
-    return data.message || data.content || `Comprehensive response based on ${results.length} research steps.`;
+    const response = data.message || data.content || '';
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const planId = `adaptive-${Date.now()}`;
+      
+      return parsed.queries.map((query: string, index: number) => ({
+        id: `${planId}-${index + 1}`,
+        description: `Search for: ${query}`,
+        tool: 'execute_web-search',
+        parameters: { query },
+        status: 'pending' as const
+      }));
+    }
+  } catch (error) {
+    console.error('Adaptive step generation failed:', error);
+  }
+  
+  return [];
+}
+
+// Comprehensive synthesis of all findings
+async function comprehensiveSynthesis(
+  originalRequest: string, 
+  accumulatedContent: string[], 
+  findings: Record<string, any>
+): Promise<string> {
+  try {
+    const modelSettings = getModelSettings();
+    
+    const synthesisPrompt = `Create a comprehensive, well-organized response based on all the research findings.
+
+Original Request: ${originalRequest}
+All Research Content: ${accumulatedContent.join('\n\n')}
+
+Instructions:
+- Organize information by importance and relevance
+- Include specific details from the sources
+- Structure with clear headings and bullet points
+- Provide a balanced overview of the topic
+- Include timestamps or dates when available
+- Be factual and informative
+
+Create a detailed, professional response that fully addresses the user's request.`;
+
+    const { data } = await supabase.functions.invoke('ai-model-proxy', {
+      body: {
+        messages: [{ role: 'user', content: synthesisPrompt }],
+        temperature: 0.4,
+        max_tokens: 1200,
+        ...(modelSettings && {
+          provider: modelSettings.provider,
+          model: modelSettings.selectedModel
+        })
+      }
+    });
+
+    return data.message || data.content || `Based on comprehensive research across ${accumulatedContent.length} sources, here are the key findings: ${accumulatedContent.join(' ')}`;
   } catch (error) {
     console.error('Final synthesis failed:', error);
-    return `Based on my research across ${results.length} steps, here are the key findings: ${results.join(' ')}`;
+    return `Based on research findings: ${accumulatedContent.join('\n\n')}`;
   }
 }

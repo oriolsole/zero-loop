@@ -3,7 +3,8 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, Clock, AlertCircle, Loader2, Brain, Zap } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, Loader2, Brain, Zap, Eye } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DynamicExecutionPlan, DynamicPlanStep } from '@/hooks/useDynamicPlanOrchestrator';
 
 interface PlanExecutionProgressProps {
@@ -12,6 +13,18 @@ interface PlanExecutionProgressProps {
 }
 
 const PlanExecutionProgress: React.FC<PlanExecutionProgressProps> = ({ plan, progress }) => {
+  const [expandedSteps, setExpandedSteps] = React.useState<Set<string>>(new Set());
+
+  const toggleStepExpansion = (stepId: string) => {
+    const newExpanded = new Set(expandedSteps);
+    if (newExpanded.has(stepId)) {
+      newExpanded.delete(stepId);
+    } else {
+      newExpanded.add(stepId);
+    }
+    setExpandedSteps(newExpanded);
+  };
+
   const getStepIcon = (step: DynamicPlanStep) => {
     switch (step.status) {
       case 'completed':
@@ -77,59 +90,85 @@ const PlanExecutionProgress: React.FC<PlanExecutionProgressProps> = ({ plan, pro
         {plan.steps.map((step, index) => (
           <div
             key={step.id}
-            className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all duration-300 ${getStepStatusStyle(step)}`}
+            className={`rounded-xl border-2 transition-all duration-300 ${getStepStatusStyle(step)}`}
           >
-            <div className="flex-shrink-0">
-              {getStepIcon(step)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="font-semibold text-gray-800">{step.description}</span>
-                <div className="flex items-center gap-2">
-                  <Badge 
-                    variant="outline" 
-                    className={`text-xs font-medium ${
-                      step.status === 'completed' ? 'bg-green-100 text-green-700 border-green-300' :
-                      step.status === 'executing' ? 'bg-blue-100 text-blue-700 border-blue-300' :
-                      step.status === 'failed' ? 'bg-red-100 text-red-700 border-red-300' :
-                      'bg-gray-100 text-gray-600 border-gray-300'
-                    }`}
-                  >
-                    {step.status}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs bg-white/60 text-gray-700 border-gray-300">
-                    {getToolIcon(step.tool)} {step.tool.replace('execute_', '')}
-                  </Badge>
-                </div>
+            <div className="flex items-center gap-4 p-4">
+              <div className="flex-shrink-0">
+                {getStepIcon(step)}
               </div>
-              
-              {step.status === 'executing' && (
-                <div className="flex items-center gap-2 text-sm text-blue-600">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  AI is processing this step...
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="font-semibold text-gray-800">{step.description}</span>
+                  <div className="flex items-center gap-2">
+                    <Badge 
+                      variant="outline" 
+                      className={`text-xs font-medium ${
+                        step.status === 'completed' ? 'bg-green-100 text-green-700 border-green-300' :
+                        step.status === 'executing' ? 'bg-blue-100 text-blue-700 border-blue-300' :
+                        step.status === 'failed' ? 'bg-red-100 text-red-700 border-red-300' :
+                        'bg-gray-100 text-gray-600 border-gray-300'
+                      }`}
+                    >
+                      {step.status}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs bg-white/60 text-gray-700 border-gray-300">
+                      {getToolIcon(step.tool)} {step.tool.replace('execute_', '')}
+                    </Badge>
+                    {step.extractedContent && (
+                      <button
+                        onClick={() => toggleStepExpansion(step.id)}
+                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                      >
+                        <Eye className="h-3 w-3" />
+                        View Results
+                      </button>
+                    )}
+                  </div>
                 </div>
-              )}
-              
-              {step.status === 'failed' && step.error && (
-                <div className="text-sm text-red-600 bg-red-50 p-2 rounded-lg border border-red-200">
-                  <strong>Error:</strong> {step.error}
-                </div>
-              )}
-              
-              {step.status === 'completed' && step.endTime && step.startTime && (
-                <div className="flex items-center gap-2 text-sm text-green-600">
-                  <CheckCircle className="h-4 w-4" />
-                  Completed in {Math.round((new Date(step.endTime).getTime() - new Date(step.startTime).getTime()) / 1000)}s
-                </div>
-              )}
-              
-              {step.reasoning && (
-                <div className="text-sm text-purple-600 mt-2 italic bg-purple-50 p-2 rounded-lg border border-purple-200">
-                  <Brain className="h-4 w-4 inline mr-1" />
-                  AI reasoning: {step.reasoning}
-                </div>
-              )}
+                
+                {step.status === 'executing' && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    AI is processing this step...
+                  </div>
+                )}
+                
+                {step.status === 'failed' && step.error && (
+                  <div className="text-sm text-red-600 bg-red-50 p-2 rounded-lg border border-red-200">
+                    <strong>Error:</strong> {step.error}
+                  </div>
+                )}
+                
+                {step.status === 'completed' && step.endTime && step.startTime && (
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <CheckCircle className="h-4 w-4" />
+                    Completed in {Math.round((new Date(step.endTime).getTime() - new Date(step.startTime).getTime()) / 1000)}s
+                  </div>
+                )}
+                
+                {step.reasoning && (
+                  <div className="text-sm text-purple-600 mt-2 italic bg-purple-50 p-2 rounded-lg border border-purple-200">
+                    <Brain className="h-4 w-4 inline mr-1" />
+                    AI reasoning: {step.reasoning}
+                  </div>
+                )}
+              </div>
             </div>
+            
+            {step.extractedContent && (
+              <Collapsible open={expandedSteps.has(step.id)}>
+                <CollapsibleContent className="px-4 pb-4">
+                  <div className="bg-white/80 rounded-lg p-3 border border-gray-200 max-h-48 overflow-y-auto">
+                    <div className="text-xs font-medium text-gray-500 mb-2">Extracted Content:</div>
+                    <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                      {step.extractedContent.length > 500 
+                        ? `${step.extractedContent.substring(0, 500)}...` 
+                        : step.extractedContent}
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
           </div>
         ))}
       </CardContent>
