@@ -111,7 +111,7 @@ const AIAgentChat: React.FC = () => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [conversations, currentToolProgress]);
+  }, [conversations, tools]);
 
   // Load model settings on component mount and when they change
   useEffect(() => {
