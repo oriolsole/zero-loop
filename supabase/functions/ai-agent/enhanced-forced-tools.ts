@@ -231,6 +231,8 @@ export async function executeBasedOnDecision(
  * Extract appropriate search query from message and context
  */
 function extractSearchQuery(message: string, toolDecision: any): string {
+  console.log('Extracting search query from:', message);
+  
   // If the message is context-dependent and references GitHub, modify the query
   if (toolDecision.contextualInfo?.referencesGitHub && toolDecision.contextualInfo?.githubRepo) {
     const { owner, repo } = toolDecision.contextualInfo.githubRepo;
@@ -245,6 +247,60 @@ function extractSearchQuery(message: string, toolDecision: any): string {
     }
   }
   
-  // For non-contextual queries, use the message as-is
-  return message;
+  // Define patterns for extracting search terms from conversational queries
+  const searchPatterns = [
+    // "can we search for X?"
+    /can\s+we\s+search\s+for\s+(.+?)(?:\?|$)/i,
+    // "search for X"
+    /search\s+for\s+(.+?)(?:\?|$)/i,
+    // "find X" or "find information about X"
+    /find(?:\s+information\s+about)?\s+(.+?)(?:\?|$)/i,
+    // "look for X" or "look up X"
+    /look\s+(?:for|up)\s+(.+?)(?:\?|$)/i,
+    // "what is X?" or "who is X?"
+    /(?:what|who)\s+is\s+(.+?)(?:\?|$)/i,
+    // "tell me about X"
+    /tell\s+me\s+about\s+(.+?)(?:\?|$)/i,
+    // "get information about X"
+    /get\s+information\s+about\s+(.+?)(?:\?|$)/i
+  ];
+  
+  // Try to extract search terms using patterns
+  for (const pattern of searchPatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      const extracted = match[1].trim();
+      console.log('Extracted search term using pattern:', extracted);
+      
+      // Clean up common trailing words
+      const cleaned = extracted
+        .replace(/\s+(please|thanks?|thank\s+you)$/i, '')
+        .replace(/\s+in\s+(my|our|the)\s+(knowledge\s+base|database)$/i, '')
+        .trim();
+      
+      return cleaned || extracted;
+    }
+  }
+  
+  // If no patterns match, try to clean the message by removing common prefixes/suffixes
+  let cleaned = message.toLowerCase().trim();
+  
+  // Remove common question words and prefixes
+  const prefixesToRemove = [
+    /^(can\s+we\s+|could\s+you\s+|please\s+|would\s+you\s+)/i,
+    /^(search\s+|find\s+|look\s+for\s+|lookup\s+)/i
+  ];
+  
+  for (const prefix of prefixesToRemove) {
+    cleaned = cleaned.replace(prefix, '').trim();
+  }
+  
+  // Remove question marks and common suffixes
+  cleaned = cleaned
+    .replace(/\?+$/, '')
+    .replace(/\s+(please|thanks?|thank\s+you)$/i, '')
+    .trim();
+  
+  console.log('Final extracted query:', cleaned || message);
+  return cleaned || message;
 }
