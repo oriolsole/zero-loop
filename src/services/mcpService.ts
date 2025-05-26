@@ -233,8 +233,8 @@ export const mcpService = {
         return;
       }
 
-      // Correct the endpoints to use local Edge Functions
-      const correctedMCPs = mcpsToCreate.map(mcp => {
+      // Process each MCP individually to ensure proper typing
+      for (const mcp of mcpsToCreate) {
         let correctedEndpoint = mcp.endpoint;
         
         // Fix endpoints that point to external APIs
@@ -256,25 +256,38 @@ export const mcpService = {
             break;
         }
 
-        return convertMCPForDatabase({
-          ...mcp,
+        // Ensure all required fields are present and properly typed
+        const mcpToInsert = {
+          title: mcp.title || 'Untitled MCP',
+          description: mcp.description || 'No description available',
           endpoint: correctedEndpoint,
+          icon: mcp.icon || 'terminal',
+          parameters: JSON.stringify(mcp.parameters || []),
+          tags: JSON.stringify(mcp.tags || []),
+          sampleUseCases: JSON.stringify(mcp.sampleUseCases || []),
           user_id: userId,
-          isDefault: true
-        });
-      });
+          isDefault: true,
+          default_key: mcp.default_key,
+          category: mcp.category || null,
+          suggestedPrompt: mcp.suggestedPrompt || null,
+          requiresAuth: mcp.requiresAuth || false,
+          authType: mcp.authType || null,
+          authKeyName: mcp.authKeyName || null,
+          requirestoken: mcp.requirestoken || null
+        };
 
-      // Insert the new MCPs
-      const { error: insertError } = await supabase
-        .from('mcps')
-        .insert(correctedMCPs);
+        // Insert the MCP
+        const { error: insertError } = await supabase
+          .from('mcps')
+          .insert([mcpToInsert]);
 
-      if (insertError) {
-        console.error('Error inserting MCPs:', insertError);
-        throw insertError;
+        if (insertError) {
+          console.error('Error inserting MCP:', mcp.title, insertError);
+          throw insertError;
+        }
       }
 
-      console.log('Successfully seeded', correctedMCPs.length, 'default MCPs');
+      console.log('Successfully seeded', mcpsToCreate.length, 'default MCPs');
     } catch (error) {
       console.error('Error in seedDefaultMCPs:', error);
       throw error;
