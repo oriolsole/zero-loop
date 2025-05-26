@@ -6,11 +6,11 @@
     "id": "web-search",
     "name": "execute_web_search",
     "title": "Web Search",
-    "description": "Search the web using Google Custom Search API to find relevant information across the internet",
+    "description": "Search the public internet using Google Custom Search API for current information, news, articles, and external content. Use when users ask to 'search the web', 'find online', 'look up current', 'what's the latest', or need external/public information not in their knowledge base. This searches ONLY external web content, NOT internal documents or Jira projects.",
     "endpoint": "google-search",
     "icon": "search",
     "category": "search",
-    "tags": ["search", "web", "google", "information"],
+    "tags": ["search", "web", "google", "information", "internet", "external", "current", "news"],
     "schema": {
       "input": {
         "type": "object",
@@ -18,7 +18,7 @@
           "query": {
             "name": "query",
             "type": "string",
-            "description": "The search query to find relevant web results",
+            "description": "The search query to find relevant web results from the internet",
             "required": true
           },
           "limit": {
@@ -36,7 +36,7 @@
         "properties": {
           "results": {
             "type": "array",
-            "description": "Array of search results with titles, links, and snippets"
+            "description": "Array of search results with titles, links, and snippets from the web"
           }
         }
       }
@@ -53,11 +53,24 @@
       "version": "1.0.0",
       "author": "ZeroLoop",
       "sampleUseCases": [
-        "Search for latest news on a topic",
-        "Find research papers or articles",
-        "Look up current information about companies or technologies"
+        "Current events: 'search for latest AI news', 'what's happening with ChatGPT today'",
+        "Research topics: 'find information about quantum computing', 'search for React best practices'",
+        "Product information: 'look up iPhone 15 specs', 'find reviews for Tesla Model 3'",
+        "How-to guides: 'search for Docker tutorial', 'find guide on setting up MongoDB'"
       ],
-      "suggestedPrompt": "Search the web for information about [topic]"
+      "triggerPhrases": [
+        "search the web", "find online", "look up current", "what's the latest",
+        "search for", "find information about", "look up", "google",
+        "current news", "latest information", "research", "find articles",
+        "web search", "online search", "internet search"
+      ],
+      "negativeExamples": [
+        "Don't use for personal knowledge base searches",
+        "Don't use for Jira projects or internal company information",
+        "Don't use for uploaded documents or saved notes",
+        "Don't use for GitHub repository details (use GitHub Tools instead)"
+      ],
+      "suggestedPrompt": "Search for information about artificial intelligence trends 2024"
     }
   },
   "compatibility": {

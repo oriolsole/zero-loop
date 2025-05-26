@@ -5,12 +5,12 @@
   "tool": {
     "id": "knowledge-search-v2",
     "name": "execute_knowledge_search_v2",
-    "title": "Knowledge Search",
-    "description": "Search the knowledge base using semantic similarity and embeddings to find relevant information",
+    "title": "Knowledge Base Search",
+    "description": "Search your personal knowledge base including uploaded documents, notes, and saved content. Use when users ask to 'search my knowledge', 'find in my documents', 'look in my notes', 'search my files', or reference previously uploaded/saved information. This searches ONLY internal content you've uploaded or saved, NOT external web content.",
     "endpoint": "knowledge-search",
     "icon": "database",
     "category": "knowledge",
-    "tags": ["knowledge", "search", "embeddings", "semantic", "ai"],
+    "tags": ["knowledge", "search", "embeddings", "semantic", "ai", "documents", "notes", "personal"],
     "schema": {
       "input": {
         "type": "object",
@@ -18,7 +18,7 @@
           "query": {
             "name": "query",
             "type": "string",
-            "description": "The search query to find relevant knowledge",
+            "description": "The search query to find relevant knowledge from your personal knowledge base",
             "required": true
           },
           "limit": {
@@ -57,7 +57,7 @@
         "properties": {
           "results": {
             "type": "array",
-            "description": "Array of knowledge chunks and nodes matching the query"
+            "description": "Array of knowledge chunks and nodes matching the query from your personal knowledge base"
           }
         }
       }
@@ -74,11 +74,24 @@
       "version": "2.0.0",
       "author": "ZeroLoop",
       "sampleUseCases": [
-        "Search internal knowledge base for specific topics",
-        "Find related documents and insights",
-        "Semantic search across uploaded content"
+        "Search uploaded documents: 'find in my documents about AI', 'search my notes on machine learning'",
+        "Find saved insights: 'what did I save about React hooks', 'look in my knowledge base for TypeScript tips'",
+        "Retrieve personal content: 'search my files for project planning', 'find my notes on database design'",
+        "Semantic search: 'find similar concepts to neural networks in my knowledge base'"
       ],
-      "suggestedPrompt": "Search the knowledge base for information about [topic]"
+      "triggerPhrases": [
+        "search my knowledge", "find in my documents", "look in my notes",
+        "search my files", "my knowledge base", "what did I save",
+        "find my notes", "search internal", "look up in my content",
+        "from my uploads", "in my documents", "my personal knowledge"
+      ],
+      "negativeExamples": [
+        "Don't use for external web searches or current events",
+        "Don't use for Jira projects or issue management",
+        "Don't use for GitHub repository information",
+        "Don't use for real-time or current information from the internet"
+      ],
+      "suggestedPrompt": "Search my knowledge base for information about artificial intelligence"
     }
   },
   "compatibility": {

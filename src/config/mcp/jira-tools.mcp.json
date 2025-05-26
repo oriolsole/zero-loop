@@ -6,11 +6,11 @@
     "id": "jira-tools",
     "name": "execute_jira_tools",
     "title": "Jira Tools",
-    "description": "Interact with Jira to search issues, get project information, and manage tickets",
+    "description": "Access and manage Jira projects, issues, and workflows. Use when users ask to 'retrieve projects', 'list projects', 'get projects', 'show my projects', 'what projects do I have', 'search issues', 'create tickets', or any Jira-related tasks. This tool connects to your Jira instance to fetch project information, search issues, create/update tickets, and manage project workflows.",
     "endpoint": "jira-tools",
     "icon": "ticket",
     "category": "project-management",
-    "tags": ["jira", "tickets", "issues", "project-management", "atlassian"],
+    "tags": ["jira", "tickets", "issues", "project-management", "atlassian", "projects", "workflows"],
     "schema": {
       "input": {
         "type": "object",
@@ -20,24 +20,43 @@
             "type": "string",
             "description": "The Jira action to perform",
             "required": true,
-            "enum": ["search_issues", "get_issue", "get_projects", "create_issue"]
+            "enum": ["get_project", "create_issue", "update_issue", "search_issues", "get_issue", "list_projects", "get_issue_types", "add_comment"]
           },
-          "query": {
-            "name": "query",
+          "project_key": {
+            "name": "project_key",
             "type": "string",
-            "description": "JQL query or search term",
+            "description": "Jira project key (e.g., 'PROJ', 'DEV')",
             "required": false
           },
-          "issueKey": {
-            "name": "issueKey",
+          "issue_key": {
+            "name": "issue_key",
             "type": "string",
-            "description": "Jira issue key (e.g., PROJ-123)",
+            "description": "Jira issue key (e.g., 'PROJ-123')",
             "required": false
           },
-          "projectKey": {
-            "name": "projectKey",
+          "summary": {
+            "name": "summary",
             "type": "string",
-            "description": "Jira project key",
+            "description": "Issue summary/title",
+            "required": false
+          },
+          "description": {
+            "name": "description",
+            "type": "string",
+            "description": "Issue description",
+            "required": false
+          },
+          "issue_type": {
+            "name": "issue_type",
+            "type": "string",
+            "description": "Type of issue",
+            "required": false,
+            "enum": ["Bug", "Task", "Story", "Epic", "Subtask"]
+          },
+          "jql": {
+            "name": "jql",
+            "type": "string",
+            "description": "Jira Query Language (JQL) for advanced searches",
             "required": false
           }
         },
@@ -65,11 +84,24 @@
       "version": "1.0.0",
       "author": "ZeroLoop",
       "sampleUseCases": [
-        "Search for issues by status or assignee",
-        "Get detailed information about specific tickets",
-        "List projects and their metadata"
+        "List all projects: 'retrieve projects', 'show my projects', 'what projects do I have'",
+        "Search for issues: 'find bugs in project ABC', 'show open issues assigned to me'",
+        "Get project details: 'tell me about project XYZ', 'what's in the DEV project'",
+        "Create new issues: 'create a bug report for login issues'",
+        "Update existing tickets: 'update ticket ABC-123 with progress notes'"
       ],
-      "suggestedPrompt": "Search Jira for [issue type] or get details about [ticket]"
+      "triggerPhrases": [
+        "retrieve projects", "list projects", "get projects", "show projects",
+        "what projects", "my projects", "project information",
+        "search issues", "find tickets", "jira issues", "bug reports",
+        "create ticket", "create issue", "new task", "file a bug"
+      ],
+      "negativeExamples": [
+        "Don't use for web searches or external information",
+        "Don't use for knowledge base searches or internal documents",
+        "Don't use for GitHub repository information"
+      ],
+      "suggestedPrompt": "List all projects in my Jira instance"
     }
   },
   "compatibility": {

@@ -1,3 +1,4 @@
+
 // Define your default MCPs
 import { MCP } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,14 +8,14 @@ export const defaultMCPs: MCP[] = [
   {
     id: "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
     title: "Web Search",
-    description: "Search the web using Google Custom Search API to find relevant information across the internet",
+    description: "Search the public internet using Google Custom Search API for current information, news, articles, and external content. Use when users ask to 'search the web', 'find online', 'look up current', 'what's the latest', or need external/public information not in their knowledge base. This searches ONLY external web content, NOT internal documents or Jira projects.",
     endpoint: "google-search",
     icon: "search",
     parameters: [
       {
         name: "query",
         type: "string",
-        description: "The search query to find relevant web results",
+        description: "The search query to find relevant web results from the internet",
         required: true
       },
       {
@@ -28,12 +29,12 @@ export const defaultMCPs: MCP[] = [
     isDefault: true,
     default_key: "web-search",
     category: "Search",
-    tags: ["search", "web", "google", "information"],
+    tags: ["search", "web", "google", "information", "internet", "external", "current", "news"],
     sampleUseCases: [
-      "Search for latest news on a topic",
-      "Find research papers or articles", 
-      "Look up current information about companies or technologies",
-      "Find tutorials or how-to guides"
+      "Current events: 'search for latest AI news', 'what's happening with ChatGPT today'",
+      "Research topics: 'find information about quantum computing', 'search for React best practices'", 
+      "Product information: 'look up iPhone 15 specs', 'find reviews for Tesla Model 3'",
+      "How-to guides: 'search for Docker tutorial', 'find guide on setting up MongoDB'"
     ],
     suggestedPrompt: "Search for information about artificial intelligence trends 2024",
     requiresAuth: false,
@@ -42,7 +43,7 @@ export const defaultMCPs: MCP[] = [
   {
     id: uuidv4(),
     title: "Web Scraper",
-    description: "Extract detailed content from web pages by providing a URL. Perfect for getting full article text, news content, or any webpage content.",
+    description: "Extract detailed content from web pages by providing a URL. Perfect for getting full article text, news content, or any webpage content when you have a specific URL to scrape.",
     endpoint: "web-scraper",
     icon: "file-search",
     parameters: [
@@ -90,7 +91,7 @@ export const defaultMCPs: MCP[] = [
   {
     id: "github-tools-mcp-id",
     title: "GitHub Tools",
-    description: "Interact with GitHub repositories, issues, pull requests, and more",
+    description: "Interact with GitHub repositories, issues, pull requests, and code. Use when users ask about 'GitHub repos', 'repository information', 'repo details', 'GitHub files', or need to access code repositories. This connects to GitHub's API to fetch repository data, file contents, and project information.",
     endpoint: "github-tools",
     icon: "github",
     parameters: [
@@ -136,12 +137,12 @@ export const defaultMCPs: MCP[] = [
     isDefault: true,
     default_key: "github-tools",
     category: "Development",
-    tags: ["github", "git", "repository", "code"],
+    tags: ["github", "git", "repository", "code", "repos", "commits", "branches"],
     sampleUseCases: [
-      "Get repository information and structure",
-      "Read file contents from any public repository",
-      "Search for repositories by topic or name",
-      "Get commit history and branch information"
+      "Repository info: 'get repository details for facebook/react', 'show me the zero-loop repo'",
+      "File access: 'read the README from a specific repository', 'get package.json from a repo'",
+      "Search repos: 'find repositories about machine learning', 'search for React component libraries'",
+      "Commit history: 'get latest commits from main branch', 'show commit history'"
     ],
     suggestedPrompt: "Get the README file from a specific GitHub repository",
     requiresAuth: true,
@@ -151,20 +152,20 @@ export const defaultMCPs: MCP[] = [
   {
     id: uuidv4(),
     title: "Knowledge Base Search",
-    description: "Search across your knowledge base with semantic search",
+    description: "Search your personal knowledge base including uploaded documents, notes, and saved content. Use when users ask to 'search my knowledge', 'find in my documents', 'look in my notes', 'search my files', or reference previously uploaded/saved information. This searches ONLY internal content you've uploaded or saved, NOT external web content.",
     endpoint: "knowledge-proxy",
     icon: "search",
     default_key: "knowledge-search-v2",
     isDefault: true,
     category: "Knowledge",
-    tags: ["search", "knowledge", "vector"],
-    suggestedPrompt: "Search for information about artificial intelligence",
+    tags: ["search", "knowledge", "vector", "documents", "notes", "personal", "internal"],
+    suggestedPrompt: "Search my knowledge base for information about artificial intelligence",
     requiresAuth: true,
     parameters: [
       {
         name: "query",
         type: "string",
-        description: "The search query",
+        description: "The search query to find relevant knowledge from your personal knowledge base",
         required: true
       },
       {
@@ -188,12 +189,18 @@ export const defaultMCPs: MCP[] = [
         required: false,
         default: []
       }
+    ],
+    sampleUseCases: [
+      "Search uploaded documents: 'find in my documents about AI', 'search my notes on machine learning'",
+      "Find saved insights: 'what did I save about React hooks', 'look in my knowledge base for TypeScript tips'",
+      "Retrieve personal content: 'search my files for project planning', 'find my notes on database design'",
+      "Semantic search: 'find similar concepts to neural networks in my knowledge base'"
     ]
   },
   {
     id: uuidv4(),
     title: "Jira Tools",
-    description: "Interact with Jira projects, issues, pull requests, and workflows. Create, update, search issues and manage project data. Requires Jira Cloud instance with API token.",
+    description: "Access and manage Jira projects, issues, and workflows. Use when users ask to 'retrieve projects', 'list projects', 'get projects', 'show my projects', 'what projects do I have', 'search issues', 'create tickets', or any Jira-related tasks. This tool connects to your Jira instance to fetch project information, search issues, create/update tickets, and manage project workflows.",
     endpoint: "jira-tools",
     icon: "kanban-square",
     parameters: [
@@ -271,14 +278,13 @@ export const defaultMCPs: MCP[] = [
     isDefault: true,
     default_key: "jira-tools",
     category: "Project Management",
-    tags: ["jira", "project", "issues", "workflow", "agile"],
+    tags: ["jira", "project", "issues", "workflow", "agile", "projects", "tickets"],
     sampleUseCases: [
-      "Create a new bug report in project ABC",
-      "Search for open issues assigned to me",
-      "Get project information and available issue types",
-      "Update issue status and add progress comments",
-      "List all projects and their details",
-      "Search issues using JQL queries"
+      "List all projects: 'retrieve projects', 'show my projects', 'what projects do I have'",
+      "Search for issues: 'find bugs in project ABC', 'show open issues assigned to me'",
+      "Get project details: 'tell me about project XYZ', 'what's in the DEV project'",
+      "Create new issues: 'create a bug report for login issues'",
+      "Update existing tickets: 'update ticket ABC-123 with progress notes'"
     ],
     suggestedPrompt: "List all projects in my Jira instance",
     requiresAuth: true,
