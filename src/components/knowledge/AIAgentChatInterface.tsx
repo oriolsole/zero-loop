@@ -9,6 +9,8 @@ import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
 import AIAgentMessage from './AIAgentMessage';
+import ToolExecutionCard from './ToolExecutionCard';
+import StatusMessage from './StatusMessage';
 
 interface AIAgentChatInterfaceProps {
   conversations: ConversationMessage[];
@@ -45,6 +47,10 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
     }
   };
 
+  const activeTool = tools.find(tool => 
+    tool.status === 'executing' || tool.status === 'starting'
+  );
+
   return (
     <CardContent className="flex-1 overflow-hidden p-0">
       <ScrollArea className="h-full px-6" ref={scrollAreaRef}>
@@ -79,21 +85,30 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto mb-8">
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200">
+                <button 
+                  onClick={() => onFollowUpAction?.("What are the latest AI developments?")}
+                  className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200 hover:border-blue-300 transition-colors cursor-pointer"
+                >
                   <Search className="h-6 w-6 text-blue-500 mx-auto mb-2" />
                   <p className="text-sm font-medium text-blue-700">Web Search</p>
                   <p className="text-xs text-blue-600">Real-time information</p>
-                </div>
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200">
+                </button>
+                <button 
+                  onClick={() => onFollowUpAction?.("Search my knowledge base for insights about AI")}
+                  className="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200 hover:border-green-300 transition-colors cursor-pointer"
+                >
                   <Database className="h-6 w-6 text-green-500 mx-auto mb-2" />
                   <p className="text-sm font-medium text-green-700">Knowledge Base</p>
                   <p className="text-xs text-green-600">Semantic memory</p>
-                </div>
-                <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-4 rounded-xl border border-purple-200">
+                </button>
+                <button 
+                  onClick={() => onFollowUpAction?.("Analyze the latest commits in a GitHub repository")}
+                  className="bg-gradient-to-br from-purple-50 to-pink-50 p-4 rounded-xl border border-purple-200 hover:border-purple-300 transition-colors cursor-pointer"
+                >
                   <Github className="h-6 w-6 text-purple-500 mx-auto mb-2" />
                   <p className="text-sm font-medium text-purple-700">GitHub Tools</p>
                   <p className="text-xs text-purple-600">Code analysis</p>
-                </div>
+                </button>
               </div>
               
               <div className="space-y-2 text-sm text-gray-500">
@@ -117,22 +132,31 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
             />
           ))}
           
-          {isLoading && (
-            <div className="flex justify-start animate-fade-in">
-              <Avatar className="h-9 w-9 mt-1 shadow-sm">
-                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500">
-                  <Bot className="h-5 w-5 text-white" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="ml-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl px-4 py-3 max-w-[80%] border border-gray-200 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                  <span className="text-sm font-medium text-gray-700">
-                    Processing with {modelSettings.provider.toUpperCase()}...
-                  </span>
-                </div>
+          {/* Tool Execution Progress */}
+          {toolsActive && tools.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Tools in progress...</span>
+              </div>
+              
+              <div className="grid gap-2">
+                {tools.map((tool) => (
+                  <ToolExecutionCard 
+                    key={tool.id} 
+                    tool={tool} 
+                    compact={true}
+                  />
+                ))}
               </div>
             </div>
+          )}
+          
+          {isLoading && !toolsActive && (
+            <StatusMessage 
+              content={`Processing with ${modelSettings.provider.toUpperCase()}...`}
+              type="thinking"
+            />
           )}
         </div>
       </ScrollArea>

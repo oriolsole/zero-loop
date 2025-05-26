@@ -58,7 +58,7 @@ const AIAgentChat: React.FC = () => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [conversations]);
+  }, [conversations, tools]);
 
   // Load model settings on component mount and when they change
   useEffect(() => {
@@ -78,6 +78,27 @@ const AIAgentChat: React.FC = () => {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  const addStatusMessage = (content: string, type: 'thinking' | 'success' | 'error' = 'thinking') => {
+    const statusMessage: ConversationMessage = {
+      id: `status-${Date.now()}`,
+      role: 'assistant',
+      content,
+      timestamp: new Date(),
+      messageType: 'status' as any
+    };
+    addMessage(statusMessage);
+    return statusMessage.id;
+  };
+
+  const removeStatusMessage = (messageId: string) => {
+    // In a real implementation, you'd want to remove the message from the conversations array
+    // For now, we'll just replace it with a completion indicator
+    updateMessage(messageId, { 
+      content: '✓ Processing complete',
+      messageType: 'status' as any
+    });
+  };
 
   const handleFollowUpAction = async (action: string) => {
     if (!user || !currentSessionId) return;
@@ -104,8 +125,16 @@ const AIAgentChat: React.FC = () => {
     setIsLoading(true);
     clearTools();
 
+    // Add progressive status messages
+    const statusId = addStatusMessage("Analyzing your request...");
+
     try {
       const conversationHistory = getConversationHistory();
+
+      // Update status message
+      setTimeout(() => {
+        updateMessage(statusId, { content: "Determining complexity and tool requirements..." });
+      }, 800);
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
@@ -125,6 +154,9 @@ const AIAgentChat: React.FC = () => {
       if (!data || !data.success) {
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
+
+      // Remove status message and add final response
+      removeStatusMessage(statusId);
 
       const assistantMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
@@ -147,6 +179,11 @@ const AIAgentChat: React.FC = () => {
     } catch (error) {
       console.error('Error sending message:', error);
       
+      updateMessage(statusId, { 
+        content: `❌ Error: ${error.message}`,
+        messageType: 'status' as any
+      });
+
       toast.error('Failed to send message', {
         description: error.message || 'Please try again.',
         duration: 10000
