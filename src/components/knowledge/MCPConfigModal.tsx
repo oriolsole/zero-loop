@@ -93,8 +93,8 @@ const MCPConfigModal: React.FC<MCPConfigModalProps> = ({ mcp, open, onOpenChange
                 </Button>
               </div>
               
-              <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-4 overflow-auto max-h-96">
-                <pre className="text-sm">
+              <div className="bg-gray-900 dark:bg-gray-950 rounded-lg p-4 overflow-auto max-h-96 border">
+                <pre className="text-sm text-gray-100 dark:text-gray-200">
                   <code>{JSON.stringify(toolConfig, null, 2)}</code>
                 </pre>
               </div>
@@ -124,8 +124,8 @@ const MCPConfigModal: React.FC<MCPConfigModalProps> = ({ mcp, open, onOpenChange
                 </Button>
               </div>
               
-              <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-4 overflow-auto max-h-96">
-                <pre className="text-sm">
+              <div className="bg-gray-900 dark:bg-gray-950 rounded-lg p-4 overflow-auto max-h-96 border">
+                <pre className="text-sm text-gray-100 dark:text-gray-200">
                   <code>{JSON.stringify(mcp, null, 2)}</code>
                 </pre>
               </div>
