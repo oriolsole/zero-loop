@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -7,6 +6,9 @@ import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
 import { generateSystemPrompt } from './system-prompts.ts';
 import { extractAssistantMessage } from './response-handler.ts';
+import { detectComplexQuery, shouldUseLearningLoop } from './learning-loop-detector.ts';
+import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
+import { getRelevantKnowledge } from './knowledge-retrieval.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -51,174 +53,39 @@ serve(async (req) => {
       });
     }
 
-    // Fetch available MCPs from the database
-    const { data: mcps, error: mcpError } = await supabase
-      .from('mcps')
-      .select('*')
-      .eq('isDefault', true)
-      .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2', 'jira-tools', 'web-scraper']);
+    // Check if this requires learning loop integration
+    const complexityAnalysis = await detectComplexQuery(message, conversationHistory);
+    const useKnowledgeLoop = shouldUseLearningLoop(complexityAnalysis);
 
-    if (mcpError) {
-      console.error('Error fetching MCPs:', mcpError);
-      throw new Error('Failed to fetch available tools');
-    }
+    console.log('Query complexity analysis:', complexityAnalysis);
+    console.log('Using learning loop:', useKnowledgeLoop);
 
-    console.log('Available MCPs:', mcps?.map(m => ({ title: m.title, endpoint: m.endpoint, key: m.default_key })));
-
-    // Convert MCPs to OpenAI function definitions
-    const tools = convertMCPsToTools(mcps);
-    console.log('Generated tools:', tools.map(t => t.function.name));
-
-    // Generate comprehensive system prompt
-    const systemPrompt = generateSystemPrompt(mcps);
-
-    // Prepare messages for AI model
-    const messages = [
-      {
-        role: 'system',
-        content: systemPrompt
-      },
-      ...conversationHistory,
-      {
-        role: 'user',
-        content: message
-      }
-    ];
-
-    // Let the model decide on tool usage naturally
-    const modelRequestBody = {
-      messages,
-      tools: tools.length > 0 ? tools : undefined,
-      tool_choice: 'auto',
-      temperature: 0.7,
-      max_tokens: 2000,
-      stream: streaming,
-      // Pass model settings if provided
-      ...(modelSettings && {
-        provider: modelSettings.provider,
-        model: modelSettings.selectedModel,
-        localModelUrl: modelSettings.localModelUrl
-      })
-    };
-
-    console.log('Calling AI model - tools available:', tools.length);
-
-    const response = await supabase.functions.invoke('ai-model-proxy', {
-      body: modelRequestBody
-    });
-
-    if (response.error) {
-      console.error('AI Model Proxy error:', response.error);
-      throw new Error(`AI Model Proxy error: ${response.error.message}`);
-    }
-
-    const data = response.data;
-    console.log('AI Model response received, checking for tool calls...');
-
-    if (streaming) {
-      return new Response(JSON.stringify(data), {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      });
-    }
-
-    // Extract assistant message
-    const assistantMessage = extractAssistantMessage(data);
-    let fallbackUsed = data.fallback_used || false;
-    let fallbackReason = data.fallback_reason || '';
-
-    if (!assistantMessage) {
-      console.error('Failed to extract assistant message from response:', JSON.stringify(data).substring(0, 500));
-      throw new Error('No valid message content received from AI model');
-    }
-
-    console.log('Successfully extracted assistant message:', {
-      hasContent: !!assistantMessage.content,
-      hasToolCalls: !!assistantMessage.tool_calls,
-      toolCallCount: assistantMessage.tool_calls?.length || 0
-    });
-
-    let finalResponse = assistantMessage.content;
-    let toolsUsed: any[] = [];
-    let toolProgress: any[] = [];
-
-    // Execute tools if the model chose to use them
-    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-      console.log('AI model chose to use', assistantMessage.tool_calls.length, 'tools - executing...');
-      
-      const { toolResults, toolsUsed: executedTools, toolProgress: progress } = await executeTools(
-        assistantMessage.tool_calls,
-        mcps,
-        userId,
-        supabase
+    if (useKnowledgeLoop) {
+      // Use unified reasoning with learning loop integration
+      return await handleComplexQueryWithLearningLoop(
+        message, 
+        conversationHistory, 
+        userId, 
+        sessionId, 
+        modelSettings, 
+        supabase,
+        complexityAnalysis
       );
-      
-      toolsUsed = executedTools;
-      toolProgress = progress;
-      
-      // Make synthesis call with tool results
-      console.log('Making synthesis call with tool results');
-      const synthesizedResponse = await synthesizeToolResults(
-        message,
-        conversationHistory,
-        toolsUsed,
-        assistantMessage.content,
-        modelSettings,
-        supabase
-      );
-      
-      if (synthesizedResponse) {
-        finalResponse = synthesizedResponse;
-      } else {
-        finalResponse = createFallbackResponse(message, toolsUsed);
-      }
-      
-      console.log('Tool execution and synthesis completed successfully');
     } else {
-      console.log('AI model chose not to use tools - providing direct response');
+      // Use standard tool chaining for simple queries
+      return await handleSimpleQuery(
+        message, 
+        conversationHistory, 
+        userId, 
+        sessionId, 
+        modelSettings, 
+        streaming, 
+        supabase
+      );
     }
-
-    // Store assistant response in database
-    if (userId && sessionId) {
-      await supabase.from('agent_conversations').insert({
-        user_id: userId,
-        session_id: sessionId,
-        role: 'assistant',
-        content: finalResponse,
-        tools_used: toolsUsed,
-        created_at: new Date().toISOString()
-      });
-    }
-
-    console.log('Returning response with', toolsUsed.length, 'tools used');
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: finalResponse,
-        toolsUsed: toolsUsed.map(t => ({
-          name: t.name,
-          parameters: t.parameters,
-          success: t.success,
-          result: t.result
-        })),
-        toolProgress,
-        sessionId,
-        fallbackUsed,
-        fallbackReason
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
 
   } catch (error) {
     console.error('AI Agent error:', error);
-    console.error('Error details:', {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    });
     
     return new Response(
       JSON.stringify({
@@ -235,7 +102,482 @@ serve(async (req) => {
 });
 
 /**
- * Synthesize tool results into a coherent response
+ * Handle complex queries using learning loop integration
+ */
+async function handleComplexQueryWithLearningLoop(
+  message: string,
+  conversationHistory: any[],
+  userId: string | null,
+  sessionId: string | null,
+  modelSettings: any,
+  supabase: any,
+  complexityAnalysis: any
+): Promise<Response> {
+  console.log('Starting complex query with learning loop integration');
+  
+  // 1. Retrieve relevant existing knowledge
+  const relevantKnowledge = await getRelevantKnowledge(message, userId, supabase);
+  console.log('Retrieved relevant knowledge:', relevantKnowledge?.length || 0, 'nodes');
+
+  // 2. Get available tools
+  const { data: mcps, error: mcpError } = await supabase
+    .from('mcps')
+    .select('*')
+    .eq('isDefault', true)
+    .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2', 'jira-tools', 'web-scraper']);
+
+  if (mcpError) {
+    throw new Error('Failed to fetch available tools');
+  }
+
+  const tools = convertMCPsToTools(mcps);
+  const systemPrompt = generateSystemPrompt(mcps);
+
+  // 3. Execute iterative reasoning loop
+  let iteration = 0;
+  const maxIterations = 4;
+  let accumulatedContext: any[] = [];
+  let stopSignalReached = false;
+  let finalResponse = '';
+
+  // Enhanced system prompt for learning loop integration
+  const learningLoopPrompt = `${systemPrompt}
+
+**LEARNING LOOP MODE ACTIVATED**
+
+You are now in learning loop mode for a complex query. Your goal is to:
+1. Break down the complex question into steps
+2. Use tools iteratively to gather information
+3. Build knowledge progressively across iterations
+4. Synthesize insights and persist valuable knowledge
+5. Only provide final response when you have sufficient information
+
+Relevant existing knowledge:
+${relevantKnowledge?.map(node => `- ${node.title}: ${node.description}`).join('\n') || 'No relevant prior knowledge found'}
+
+Query complexity: ${complexityAnalysis.complexity}
+Suggested approach: ${complexityAnalysis.suggestedApproach}
+Required steps: ${complexityAnalysis.requiredSteps?.join(', ') || 'Not specified'}
+
+Continue until you have enough information to provide a comprehensive answer.`;
+
+  while (!stopSignalReached && iteration < maxIterations) {
+    iteration++;
+    console.log(`Learning loop iteration ${iteration}/${maxIterations}`);
+
+    // Prepare messages with accumulated context
+    const iterationMessages = [
+      {
+        role: 'system',
+        content: learningLoopPrompt
+      },
+      ...conversationHistory,
+      {
+        role: 'user',
+        content: iteration === 1 ? message : `Continue with iteration ${iteration}. Previous results: ${JSON.stringify(accumulatedContext.slice(-2))}`
+      }
+    ];
+
+    // Get AI decision on next steps
+    const response = await supabase.functions.invoke('ai-model-proxy', {
+      body: {
+        messages: iterationMessages,
+        tools: tools.length > 0 ? tools : undefined,
+        tool_choice: 'auto',
+        temperature: 0.7,
+        max_tokens: 2000,
+        ...(modelSettings && {
+          provider: modelSettings.provider,
+          model: modelSettings.selectedModel,
+          localModelUrl: modelSettings.localModelUrl
+        })
+      }
+    });
+
+    if (response.error) {
+      throw new Error(`AI Model Proxy error: ${response.error.message}`);
+    }
+
+    const assistantMessage = extractAssistantMessage(response.data);
+    if (!assistantMessage) {
+      throw new Error('No valid message content received from AI model');
+    }
+
+    // Execute tools if chosen
+    let toolResults: any[] = [];
+    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      console.log(`Executing ${assistantMessage.tool_calls.length} tools in iteration ${iteration}`);
+      
+      const { toolResults: results, toolsUsed } = await executeTools(
+        assistantMessage.tool_calls,
+        mcps,
+        userId,
+        supabase
+      );
+      
+      toolResults = results;
+      accumulatedContext.push({
+        iteration,
+        response: assistantMessage.content,
+        toolsUsed,
+        toolResults: results
+      });
+    } else {
+      accumulatedContext.push({
+        iteration,
+        response: assistantMessage.content,
+        reasoning: 'No tools used - direct response'
+      });
+    }
+
+    // Check if we should continue or stop
+    const shouldContinue = await evaluateIterationCompletion(
+      message,
+      accumulatedContext,
+      assistantMessage.content,
+      modelSettings,
+      supabase
+    );
+
+    if (!shouldContinue || iteration >= maxIterations) {
+      stopSignalReached = true;
+      finalResponse = assistantMessage.content;
+    }
+  }
+
+  // 4. Synthesize final response with all accumulated context
+  if (accumulatedContext.length > 1) {
+    console.log('Synthesizing final response from', accumulatedContext.length, 'iterations');
+    
+    const synthesisResponse = await synthesizeIterativeResults(
+      message,
+      accumulatedContext,
+      modelSettings,
+      supabase
+    );
+    
+    if (synthesisResponse) {
+      finalResponse = synthesisResponse;
+    }
+  }
+
+  // 5. Persist valuable insights as knowledge nodes
+  if (userId && accumulatedContext.length > 0) {
+    await persistInsightAsKnowledgeNode(
+      message,
+      finalResponse,
+      accumulatedContext,
+      userId,
+      complexityAnalysis,
+      supabase
+    );
+  }
+
+  // 6. Store final response
+  if (userId && sessionId) {
+    await supabase.from('agent_conversations').insert({
+      user_id: userId,
+      session_id: sessionId,
+      role: 'assistant',
+      content: finalResponse,
+      tools_used: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
+      created_at: new Date().toISOString()
+    });
+  }
+
+  console.log('Learning loop completed after', iteration, 'iterations');
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: finalResponse,
+      learningLoopUsed: true,
+      iterations: iteration,
+      accumulatedContext: accumulatedContext.length,
+      toolsUsed: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
+      sessionId
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+/**
+ * Handle simple queries using standard tool chaining
+ */
+async function handleSimpleQuery(
+  message: string,
+  conversationHistory: any[],
+  userId: string | null,
+  sessionId: string | null,
+  modelSettings: any,
+  streaming: boolean,
+  supabase: any
+): Promise<Response> {
+  // Fetch available MCPs from the database
+  const { data: mcps, error: mcpError } = await supabase
+    .from('mcps')
+    .select('*')
+    .eq('isDefault', true)
+    .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2', 'jira-tools', 'web-scraper']);
+
+  if (mcpError) {
+    throw new Error('Failed to fetch available tools');
+  }
+
+  const tools = convertMCPsToTools(mcps);
+  const systemPrompt = generateSystemPrompt(mcps);
+
+  // Prepare messages for AI model
+  const messages = [
+    {
+      role: 'system',
+      content: systemPrompt
+    },
+    ...conversationHistory,
+    {
+      role: 'user',
+      content: message
+    }
+  ];
+
+  const modelRequestBody = {
+    messages,
+    tools: tools.length > 0 ? tools : undefined,
+    tool_choice: 'auto',
+    temperature: 0.7,
+    max_tokens: 2000,
+    stream: streaming,
+    ...(modelSettings && {
+      provider: modelSettings.provider,
+      model: modelSettings.selectedModel,
+      localModelUrl: modelSettings.localModelUrl
+    })
+  };
+
+  const response = await supabase.functions.invoke('ai-model-proxy', {
+    body: modelRequestBody
+  });
+
+  if (response.error) {
+    throw new Error(`AI Model Proxy error: ${response.error.message}`);
+  }
+
+  const data = response.data;
+
+  if (streaming) {
+    return new Response(JSON.stringify(data), {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
+    });
+  }
+
+  const assistantMessage = extractAssistantMessage(data);
+  if (!assistantMessage) {
+    throw new Error('No valid message content received from AI model');
+  }
+
+  let finalResponse = assistantMessage.content;
+  let toolsUsed: any[] = [];
+
+  // Execute tools if the model chose to use them
+  if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+    const { toolResults, toolsUsed: executedTools } = await executeTools(
+      assistantMessage.tool_calls,
+      mcps,
+      userId,
+      supabase
+    );
+    
+    toolsUsed = executedTools;
+    
+    // Make synthesis call with tool results
+    const synthesizedResponse = await synthesizeToolResults(
+      message,
+      conversationHistory,
+      toolsUsed,
+      assistantMessage.content,
+      modelSettings,
+      supabase
+    );
+    
+    if (synthesizedResponse) {
+      finalResponse = synthesizedResponse;
+    }
+  }
+
+  // Store assistant response in database
+  if (userId && sessionId) {
+    await supabase.from('agent_conversations').insert({
+      user_id: userId,
+      session_id: sessionId,
+      role: 'assistant',
+      content: finalResponse,
+      tools_used: toolsUsed,
+      created_at: new Date().toISOString()
+    });
+  }
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: finalResponse,
+      learningLoopUsed: false,
+      toolsUsed: toolsUsed.map(t => ({
+        name: t.name,
+        parameters: t.parameters,
+        success: t.success,
+        result: t.result
+      })),
+      sessionId
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+/**
+ * Evaluate if iteration should continue
+ */
+async function evaluateIterationCompletion(
+  originalMessage: string,
+  accumulatedContext: any[],
+  currentResponse: string,
+  modelSettings: any,
+  supabase: any
+): Promise<boolean> {
+  try {
+    const evaluationMessages = [
+      {
+        role: 'system',
+        content: `Evaluate if more information is needed to fully answer the user's question. 
+        
+        Respond with JSON: {"continue": true/false, "reason": "explanation"}
+        
+        Continue if:
+        - The answer is incomplete or vague
+        - Important aspects of the question remain unanswered
+        - More context or data would significantly improve the response
+        
+        Stop if:
+        - The question has been thoroughly answered
+        - Sufficient information has been gathered
+        - Additional iterations won't add meaningful value`
+      },
+      {
+        role: 'user',
+        content: `Original question: "${originalMessage}"
+        
+        Current accumulated context: ${JSON.stringify(accumulatedContext, null, 2)}
+        
+        Latest response: "${currentResponse}"
+        
+        Should I continue gathering more information?`
+      }
+    ];
+
+    const response = await supabase.functions.invoke('ai-model-proxy', {
+      body: {
+        messages: evaluationMessages,
+        temperature: 0.3,
+        max_tokens: 200,
+        ...(modelSettings && {
+          provider: modelSettings.provider,
+          model: modelSettings.selectedModel,
+          localModelUrl: modelSettings.localModelUrl
+        })
+      }
+    });
+
+    if (response.error) {
+      console.error('Error in iteration evaluation:', response.error);
+      return false; // Stop on error
+    }
+
+    const evaluationMessage = extractAssistantMessage(response.data);
+    if (evaluationMessage?.content) {
+      try {
+        const evaluation = JSON.parse(evaluationMessage.content);
+        console.log('Iteration evaluation:', evaluation);
+        return evaluation.continue === true;
+      } catch (parseError) {
+        console.error('Error parsing evaluation response:', parseError);
+        return false;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Error in evaluateIterationCompletion:', error);
+    return false;
+  }
+}
+
+/**
+ * Synthesize results from multiple iterations
+ */
+async function synthesizeIterativeResults(
+  originalMessage: string,
+  accumulatedContext: any[],
+  modelSettings: any,
+  supabase: any
+): Promise<string | null> {
+  try {
+    const contextSummary = accumulatedContext.map((ctx, idx) => 
+      `Iteration ${ctx.iteration}: ${ctx.response}\nTools used: ${ctx.toolsUsed?.map(t => t.name).join(', ') || 'none'}`
+    ).join('\n\n');
+
+    const synthesisMessages = [
+      {
+        role: 'system',
+        content: `Synthesize a comprehensive final answer based on multiple iterations of research and tool usage.
+
+        Create a coherent, well-structured response that:
+        1. Directly answers the original question
+        2. Integrates insights from all iterations
+        3. Provides clear, actionable information
+        4. Maintains a helpful, professional tone`
+      },
+      {
+        role: 'user',
+        content: `Original question: "${originalMessage}"
+
+        Research iterations:
+        ${contextSummary}
+
+        Please provide a comprehensive final answer.`
+      }
+    ];
+
+    const response = await supabase.functions.invoke('ai-model-proxy', {
+      body: {
+        messages: synthesisMessages,
+        temperature: 0.5,
+        max_tokens: 1000,
+        ...(modelSettings && {
+          provider: modelSettings.provider,
+          model: modelSettings.selectedModel,
+          localModelUrl: modelSettings.localModelUrl
+        })
+      }
+    });
+
+    if (response.error) {
+      console.error('Error in synthesis:', response.error);
+      return null;
+    }
+
+    const synthesisMessage = extractAssistantMessage(response.data);
+    return synthesisMessage?.content || null;
+
+  } catch (error) {
+    console.error('Error in synthesizeIterativeResults:', error);
+    return null;
+  }
+}
+
+/**
+ * Synthesize tool results into a coherent response (existing function)
  */
 async function synthesizeToolResults(
   originalMessage: string,
@@ -246,7 +588,6 @@ async function synthesizeToolResults(
   supabase: any
 ): Promise<string | null> {
   try {
-    // Create synthesis prompt with tool results
     const toolResultsSummary = toolsUsed.map(tool => {
       if (tool.success && tool.result) {
         return `${tool.name}: ${typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result)}`;
@@ -272,21 +613,17 @@ Give a clear answer based on this information.`
       }
     ];
 
-    const synthesisRequestBody = {
-      messages: synthesisMessages,
-      temperature: 0.3,
-      max_tokens: 800,
-      ...(modelSettings && {
-        provider: modelSettings.provider,
-        model: modelSettings.selectedModel,
-        localModelUrl: modelSettings.localModelUrl
-      })
-    };
-
-    console.log('Making synthesis call to AI model');
-
     const synthesisResponse = await supabase.functions.invoke('ai-model-proxy', {
-      body: synthesisRequestBody
+      body: {
+        messages: synthesisMessages,
+        temperature: 0.3,
+        max_tokens: 800,
+        ...(modelSettings && {
+          provider: modelSettings.provider,
+          model: modelSettings.selectedModel,
+          localModelUrl: modelSettings.localModelUrl
+        })
+      }
     });
     
     if (synthesisResponse.error) {
@@ -294,40 +631,11 @@ Give a clear answer based on this information.`
       return null;
     }
     
-    const synthesisData = synthesisResponse.data;
-    const synthesisMessage = extractAssistantMessage(synthesisData);
-    
-    if (synthesisMessage && synthesisMessage.content) {
-      console.log('Synthesis successful, returning synthesized response');
-      return synthesisMessage.content;
-    } else {
-      console.error('Failed to extract synthesis response');
-      return null;
-    }
+    const synthesisMessage = extractAssistantMessage(synthesisResponse.data);
+    return synthesisMessage?.content || null;
     
   } catch (error) {
     console.error('Error in synthesis:', error);
     return null;
   }
-}
-
-/**
- * Create a fallback response when synthesis fails
- */
-function createFallbackResponse(originalMessage: string, toolsUsed: any[]): string {
-  const successfulTools = toolsUsed.filter(t => t.success);
-  
-  if (successfulTools.length === 0) {
-    return "I apologize, but I wasn't able to find the information you requested at this time.";
-  }
-  
-  // Try to extract useful information from tool results
-  const results = successfulTools.map(tool => {
-    if (tool.result && typeof tool.result === 'string') {
-      return tool.result.substring(0, 200) + (tool.result.length > 200 ? '...' : '');
-    }
-    return 'Information found';
-  }).join('\n\n');
-  
-  return `Based on my search, here's what I found:\n\n${results}`;
 }
