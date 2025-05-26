@@ -3,9 +3,9 @@
   "protocol": "ModelContextProtocol",
   "version": "1.0.0",
   "tool": {
-    "id": "knowledge-search-v2",
-    "name": "execute_knowledge_search_v2",
-    "title": "Knowledge Base Search",
+    "id": "knowledge-search",
+    "name": "execute_knowledge_search",
+    "title": "Knowledge Search",
     "description": "Search your personal knowledge base including uploaded documents, notes, and saved content. Use when users ask to 'search my knowledge', 'find in my documents', 'look in my notes', 'search my files', or reference previously uploaded/saved information. This searches ONLY internal content you've uploaded or saved, NOT external web content.",
     "endpoint": "knowledge-search",
     "icon": "database",
@@ -71,7 +71,7 @@
       "permissions": ["knowledge_read"]
     },
     "metadata": {
-      "version": "2.0.0",
+      "version": "1.0.0",
       "author": "ZeroLoop",
       "sampleUseCases": [
         "Search uploaded documents: 'find in my documents about AI', 'search my notes on machine learning'",
@@ -96,6 +96,6 @@
   },
   "compatibility": {
     "frameworks": ["openai-functions", "supabase-edge"],
-    "versions": ["2.0.x"]
+    "versions": ["1.0.x"]
   }
 }

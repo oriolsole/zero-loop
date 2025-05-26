@@ -135,12 +135,12 @@ async function handleComplexQueryWithLearningLoop(
   const relevantKnowledge = await getRelevantKnowledge(message, userId, supabase);
   console.log('Retrieved relevant knowledge:', relevantKnowledge?.length || 0, 'nodes');
 
-  // 2. Get available tools
+  // 2. Get available tools (updated to use new knowledge-search key)
   const { data: mcps, error: mcpError } = await supabase
     .from('mcps')
     .select('*')
     .eq('isDefault', true)
-    .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2', 'jira-tools', 'web-scraper']);
+    .in('default_key', ['web-search', 'github-tools', 'knowledge-search', 'jira-tools', 'web-scraper']);
 
   if (mcpError) {
     throw new Error('Failed to fetch available tools');
@@ -351,12 +351,12 @@ async function handleSimpleQuery(
   streaming: boolean,
   supabase: any
 ): Promise<Response> {
-  // Fetch available MCPs from the database
+  // Fetch available MCPs from the database (updated to use new knowledge-search key)
   const { data: mcps, error: mcpError } = await supabase
     .from('mcps')
     .select('*')
     .eq('isDefault', true)
-    .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2', 'jira-tools', 'web-scraper']);
+    .in('default_key', ['web-search', 'github-tools', 'knowledge-search', 'jira-tools', 'web-scraper']);
 
   if (mcpError) {
     throw new Error('Failed to fetch available tools');

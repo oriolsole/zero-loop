@@ -151,11 +151,11 @@ export const defaultMCPs: MCP[] = [
   },
   {
     id: uuidv4(),
-    title: "Knowledge Base Search",
+    title: "Knowledge Search",
     description: "Search your personal knowledge base including uploaded documents, notes, and saved content. Use when users ask to 'search my knowledge', 'find in my documents', 'look in my notes', 'search my files', or reference previously uploaded/saved information. This searches ONLY internal content you've uploaded or saved, NOT external web content.",
     endpoint: "knowledge-proxy",
     icon: "search",
-    default_key: "knowledge-search-v2",
+    default_key: "knowledge-search",
     isDefault: true,
     category: "Knowledge",
     tags: ["search", "knowledge", "vector", "documents", "notes", "personal", "internal"],
