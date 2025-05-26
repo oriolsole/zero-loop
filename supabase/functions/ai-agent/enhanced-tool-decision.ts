@@ -1,6 +1,7 @@
 
 /**
- * Simplified tool decision analysis for UI and logging purposes only
+ * Simplified tool decision analysis - removed complex logic
+ * The AI model now handles all tool decisions naturally
  */
 
 export interface SimpleToolDecision {
@@ -11,7 +12,7 @@ export interface SimpleToolDecision {
 }
 
 /**
- * Simple analysis for UI display and logging - does not force tool execution
+ * Very simple analysis for logging purposes only
  */
 export function simpleAnalyzeToolRequirements(
   message: string, 
@@ -20,46 +21,48 @@ export function simpleAnalyzeToolRequirements(
   
   const lowerMessage = message.toLowerCase().trim();
   
-  // Simple pattern matching for UI display
-  if (lowerMessage.includes('jira') || 
-      /\b(retrieve|list|get|show)\s+(projects?|my\s+projects?)\b/.test(lowerMessage) ||
-      lowerMessage.includes('create ticket') || 
-      lowerMessage.includes('search issues')) {
+  // Just provide basic categorization for logging
+  if (lowerMessage.includes('jira')) {
     return {
       shouldUseTools: true,
       detectedType: 'jira',
-      reasoning: 'Detected Jira-related request',
+      reasoning: 'Jira-related request detected',
       confidence: 0.8
     };
   }
   
-  if (lowerMessage.includes('github') || 
-      lowerMessage.includes('repository') || 
-      lowerMessage.includes('repo') ||
-      /github\.com\/[\w-]+\/[\w-]+/.test(message)) {
+  if (lowerMessage.includes('github') || lowerMessage.includes('repository')) {
     return {
       shouldUseTools: true,
       detectedType: 'github', 
-      reasoning: 'Detected GitHub repository request',
+      reasoning: 'GitHub-related request detected',
       confidence: 0.8
     };
   }
   
-  if (/\b(search|find|look\s+up)\b/.test(lowerMessage) && 
-      !/\b(my|personal|knowledge|documents?|notes?)\b/.test(lowerMessage)) {
+  if (/https?:\/\/[^\s]+/.test(message) || /\b(access|retrieve|scrape|get\s+content)\b/.test(lowerMessage)) {
     return {
       shouldUseTools: true,
       detectedType: 'search',
-      reasoning: 'Detected web search request',
+      reasoning: 'Web access or search request detected',
+      confidence: 0.8
+    };
+  }
+  
+  if (/\b(search|find|look\s+up)\b/.test(lowerMessage)) {
+    return {
+      shouldUseTools: true,
+      detectedType: 'search',
+      reasoning: 'Search request detected',
       confidence: 0.7
     };
   }
   
-  if (/\b(my|personal|knowledge|documents?|notes?|saved?|uploaded?)\b/.test(lowerMessage)) {
+  if (/\b(my|knowledge|documents?|notes?)\b/.test(lowerMessage)) {
     return {
       shouldUseTools: true,
       detectedType: 'knowledge',
-      reasoning: 'Detected knowledge base search request', 
+      reasoning: 'Knowledge base request detected', 
       confidence: 0.7
     };
   }
@@ -67,7 +70,7 @@ export function simpleAnalyzeToolRequirements(
   return {
     shouldUseTools: false,
     detectedType: 'general',
-    reasoning: 'General conversation - no tools needed',
+    reasoning: 'General conversation',
     confidence: 0.8
   };
 }
@@ -76,11 +79,9 @@ export function simpleAnalyzeToolRequirements(
  * Simple logging function for debugging
  */
 export function logSimpleToolDecision(decision: SimpleToolDecision, message: string) {
-  console.log('=== SIMPLE TOOL ANALYSIS ===');
+  console.log('=== SIMPLIFIED TOOL ANALYSIS ===');
   console.log('Message:', message);
-  console.log('Should use tools:', decision.shouldUseTools);
   console.log('Detected type:', decision.detectedType);
   console.log('Reasoning:', decision.reasoning);
-  console.log('Confidence:', decision.confidence);
   console.log('===============================');
 }

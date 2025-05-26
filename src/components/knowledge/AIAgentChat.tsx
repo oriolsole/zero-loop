@@ -6,7 +6,6 @@ import { toast } from '@/components/ui/sonner';
 import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
-import { useToolProgress } from '@/hooks/useToolProgress';
 import { useAIPhases } from '@/hooks/useAIPhases';
 import { useConversationContext } from '@/hooks/useConversationContext';
 import AIAgentHeader from './AIAgentHeader';
@@ -42,16 +41,6 @@ const AIAgentChat: React.FC = () => {
     resetPhases
   } = useAIPhases();
   
-  const {
-    tools,
-    isActive: toolsActive,
-    startTool,
-    updateTool,
-    completeTool,
-    failTool,
-    clearTools
-  } = useToolProgress();
-
   const {
     context,
     updateGitHubContext,
@@ -107,17 +96,67 @@ const AIAgentChat: React.FC = () => {
   const processMessage = async (message: string) => {
     if (!user || !currentSessionId) return;
 
-    const contextualMessage = getContextForMessage(message);
-    const enhancedMessage = contextualMessage ? `${message}\n\nContext: ${contextualMessage}` : message;
-
     setIsLoading(true);
-    clearTools();
     resetPhases();
 
     try {
-      setPhase('analyzing', 'Analyzing your request...');
+      // Phase 1: Show immediate thinking state
+      setPhase('thinking', 'I\'m thinking about your request...');
+      
+      // Add thinking message to conversation
+      const thinkingMessage: ConversationMessage = {
+        id: `thinking-${Date.now()}`,
+        role: 'assistant',
+        content: 'Let me think about this...',
+        timestamp: new Date(),
+        messageType: 'planning',
+        aiReasoning: 'Analyzing your request to determine the best approach'
+      };
+      
+      addMessage(thinkingMessage);
+
+      const contextualMessage = getContextForMessage(message);
+      const enhancedMessage = contextualMessage ? `${message}\n\nContext: ${contextualMessage}` : message;
       
       const conversationHistory = getConversationHistory();
+
+      // Phase 2: Get AI reasoning/planning
+      setPhase('planning', 'Planning my approach...');
+      
+      const planningResponse = await supabase.functions.invoke('ai-agent', {
+        body: {
+          message: enhancedMessage,
+          conversationHistory,
+          userId: user.id,
+          sessionId: currentSessionId,
+          streaming: false,
+          modelSettings: modelSettings,
+          requestType: 'planning' // New parameter to indicate we want reasoning first
+        }
+      });
+
+      if (planningResponse.error) {
+        throw new Error(planningResponse.error.message);
+      }
+
+      // Update thinking message with actual AI reasoning
+      if (planningResponse.data?.reasoning) {
+        const planningMessageUpdate: ConversationMessage = {
+          id: `planning-${Date.now()}`,
+          role: 'assistant',
+          content: planningResponse.data.reasoning,
+          timestamp: new Date(),
+          messageType: 'planning',
+          aiReasoning: planningResponse.data.reasoning
+        };
+        
+        addMessage(planningMessageUpdate);
+      }
+
+      // Phase 3: Execute the plan
+      if (planningResponse.data?.willUseTool) {
+        setPhase('executing', 'Executing tools...');
+      }
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
@@ -126,7 +165,8 @@ const AIAgentChat: React.FC = () => {
           userId: user.id,
           sessionId: currentSessionId,
           streaming: false,
-          modelSettings: modelSettings
+          modelSettings: modelSettings,
+          requestType: 'execution' // Execute the planned approach
         }
       });
 
@@ -228,8 +268,8 @@ const AIAgentChat: React.FC = () => {
             conversations={conversations}
             isLoading={isLoading}
             modelSettings={modelSettings}
-            tools={tools}
-            toolsActive={toolsActive}
+            tools={[]}
+            toolsActive={false}
             scrollAreaRef={scrollAreaRef}
             onFollowUpAction={handleFollowUpAction}
           />

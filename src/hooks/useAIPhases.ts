@@ -1,48 +1,61 @@
 
 import { useState, useCallback } from 'react';
-import { AIPhase } from '@/components/knowledge/ProgressPhaseIndicator';
 
-export interface UseAIPhasesReturn {
-  currentPhase: AIPhase;
-  phaseDetails: string;
-  estimatedTimeRemaining: number;
-  setPhase: (phase: AIPhase, details?: string, estimatedTime?: number) => void;
-  nextPhase: () => void;
-  resetPhases: () => void;
+export type AIPhase = 'idle' | 'thinking' | 'planning' | 'executing' | 'analyzing' | 'synthesizing' | 'completed';
+
+export interface AIPhaseDetails {
+  phase: AIPhase;
+  description: string;
+  startTime: Date;
+  estimatedDuration?: number;
 }
 
-const phaseSequence: AIPhase[] = ['analyzing', 'planning', 'executing', 'reflecting', 'completed'];
+export const useAIPhases = () => {
+  const [currentPhase, setCurrentPhase] = useState<AIPhase>('idle');
+  const [phaseDetails, setPhaseDetails] = useState<string>('');
+  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<number>(0);
+  const [phaseHistory, setPhaseHistory] = useState<AIPhaseDetails[]>([]);
 
-export const useAIPhases = (): UseAIPhasesReturn => {
-  const [currentPhase, setCurrentPhase] = useState<AIPhase>('analyzing');
-  const [phaseDetails, setPhaseDetails] = useState('');
-  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(0);
-
-  const setPhase = useCallback((phase: AIPhase, details = '', estimatedTime = 0) => {
+  const setPhase = useCallback((phase: AIPhase, details: string = '', estimatedDuration?: number) => {
+    console.log(`AI Phase: ${phase} - ${details}`);
+    
     setCurrentPhase(phase);
     setPhaseDetails(details);
-    setEstimatedTimeRemaining(estimatedTime);
+    setEstimatedTimeRemaining(estimatedDuration || 0);
+    
+    const phaseDetail: AIPhaseDetails = {
+      phase,
+      description: details,
+      startTime: new Date(),
+      estimatedDuration
+    };
+    
+    setPhaseHistory(prev => [...prev, phaseDetail]);
   }, []);
-
-  const nextPhase = useCallback(() => {
-    const currentIndex = phaseSequence.indexOf(currentPhase);
-    if (currentIndex < phaseSequence.length - 1) {
-      setCurrentPhase(phaseSequence[currentIndex + 1]);
-    }
-  }, [currentPhase]);
 
   const resetPhases = useCallback(() => {
-    setCurrentPhase('analyzing');
+    setCurrentPhase('idle');
     setPhaseDetails('');
     setEstimatedTimeRemaining(0);
+    setPhaseHistory([]);
   }, []);
+
+  const getCurrentPhaseInfo = useCallback(() => {
+    return {
+      phase: currentPhase,
+      details: phaseDetails,
+      estimatedTimeRemaining,
+      history: phaseHistory
+    };
+  }, [currentPhase, phaseDetails, estimatedTimeRemaining, phaseHistory]);
 
   return {
     currentPhase,
     phaseDetails,
     estimatedTimeRemaining,
+    phaseHistory,
     setPhase,
-    nextPhase,
-    resetPhases
+    resetPhases,
+    getCurrentPhaseInfo
   };
 };
