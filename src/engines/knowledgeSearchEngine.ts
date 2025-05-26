@@ -44,6 +44,39 @@ function ensureNumber(value: any): number {
   return 0;
 }
 
+/**
+ * Cleans and preprocesses search queries to improve matching
+ */
+function cleanSearchQuery(query: string): string {
+  if (!query || typeof query !== 'string') {
+    return '';
+  }
+  
+  let cleaned = query.toLowerCase().trim();
+  
+  // Remove common search prefixes that interfere with semantic matching
+  const searchPrefixes = [
+    'search for',
+    'search',
+    'find',
+    'look for',
+    'lookup',
+    'get information about',
+    'information about',
+    'tell me about',
+    'what is',
+    'who is',
+    'about'
+  ];
+  
+  for (const prefix of searchPrefixes) {
+    const pattern = new RegExp(`^${prefix}\\s+`, 'i');
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  return cleaned.trim();
+}
+
 // Main knowledge search engine implementation
 export const knowledgeSearchEngine: DomainEngine = {
   // Generate task/query examples for this domain
@@ -64,6 +97,11 @@ export const knowledgeSearchEngine: DomainEngine = {
   // Solve a search query by searching across multiple knowledge sources
   solveTask: async (query, options = {}) => {
     try {
+      // Clean the query before processing
+      const originalQuery = query;
+      const cleanedQuery = cleanSearchQuery(query);
+      console.log(`Original query: "${originalQuery}" -> Cleaned query: "${cleanedQuery}"`);
+      
       // Import hooks dynamically to avoid hooks-outside-component issues
       const { useKnowledgeBase } = await import('@/hooks/useKnowledgeBase');
       const { useExternalKnowledge } = await import('@/hooks/useExternalKnowledge');
@@ -73,7 +111,7 @@ export const knowledgeSearchEngine: DomainEngine = {
       // Parse options properly
       const searchOptions = {
         useEmbeddings: true,
-        matchThreshold: 0.5,
+        matchThreshold: 0.3, // Lower default threshold for better recall
         includeNodes: true,
         includeWeb: false,
         limit: 10,
@@ -83,10 +121,11 @@ export const knowledgeSearchEngine: DomainEngine = {
       // Initialize results array
       let allResults: ExternalSource[] = [];
       
-      // Search knowledge base (includes nodes if enabled)
+      // Search knowledge base (includes nodes if enabled) with both original and cleaned query
       try {
+        // First try with cleaned query
         const kbResults = await queryKnowledgeBase({
-          query,
+          query: cleanedQuery || originalQuery, // If cleaning removed everything, use original
           limit: searchOptions.limit,
           useEmbeddings: searchOptions.useEmbeddings,
           matchThreshold: searchOptions.matchThreshold,
@@ -95,6 +134,26 @@ export const knowledgeSearchEngine: DomainEngine = {
         
         if (isArrayWithLength<ExternalSource>(kbResults)) {
           allResults = [...allResults, ...kbResults];
+          console.log(`Knowledge base search returned ${kbResults.length} results with cleaned query`);
+        } else {
+          console.log('No results with cleaned query, will try original query');
+        }
+        
+        // If no results and we have a cleaned query that's different from original, try original
+        if (allResults.length === 0 && cleanedQuery !== originalQuery && originalQuery.trim()) {
+          console.log(`Trying knowledge base search with original query: "${originalQuery}"`);
+          const originalQueryResults = await queryKnowledgeBase({
+            query: originalQuery,
+            limit: searchOptions.limit,
+            useEmbeddings: searchOptions.useEmbeddings,
+            matchThreshold: searchOptions.matchThreshold,
+            includeNodes: searchOptions.includeNodes
+          });
+          
+          if (isArrayWithLength<ExternalSource>(originalQueryResults)) {
+            allResults = [...allResults, ...originalQueryResults];
+            console.log(`Knowledge base search returned ${originalQueryResults.length} results with original query`);
+          }
         }
       } catch (error) {
         console.error('Error searching knowledge base:', error);
@@ -106,10 +165,13 @@ export const knowledgeSearchEngine: DomainEngine = {
           (searchOptions.forceWebSearch || allResults.length < searchOptions.limit)) {
         try {
           const webLimit = Math.max(1, searchOptions.limit - allResults.length);
-          const webResults = await searchWeb(query, webLimit);
+          // Use cleaned query for web search for better results
+          const webQuery = cleanedQuery || originalQuery; 
+          const webResults = await searchWeb(webQuery, webLimit);
           
           if (isArrayWithLength<ExternalSource>(webResults)) {
             allResults = [...allResults, ...webResults];
+            console.log(`Web search returned ${webResults.length} results`);
           }
         } catch (error) {
           console.error('Error searching web:', error);
@@ -117,32 +179,45 @@ export const knowledgeSearchEngine: DomainEngine = {
         }
       }
       
-      // Sort combined results by source type priority
+      // Sort combined results by relevance and source type priority
       allResults.sort((a, b) => {
-        // Prioritize by source type: knowledge nodes > knowledge base > web
+        // First prioritize by source type: knowledge nodes > knowledge base > web
         const getSourcePriority = (source: ExternalSource) => {
           if (source.sourceType === 'node') return 3;
           if (source.sourceType === 'knowledge') return 2;
           return 1; // Web sources
         };
         
-        return getSourcePriority(b) - getSourcePriority(a);
+        const sourceComparison = getSourcePriority(b) - getSourcePriority(a);
+        
+        // If sources are the same type, sort by relevance score
+        if (sourceComparison === 0) {
+          return b.relevanceScore - a.relevanceScore;
+        }
+        
+        return sourceComparison;
       });
       
+      // Limit the number of results
+      const limitedResults = allResults.slice(0, searchOptions.limit);
+      console.log(`Final result count: ${limitedResults.length} (from ${allResults.length} total)`);
+      
       // Format the solution as a comprehensive answer with sources
-      const sourcesText = allResults.slice(0, 5).map((source, index) => 
+      const sourcesText = limitedResults.slice(0, 5).map((source, index) => 
         `[${index + 1}] ${source.title} - ${source.snippet}`
       ).join('\n\n');
       
-      const solution = `Search Results for: "${query}"\n\n${sourcesText}\n\n` +
-        `Found ${allResults.length} results across all knowledge sources.`;
+      const searchTerm = cleanedQuery || originalQuery;
+      const solution = `Search Results for: "${searchTerm}"\n\n${sourcesText}\n\n` +
+        `Found ${limitedResults.length} results across all knowledge sources.`;
       
       return {
         solution,
         metadata: {
-          resultCount: allResults.length,
-          sources: allResults,
-          query
+          resultCount: limitedResults.length,
+          sources: limitedResults,
+          originalQuery: originalQuery,
+          cleanedQuery: cleanedQuery
         }
       };
     } catch (error) {

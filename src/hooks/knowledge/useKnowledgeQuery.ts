@@ -5,6 +5,37 @@ import { toast } from '@/components/ui/sonner';
 import { ExternalSource, KnowledgeQueryOptions } from './types';
 
 /**
+ * Cleans and preprocesses search queries to improve matching
+ */
+function cleanSearchQuery(query: string): string {
+  if (!query) return '';
+  
+  let cleaned = query.toLowerCase().trim();
+  
+  // Remove common search prefixes that interfere with semantic matching
+  const searchPrefixes = [
+    'search for',
+    'search',
+    'find',
+    'look for',
+    'lookup',
+    'get information about',
+    'information about',
+    'tell me about',
+    'what is',
+    'who is',
+    'about'
+  ];
+  
+  for (const prefix of searchPrefixes) {
+    const pattern = new RegExp(`^${prefix}\\s+`, 'i');
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  return cleaned.trim();
+}
+
+/**
  * Hook for querying the knowledge base
  */
 export function useKnowledgeQuery() {
@@ -21,13 +52,21 @@ export function useKnowledgeQuery() {
     setQueryError(null);
     
     try {
+      // Clean the query for better matching
+      const originalQuery = options.query;
+      const cleanedQuery = cleanSearchQuery(originalQuery);
+      console.log(`Original query: "${originalQuery}" -> Cleaned query: "${cleanedQuery}"`);
+      
+      // Use cleaned query if available, otherwise fall back to original
+      const queryToUse = cleanedQuery || originalQuery;
+      
       const { data, error } = await supabase.functions.invoke('query-knowledge-base', {
         body: {
-          query: options.query,
+          query: queryToUse,
           limit: options.limit || 5,
           useEmbeddings: options.useEmbeddings !== false,
-          matchThreshold: options.matchThreshold || 0.5,
-          includeNodes: options.includeNodes || false // Pass the includeNodes parameter
+          matchThreshold: options.matchThreshold || 0.3, // Lower default threshold
+          includeNodes: options.includeNodes || false
         }
       });
       
@@ -45,8 +84,34 @@ export function useKnowledgeQuery() {
       }
       
       const results = data.results || [];
+      
+      // If we got no results with cleaned query and it's different from original,
+      // try again with the original query
+      if (results.length === 0 && cleanedQuery !== originalQuery && originalQuery.trim()) {
+        console.log(`No results with cleaned query, trying original: "${originalQuery}"`);
+        
+        const { data: originalData, error: originalError } = await supabase.functions.invoke('query-knowledge-base', {
+          body: {
+            query: originalQuery,
+            limit: options.limit || 5,
+            useEmbeddings: options.useEmbeddings !== false,
+            matchThreshold: options.matchThreshold || 0.3,
+            includeNodes: options.includeNodes || false
+          }
+        });
+        
+        if (!originalError && !originalData.error && originalData.results?.length > 0) {
+          const originalResults = originalData.results;
+          setRecentResults(originalResults);
+          setSearchMode(options.useEmbeddings !== false ? 'semantic' : 'text');
+          console.log(`Found ${originalResults.length} results with original query`);
+          return originalResults;
+        }
+      }
+      
       setRecentResults(results);
       setSearchMode(options.useEmbeddings !== false ? 'semantic' : 'text');
+      console.log(`Found ${results.length} results with cleaned query`);
       
       return results;
     } catch (error) {

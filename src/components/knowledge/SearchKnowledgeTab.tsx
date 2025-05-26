@@ -13,7 +13,38 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Search, Info, Loader2 } from "lucide-react";
+import { Search, Info, Loader2, AlertCircle } from "lucide-react";
+
+/**
+ * Cleans and preprocesses search queries to improve matching
+ */
+function cleanSearchQuery(query: string): string {
+  if (!query) return '';
+  
+  let cleaned = query.toLowerCase().trim();
+  
+  // Remove common search prefixes that interfere with semantic matching
+  const searchPrefixes = [
+    'search for',
+    'search',
+    'find',
+    'look for',
+    'lookup',
+    'get information about',
+    'information about',
+    'tell me about',
+    'what is',
+    'who is',
+    'about'
+  ];
+  
+  for (const prefix of searchPrefixes) {
+    const pattern = new RegExp(`^${prefix}\\s+`, 'i');
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  return cleaned.trim();
+}
 
 const SearchKnowledgeTab: React.FC = () => {
   const { 
@@ -31,11 +62,12 @@ const SearchKnowledgeTab: React.FC = () => {
   } = useExternalKnowledge();
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [cleanedQuery, setCleanedQuery] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
   const [useEmbeddings, setUseEmbeddings] = useState<boolean>(true);
   const [includeWebResults, setIncludeWebResults] = useState<boolean>(false);
   const [includeNodeResults, setIncludeNodeResults] = useState<boolean>(true);
-  const [matchThreshold, setMatchThreshold] = useState<number>(0.5);
+  const [matchThreshold, setMatchThreshold] = useState<number>(0.3); // Lowered default threshold
   const [selectedResult, setSelectedResult] = useState<ExternalSource | null>(null);
   const [showSavePanel, setShowSavePanel] = useState(false);
   const [allResults, setAllResults] = useState<ExternalSource[]>([]);
@@ -80,6 +112,13 @@ const SearchKnowledgeTab: React.FC = () => {
     
     if (!searchQuery.trim()) return;
     
+    // Pre-process the query
+    const processedQuery = cleanSearchQuery(searchQuery);
+    setCleanedQuery(processedQuery || searchQuery);
+    
+    console.log(`Original search query: "${searchQuery}"`);
+    console.log(`Cleaned search query: "${processedQuery}"`);
+    
     setIsLoading(true);
     setHasSearched(false);
     
@@ -107,10 +146,10 @@ const SearchKnowledgeTab: React.FC = () => {
       // Create an array of promises to run in parallel
       const searchPromises = [];
       
-      // Always query knowledge base
+      // Always query knowledge base (use processed query if available)
       searchPromises.push(
         queryKnowledgeBase({
-          query: searchQuery,
+          query: searchQuery, // Use original query, the hook will clean it
           limit: 10,
           useEmbeddings,
           matchThreshold,
@@ -121,7 +160,7 @@ const SearchKnowledgeTab: React.FC = () => {
       // Conditionally add web search if enabled
       if (includeWebResults) {
         searchPromises.push(
-          searchWeb(searchQuery, 5)
+          searchWeb(processedQuery || searchQuery, 5) // Use cleaned query for better web results
         );
       }
       
@@ -211,6 +250,14 @@ const SearchKnowledgeTab: React.FC = () => {
                   <span className="ml-2">Search</span>
                 </Button>
               </div>
+              
+              {/* Show cleaned query if different from original */}
+              {cleanedQuery && cleanedQuery !== searchQuery && hasSearched && (
+                <div className="text-xs text-muted-foreground flex items-center mt-1">
+                  <Info className="h-3 w-3 mr-1" />
+                  Searching for: <span className="font-medium ml-1">{cleanedQuery}</span>
+                </div>
+              )}
             </div>
           </form>
         </CardContent>
@@ -220,9 +267,13 @@ const SearchKnowledgeTab: React.FC = () => {
         <div className="space-y-4">
           {/* Error messages */}
           {(queryError || (includeWebResults && webSearchError)) && (
-            <div className="bg-red-50 border border-red-200 p-4 rounded-md">
-              {queryError && <p className="text-red-700">{queryError}</p>}
-              {includeWebResults && webSearchError && <p className="text-red-700">{webSearchError}</p>}
+            <div className="bg-destructive/10 border border-destructive p-4 rounded-md flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-destructive mb-1">Search Error</h4>
+                {queryError && <p className="text-sm text-destructive/90">{queryError}</p>}
+                {includeWebResults && webSearchError && <p className="text-sm text-destructive/90">{webSearchError}</p>}
+              </div>
             </div>
           )}
           
@@ -243,7 +294,7 @@ const SearchKnowledgeTab: React.FC = () => {
               setActiveResultsTab={setActiveResultsTab}
               includeNodeResults={includeNodeResults}
               includeWebResults={includeWebResults}
-              searchQuery={searchQuery}
+              searchQuery={cleanedQuery || searchQuery}
               onSaveResult={handleSaveResult}
             />
           )}
@@ -256,7 +307,7 @@ const SearchKnowledgeTab: React.FC = () => {
           result={selectedResult}
           onClose={handleCloseSavePanel}
           isOpen={showSavePanel}
-          searchQuery={searchQuery}
+          searchQuery={cleanedQuery || searchQuery}
         />
       )}
     </div>

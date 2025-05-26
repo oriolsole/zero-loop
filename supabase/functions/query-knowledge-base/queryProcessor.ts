@@ -7,7 +7,7 @@ interface QueryOptions {
   limit: number;
   useEmbeddings: boolean;
   matchThreshold?: number;
-  includeNodes?: boolean;  // New option to include knowledge nodes in search
+  includeNodes?: boolean;
 }
 
 interface KnowledgeChunk {
@@ -47,10 +47,43 @@ export interface FormattedResult {
   filePath: string | null;
   fileUrl: string | null;
   metadata: any;
-  sourceType?: 'knowledge' | 'web' | 'node';  // Added node as a source type
+  sourceType?: 'knowledge' | 'web' | 'node';
   contentType?: string;
-  nodeType?: string;  // Added for knowledge nodes
-  confidence?: number;  // Added for knowledge nodes
+  nodeType?: string;
+  confidence?: number;
+}
+
+/**
+ * Cleans and preprocesses search queries to improve matching
+ */
+function cleanSearchQuery(query: string): string {
+  if (!query || query.trim() === '') {
+    return '';
+  }
+  
+  let cleaned = query.toLowerCase().trim();
+  
+  // Remove common search prefixes that interfere with semantic matching
+  const searchPrefixes = [
+    'search for',
+    'search',
+    'find',
+    'look for',
+    'lookup',
+    'get information about',
+    'information about',
+    'tell me about',
+    'what is',
+    'who is',
+    'about'
+  ];
+  
+  for (const prefix of searchPrefixes) {
+    const pattern = new RegExp(`^${prefix}\\s+`, 'i');
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  return cleaned.trim();
 }
 
 /**
@@ -61,8 +94,14 @@ function sanitizeTextQuery(query: string): string {
     return '';
   }
   
+  // Clean the query first
+  const cleanedQuery = cleanSearchQuery(query);
+  if (!cleanedQuery) {
+    return '';
+  }
+  
   // Remove any special characters that might break tsquery
-  let sanitized = query
+  let sanitized = cleanedQuery
     .replace(/['\\:&|!()]/g, ' ')  // Remove tsquery special chars
     .trim()
     .replace(/\s+/g, ' ');         // Normalize whitespace
@@ -71,8 +110,10 @@ function sanitizeTextQuery(query: string): string {
     return '';
   }
   
-  // Split into words and add the & operator between them
-  const words = sanitized.split(' ').filter(word => word.length > 0);
+  // Split into words and filter out common stop words
+  const stopWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
+  const words = sanitized.split(' ')
+    .filter(word => word.length > 2 && !stopWords.includes(word.toLowerCase()));
   
   if (words.length === 0) {
     return '';
@@ -96,15 +137,21 @@ async function searchKnowledgeNodes(
   limit: number
 ): Promise<FormattedResult[]> {
   try {
-    // Use text search across title and description fields
-    const sanitizedQuery = sanitizeTextQuery(query);
+    // Clean the query before searching
+    const cleanedQuery = cleanSearchQuery(query);
+    if (!cleanedQuery) {
+      console.log("Query was cleaned to empty string, skipping node search");
+      return [];
+    }
     
+    const sanitizedQuery = sanitizeTextQuery(cleanedQuery);
     if (!sanitizedQuery) {
       console.log("Query was sanitized to empty string, skipping node search");
       return [];
     }
     
-    // Search for nodes matching the query in title or description
+    console.log(`Searching nodes with cleaned query: "${cleanedQuery}" -> sanitized: "${sanitizedQuery}"`);
+    
     const { data: nodes, error } = await supabase
       .from('knowledge_nodes')
       .select('*')
@@ -120,7 +167,6 @@ async function searchKnowledgeNodes(
       return [];
     }
     
-    // Format results
     return nodes.map((node: KnowledgeNode) => {
       let nodeIconType = '';
       switch(node.type) {
@@ -142,7 +188,7 @@ async function searchKnowledgeNodes(
       
       return {
         title: node.title,
-        link: '',  // Nodes don't have external links
+        link: '',
         snippet: node.description,
         source: `Knowledge Node: ${nodeIconType}`,
         date: new Date(node.created_at).toISOString().split('T')[0],
@@ -175,14 +221,25 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
     query, 
     limit = 5, 
     useEmbeddings = true,
-    matchThreshold = 0.5, // Lower default threshold for better recall
-    includeNodes = false  // Default to not including nodes
+    matchThreshold = 0.3, // Lowered from 0.5 for better recall
+    includeNodes = false
   } = options;
+  
+  console.log(`Processing query: "${query}" with threshold: ${matchThreshold}`);
   
   const supabase = createSupabaseClient();
   
   let chunkResults: FormattedResult[] = [];
   let nodeResults: FormattedResult[] = [];
+  
+  // Clean the query for better matching
+  const cleanedQuery = cleanSearchQuery(query);
+  console.log(`Cleaned query: "${cleanedQuery}"`);
+  
+  if (!cleanedQuery) {
+    console.log("Query was cleaned to empty string, returning empty results");
+    return [];
+  }
   
   // Get results from knowledge chunks
   try {
@@ -190,10 +247,11 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
     
     if (useEmbeddings) {
       try {
-        // Get embeddings for the query
-        const embedding = await generateQueryEmbedding(query);
+        // Get embeddings for the cleaned query
+        const embedding = await generateQueryEmbedding(cleanedQuery);
+        console.log(`Generated embedding for: "${cleanedQuery}"`);
     
-        // Query using vector similarity search
+        // Query using vector similarity search with lower threshold
         const { data: vectorResults, error: vectorError } = await supabase.rpc(
           'match_knowledge_chunks',
           {
@@ -204,21 +262,23 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
         );
     
         if (vectorError) {
+          console.error("Vector search error:", vectorError);
           throw vectorError;
         }
     
         chunksData = vectorResults || [];
+        console.log(`Vector search found ${chunksData.length} results`);
         
         // If no results with vector search, fall back to text search
         if (chunksData.length === 0) {
-          console.log(`No vector results found, falling back to text search for: ${query}`);
+          console.log(`No vector results found, falling back to text search for: "${cleanedQuery}"`);
           
-          // Sanitize the query for text search
-          const sanitizedQuery = sanitizeTextQuery(query);
+          const sanitizedQuery = sanitizeTextQuery(cleanedQuery);
           
           if (!sanitizedQuery) {
             console.log("Query was sanitized to empty string, skipping text search");
           } else {
+            console.log(`Using text search with sanitized query: "${sanitizedQuery}"`);
             try {
               const { data: textResults, error: textError } = await supabase
                 .from('knowledge_chunks')
@@ -232,9 +292,9 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
               }
           
               chunksData = textResults || [];
+              console.log(`Text search found ${chunksData.length} results`);
             } catch (textSearchError) {
               console.error("Failed to perform text search:", textSearchError);
-              // Return empty results rather than failing completely
             }
           }
         }
@@ -242,12 +302,12 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
         console.error("Error in vector search:", error);
         
         // Fallback to text search on error
-        // Sanitize the query for text search
-        const sanitizedQuery = sanitizeTextQuery(query);
+        const sanitizedQuery = sanitizeTextQuery(cleanedQuery);
         
         if (!sanitizedQuery) {
           console.log("Query was sanitized to empty string, skipping text search");
         } else {
+          console.log(`Fallback to text search with: "${sanitizedQuery}"`);
           try {
             const { data: textResults, error: textError } = await supabase
               .from('knowledge_chunks')
@@ -261,20 +321,20 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
             }
 
             chunksData = textResults || [];
+            console.log(`Fallback text search found ${chunksData.length} results`);
           } catch (textSearchError) {
             console.error("Failed to perform text search as fallback:", textSearchError);
-            // Return empty results rather than failing completely
           }
         }
       }
     } else {
       // Direct text search if embeddings aren't used
-      // Sanitize the query for text search
-      const sanitizedQuery = sanitizeTextQuery(query);
+      const sanitizedQuery = sanitizeTextQuery(cleanedQuery);
       
       if (!sanitizedQuery) {
         console.log("Query was sanitized to empty string, skipping text search");
       } else {
+        console.log(`Direct text search with: "${sanitizedQuery}"`);
         try {
           const { data: textResults, error: textError } = await supabase
             .from('knowledge_chunks')
@@ -288,9 +348,9 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
           }
 
           chunksData = textResults || [];
+          console.log(`Direct text search found ${chunksData.length} results`);
         } catch (textSearchError) {
           console.error("Failed to perform text search:", textSearchError);
-          // Return empty results rather than failing completely
         }
       }
     }
@@ -326,23 +386,23 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
 
   } catch (error) {
     console.error("Error processing knowledge chunks search:", error);
-    // Continue execution to include node results if needed
   }
   
   // Optionally get results from knowledge nodes
   if (includeNodes) {
     try {
-      nodeResults = await searchKnowledgeNodes(supabase, query, limit);
+      nodeResults = await searchKnowledgeNodes(supabase, cleanedQuery, limit);
+      console.log(`Node search found ${nodeResults.length} results`);
     } catch (error) {
       console.error("Error processing knowledge nodes search:", error);
-      // Continue execution with just chunk results
     }
   }
   
   // Combine results and sort by relevance
   const combinedResults = [...chunkResults, ...nodeResults]
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
-    .slice(0, limit * 2); // Allow for twice the limit since we're combining two sources
+    .slice(0, limit * 2);
 
+  console.log(`Total combined results: ${combinedResults.length}`);
   return combinedResults;
 }

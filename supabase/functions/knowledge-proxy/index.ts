@@ -50,14 +50,14 @@ serve(async (req) => {
       query = params.query;
       limit = params.limit || 5;
       includeNodes = params.includeNodes !== false;
-      matchThreshold = params.matchThreshold || 0.5;
+      matchThreshold = params.matchThreshold || 0.3; // Lowered default threshold
       useEmbeddings = params.useEmbeddings !== false;
     } else {
       // Direct format (backward compatibility)
       query = requestData.query;
       limit = requestData.limit || 5;
       includeNodes = requestData.includeNodes !== false;
-      matchThreshold = requestData.matchThreshold || 0.5;
+      matchThreshold = requestData.matchThreshold || 0.3; // Lowered default threshold
       useEmbeddings = requestData.useEmbeddings !== false;
     }
 
@@ -67,89 +67,96 @@ serve(async (req) => {
 
     if (!query || typeof query !== 'string' || query.trim() === '') {
       console.error('Missing query parameter');
-      console.error('=== Knowledge Proxy Error ===');
-      console.error('Error details:', {
-        name: 'Error',
-        message: 'Query parameter is required',
-        stack: new Error('Query parameter is required').stack
-      });
-      
-      return new Response(
-        JSON.stringify({
-          error: 'Query parameter is required',
-          status: 'failed',
-          data: null,
-          debug: {
-            bodyReceived: !!rawBody,
-            bodyLength: rawBody.length,
-            bodyContent: rawBody.substring(0, 100),
-            parsedData: requestData
-          }
-        }),
-        { 
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      throw new Error('Query parameter is required and must be a non-empty string');
     }
 
     // Call the query-knowledge-base function
-    console.log('Calling query-knowledge-base function with:', {
+    console.log(`Calling query-knowledge-base function with: ${JSON.stringify({
       query,
       limit,
       useEmbeddings,
       matchThreshold,
       includeNodes
-    });
+    })}`);
 
-    const { data: searchResults, error: searchError } = await supabase.functions.invoke('query-knowledge-base', {
-      body: {
-        query: query.trim(),
-        limit,
-        useEmbeddings,
-        matchThreshold,
-        includeNodes
+    try {
+      const { data: queryResults, error: queryError } = await supabase.functions.invoke('query-knowledge-base', {
+        body: {
+          query,
+          limit,
+          useEmbeddings,
+          matchThreshold,
+          includeNodes
+        }
+      });
+      
+      if (queryError) {
+        console.error('Error calling query-knowledge-base:', queryError);
+        throw new Error(`Failed to query knowledge base: ${queryError.message}`);
       }
-    });
-
-    if (searchError) {
-      console.error('Search error:', searchError);
+      
+      // Check for error in the response
+      if (queryResults && queryResults.error) {
+        console.error('Query knowledge base returned an error:', queryResults.error);
+        throw new Error(queryResults.error);
+      }
+      
+      const results = queryResults?.results || [];
+      console.log('Search completed successfully, results:', results.length);
+      
+      // Record execution for analytics if execution ID provided
+      if (requestData.executionId) {
+        try {
+          await supabase
+            .from('mcp_executions')
+            .update({
+              result: { results },
+              status: 'completed',
+              execution_time: new Date().getTime() - new Date().getTime() // placeholder
+            })
+            .eq('id', requestData.executionId);
+        } catch (logError) {
+          // Non-critical error, just log
+          console.log('Non-critical error updating execution record:', logError);
+        }
+      }
+      
       return new Response(
         JSON.stringify({
-          error: 'Search failed: ' + searchError.message,
-          status: 'failed',
-          data: null
+          success: true,
+          error: null,
+          resultCount: results.length,
+          results
         }),
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+      
+    } catch (searchError) {
+      console.error('Error searching knowledge base:', searchError);
+      
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Error searching knowledge base: ${searchError.message}`,
+          resultCount: 0,
+          results: []
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    console.log('Search completed successfully, results:', searchResults?.results?.length || 0);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        status: 'completed',
-        data: searchResults?.results || [],
-        results: searchResults?.results || [], // For backward compatibility
-        resultCount: searchResults?.results?.length || 0
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
+    
   } catch (error) {
-    console.error('Knowledge Proxy Error:', error);
+    console.error('Error processing request:', error);
+    
     return new Response(
-      JSON.stringify({
-        error: error.message || 'An unexpected error occurred',
-        status: 'failed',
-        data: null
+      JSON.stringify({ 
+        success: false,
+        error: `Failed to process request: ${error.message}`,
+        resultCount: 0,
+        results: [] 
       }),
       { 
-        status: 500,
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
