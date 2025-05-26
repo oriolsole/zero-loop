@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -134,7 +135,7 @@ serve(async (req) => {
     let requestBody;
     
     if (provider === 'npaw') {
-      console.log('NPAW API Key available:', !!npawApiKey);
+      console.log('NPAW API Key configured:', !!npawApiKey);
       console.log('NPAW Model requested:', requestData.model);
       
       if (!npawApiKey) {
@@ -145,20 +146,26 @@ serve(async (req) => {
         );
       }
       
-      // Use HTTP as HTTPS on port 5500 might have SSL issues
-      apiUrl = 'http://ai2.npaw.com:5500/generate';
+      // Try HTTPS endpoint first for better reliability
+      apiUrl = 'https://ai2.npaw.com:5500/generate';
       authHeader = { 'npaw-api-key': npawApiKey };
+      
+      // Build request body matching NPAW's expected format
       requestBody = {
-        model: requestData.model || 'DeepSeek-V3', // Default to DeepSeek-V3 but allow both models
+        model: requestData.model || 'DeepSeek-V3',
         messages: requestData.messages,
         temperature: requestData.temperature || 0.7,
-        max_completion_tokens: requestData.max_tokens || 1000,
-        top_p: requestData.top_p || 1.0,
-        tool_choice: requestData.tool_choice || 'auto',
-        response_format: requestData.response_format || 'auto'
+        max_tokens: requestData.max_tokens || 1000,
+        stream: false // Ensure streaming is disabled for compatibility
       };
       
-      console.log('NPAW Request body:', JSON.stringify(requestBody, null, 2));
+      console.log('NPAW Request details:', {
+        url: apiUrl,
+        model: requestBody.model,
+        messageCount: requestBody.messages?.length,
+        temperature: requestBody.temperature,
+        maxTokens: requestBody.max_tokens
+      });
       
     } else if (provider === 'local' && localModelUrl) {
       // Local model API
@@ -203,19 +210,64 @@ serve(async (req) => {
 
       clearTimeout(timeoutId);
 
-      // Check for API errors
+      // Enhanced error logging for NPAW
       if (!response.ok) {
         let errorBody = {};
-        try {
-          errorBody = await response.json();
-        } catch (e) {
-          // Ignore if we can't parse as JSON
-        }
-        console.error(`${provider} API error:`, response.status, response.statusText, errorBody);
+        let errorText = '';
         
-        // If NPAW fails, fallback to OpenAI
+        try {
+          errorText = await response.text();
+          errorBody = JSON.parse(errorText);
+        } catch (e) {
+          errorBody = { raw_error: errorText };
+        }
+        
+        console.error(`${provider} API error details:`, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+          body: errorBody,
+          url: apiUrl
+        });
+        
+        // If NPAW HTTPS fails, try HTTP fallback
+        if (provider === 'npaw' && apiUrl.startsWith('https://')) {
+          console.log('NPAW HTTPS failed, trying HTTP fallback...');
+          
+          const httpUrl = 'http://ai2.npaw.com:5500/generate';
+          
+          try {
+            const httpResponse = await fetch(httpUrl, {
+              method: 'POST',
+              headers: {
+                ...authHeader,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(requestBody)
+            });
+            
+            if (httpResponse.ok) {
+              const httpData = await httpResponse.json();
+              console.log('NPAW HTTP fallback successful');
+              return new Response(
+                JSON.stringify(httpData),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            } else {
+              const httpErrorText = await httpResponse.text();
+              console.error('NPAW HTTP fallback also failed:', {
+                status: httpResponse.status,
+                body: httpErrorText
+              });
+            }
+          } catch (httpError) {
+            console.error('NPAW HTTP fallback connection error:', httpError);
+          }
+        }
+        
+        // If NPAW fails completely, fallback to OpenAI
         if (provider === 'npaw') {
-          console.log('NPAW failed, falling back to OpenAI...');
+          console.log('NPAW completely failed, falling back to OpenAI...');
           
           const fallbackResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -238,7 +290,7 @@ serve(async (req) => {
               JSON.stringify({
                 ...fallbackData,
                 fallback_used: true,
-                fallback_reason: `NPAW API error: ${response.status}`
+                fallback_reason: `NPAW API error: ${response.status} - ${JSON.stringify(errorBody)}`
               }),
               { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
