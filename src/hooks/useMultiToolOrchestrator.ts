@@ -28,6 +28,47 @@ export interface OrchestrationPlan {
   contextMemory: Record<string, any>;
 }
 
+// Add function to detect if query needs tools
+function shouldUseToolsForQuery(query: string, conversationHistory: any[] = []): boolean {
+  const lowerQuery = query.toLowerCase().trim();
+  
+  // Simple greetings and conversational responses - no tools needed
+  const conversationalPatterns = [
+    /^(hi|hello|hey|greetings?)!?$/i,
+    /^(how are you|what's up|sup)\??$/i,
+    /^(thanks?|thank you|thx)!?$/i,
+    /^(bye|goodbye|see you)!?$/i,
+    /^(yes|no|ok|okay|sure)!?$/i
+  ];
+  
+  if (conversationalPatterns.some(pattern => pattern.test(lowerQuery))) {
+    return false;
+  }
+  
+  // System/app related questions - can be answered directly
+  const systemQuestions = [
+    /what tools (do we have|are available)/i,
+    /what can you do/i,
+    /how does this work/i,
+    /what is this/i
+  ];
+  
+  if (systemQuestions.some(pattern => pattern.test(lowerQuery))) {
+    return false;
+  }
+  
+  // Only use tools for queries that genuinely need external information
+  const toolRequiredPatterns = [
+    /search|find|look up|get information about/i,
+    /latest|current|recent|news/i,
+    /github\.com\/[\w-]+\/[\w-]+/i,
+    /https?:\/\/[^\s]+/i,
+    /my knowledge|knowledge base/i
+  ];
+  
+  return toolRequiredPatterns.some(pattern => pattern.test(query));
+}
+
 export const useMultiToolOrchestrator = () => {
   const { user } = useAuth();
   const [currentPlan, setCurrentPlan] = useState<OrchestrationPlan | null>(null);
@@ -37,8 +78,31 @@ export const useMultiToolOrchestrator = () => {
     query: string,
     conversationHistory: any[] = []
   ): Promise<OrchestrationPlan> => {
-    const extractedQuery = extractIntelligentQuery(query, conversationHistory);
+    // Check if tools are actually needed
+    if (!shouldUseToolsForQuery(query, conversationHistory)) {
+      // Return minimal plan for direct response
+      const plan: OrchestrationPlan = {
+        id: `orchestration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        originalQuery: query,
+        extractedQuery: {
+          cleanedQuery: query,
+          toolSpecificParams: {},
+          confidence: 0.9,
+          queryType: 'general',
+          entities: []
+        },
+        toolExecutions: [],
+        currentExecutionIndex: 0,
+        status: 'planning',
+        adaptations: 0,
+        contextMemory: {}
+      };
+      
+      setCurrentPlan(plan);
+      return plan;
+    }
     
+    const extractedQuery = extractIntelligentQuery(query, conversationHistory);
     const toolExecutions = await generateOptimalToolSequence(extractedQuery);
     
     const plan: OrchestrationPlan = {
@@ -61,6 +125,16 @@ export const useMultiToolOrchestrator = () => {
     onToolUpdate: (execution: ToolExecution) => void,
     onPlanComplete: (result: string) => void
   ) => {
+    // If no tools needed, complete immediately
+    if (plan.toolExecutions.length === 0) {
+      const directResponse = generateDirectResponse(plan.originalQuery);
+      plan.finalResult = directResponse;
+      plan.status = 'completed';
+      onPlanComplete(directResponse);
+      setCurrentPlan(plan);
+      return;
+    }
+    
     setIsExecuting(true);
     let updatedPlan = { ...plan, status: 'executing' as const };
     
@@ -68,9 +142,13 @@ export const useMultiToolOrchestrator = () => {
       for (let i = 0; i < updatedPlan.toolExecutions.length; i++) {
         const execution = updatedPlan.toolExecutions[i];
         
+        // Create new object for executing status
         const startedExecution: ToolExecution = {
-          ...execution,
+          id: execution.id,
+          toolName: execution.toolName,
+          parameters: execution.parameters,
           status: 'executing',
+          confidence: execution.confidence,
           startTime: new Date().toISOString()
         };
         
@@ -83,52 +161,47 @@ export const useMultiToolOrchestrator = () => {
             updatedPlan.contextMemory
           );
           
+          // Create new object for completed status
           const completedExecution: ToolExecution = {
-            ...startedExecution,
+            id: execution.id,
+            toolName: execution.toolName,
+            parameters: execution.parameters,
             status: 'completed',
             result,
+            confidence: execution.confidence,
+            startTime: startedExecution.startTime,
             endTime: new Date().toISOString()
           };
           
           onToolUpdate(completedExecution);
-          
-          // Update context memory with results
           updatedPlan.contextMemory[execution.toolName] = result;
           
           // Check if we need to adapt the plan based on results
-          const adaptation = await assessNeedForAdaptation(
-            updatedPlan,
-            result,
-            i
-          );
+          const adaptation = await assessNeedForAdaptation(updatedPlan, result, i);
           
           if (adaptation.needsAdaptation) {
-            const newExecutions = await generateAdaptiveExecutions(
-              updatedPlan,
-              adaptation.reasoning
-            );
-            
+            const newExecutions = await generateAdaptiveExecutions(updatedPlan, adaptation.reasoning);
             updatedPlan.toolExecutions.push(...newExecutions);
             updatedPlan.adaptations++;
           }
           
         } catch (error) {
+          // Create new object for failed status
           const failedExecution: ToolExecution = {
-            ...startedExecution,
+            id: execution.id,
+            toolName: execution.toolName,
+            parameters: execution.parameters,
             status: 'failed',
             error: error.message,
+            confidence: execution.confidence,
+            startTime: startedExecution.startTime,
             endTime: new Date().toISOString()
           };
           
           onToolUpdate(failedExecution);
           
           // Try fallback strategy
-          const fallbackResult = await attemptFallbackStrategy(
-            execution,
-            error,
-            updatedPlan.contextMemory
-          );
-          
+          const fallbackResult = await attemptFallbackStrategy(execution, error, updatedPlan.contextMemory);
           if (fallbackResult) {
             updatedPlan.contextMemory[execution.toolName] = fallbackResult;
           }
@@ -163,6 +236,34 @@ export const useMultiToolOrchestrator = () => {
     executeOrchestrationPlan
   };
 };
+
+// Generate direct response for queries that don't need tools
+function generateDirectResponse(query: string): string {
+  const lowerQuery = query.toLowerCase().trim();
+  
+  if (/^(hi|hello|hey|greetings?)!?$/i.test(lowerQuery)) {
+    return "Hello! I'm your AI assistant. I can help you search for information, analyze GitHub repositories, and access your knowledge base. What would you like to know?";
+  }
+  
+  if (/what tools (do we have|are available)/i.test(lowerQuery)) {
+    return `I have access to several tools:
+
+**🔍 Web Search** - Search the internet for current information
+**📚 Knowledge Search** - Search through your personal knowledge base and stored documents  
+**🔧 GitHub Tools** - Analyze repositories, view commits, files, and project structure
+**🌐 Web Scraper** - Extract detailed content from specific URLs
+
+I only use these tools when you need external information or specific data. For general conversation and questions about the system itself, I can respond directly.
+
+What would you like to help you with?`;
+  }
+  
+  if (/what can you do/i.test(lowerQuery)) {
+    return "I can help you with:\n\n• Searching for information on the web\n• Finding content in your knowledge base\n• Analyzing GitHub repositories\n• Extracting content from websites\n• Answering questions and having conversations\n\nI'm designed to be smart about when to use tools - I only fetch external data when it's actually needed for your request.";
+  }
+  
+  return "I'm here to help! You can ask me questions, search for information, analyze code repositories, or explore your knowledge base. What would you like to do?";
+}
 
 async function generateOptimalToolSequence(extractedQuery: ExtractedQuery): Promise<ToolExecution[]> {
   const executions: ToolExecution[] = [];

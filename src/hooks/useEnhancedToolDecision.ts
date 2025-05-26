@@ -18,6 +18,41 @@ export interface UseEnhancedToolDecisionReturn {
   onPlanComplete: (result: string) => void;
 }
 
+// Conservative tool usage logic
+function shouldUseToolsConservatively(message: string): boolean {
+  const lowerMessage = message.toLowerCase().trim();
+  
+  // Explicit no-tool patterns
+  const conversationalPatterns = [
+    /^(hi|hello|hey|greetings?)!?$/i,
+    /^(how are you|what's up|sup)\??$/i,
+    /^(thanks?|thank you|thx)!?$/i,
+    /^(bye|goodbye|see you)!?$/i,
+    /^(yes|no|ok|okay|sure)!?$/i,
+    /what tools (do we have|are available)/i,
+    /what can you do/i,
+    /how does this work/i,
+    /what is this/i
+  ];
+  
+  if (conversationalPatterns.some(pattern => pattern.test(lowerMessage))) {
+    return false;
+  }
+  
+  // Only use tools for explicit information requests
+  const toolRequiredPatterns = [
+    /search|find|look up|lookup/i,
+    /latest|current|recent|news/i,
+    /github\.com\/[\w-]+\/[\w-]+/i,
+    /https?:\/\/[^\s]+/i,
+    /my knowledge|knowledge base/i,
+    /get information about/i,
+    /tell me about.*(?:company|project|technology)/i
+  ];
+  
+  return toolRequiredPatterns.some(pattern => pattern.test(message));
+}
+
 export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
   const [toolDecision, setToolDecision] = useState<EnhancedToolDecision | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
@@ -33,6 +68,31 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
   } = usePlanOrchestrator();
 
   const analyzeRequest = useCallback((message: string, conversationHistory: any[] = []): EnhancedToolDecision => {
+    console.log('🔍 Analyzing request:', message);
+    
+    // First check if tools are needed at all
+    const needsTools = shouldUseToolsConservatively(message);
+    
+    console.log('🤔 Conservative analysis - needs tools:', needsTools);
+    
+    if (!needsTools) {
+      const decision: EnhancedToolDecision = {
+        shouldUseTools: false,
+        detectedType: 'general',
+        reasoning: 'Query can be answered directly without external tools - appears to be conversational or system-related question',
+        confidence: 0.9,
+        suggestedTools: [],
+        complexity: 'simple',
+        estimatedSteps: 1,
+        fallbackStrategy: 'Direct response based on trained knowledge'
+      };
+      
+      console.log('✅ Direct response decision:', decision);
+      setToolDecision(decision);
+      return decision;
+    }
+    
+    // Continue with existing complex analysis for tool-requiring queries
     const lowerMessage = message.toLowerCase();
     
     // First check if we should use multi-step planning
@@ -52,6 +112,7 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
         planContext: planDetection.context
       };
       
+      console.log('📋 Multi-step plan decision:', decision);
       setToolDecision(decision);
       return decision;
     }
@@ -81,7 +142,6 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       { pattern: /\b(stored|saved|documented|recorded)\b/i, weight: 0.7, context: 'stored_data' }
     ];
 
-    // NEW: Web scraping specific patterns
     const scrapingPatterns = [
       { pattern: /https?:\/\/[^\s]+/g, weight: 1.0, context: 'direct_url' },
       { pattern: /\b(extract|scrape|get content|full article|detailed|comprehensive)\b/i, weight: 0.8, context: 'detailed_content' },
@@ -142,12 +202,10 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       if (pattern.test(message)) knowledgeScore += weight;
     });
 
-    // NEW: Calculate scraping score
     scrapingPatterns.forEach(({ pattern, weight }) => {
       if (pattern.test(message)) scrapingScore += weight;
     });
 
-    // Check for URLs and detailed content needs
     const hasUrls = /https?:\/\/[^\s]+/g.test(message);
     const needsDetailedContent = /\b(detailed|comprehensive|full|complete|in-depth|news today|current news|latest news)\b/i.test(message);
 
@@ -221,6 +279,7 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       fallbackStrategy
     };
 
+    console.log('🎯 Final tool decision:', decision);
     setToolDecision(decision);
     return decision;
   }, [detectPlan]);
