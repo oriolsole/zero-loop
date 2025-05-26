@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
-import { getModelSettings } from '@/services/modelProviderService';
+import { useModelSettings } from '@/contexts/ModelSettingsContext';
 import { useToolProgress } from '@/hooks/useToolProgress';
 import { useAIPhases } from '@/hooks/useAIPhases';
 import { useConversationContext } from '@/hooks/useConversationContext';
@@ -18,6 +18,7 @@ import SessionsSidebar from './SessionsSidebar';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
+  const { settings: modelSettings } = useModelSettings();
   const {
     currentSessionId,
     conversations,
@@ -33,7 +34,6 @@ const AIAgentChat: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
-  const [modelSettings, setModelSettings] = useState(getModelSettings());
   
   const { detectPlan } = useAIPlanDetector();
   const {
@@ -75,25 +75,6 @@ const AIAgentChat: React.FC = () => {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
   }, [conversations]);
-
-  // Load model settings on component mount and when they change
-  useEffect(() => {
-    const loadSettings = () => {
-      const settings = getModelSettings();
-      setModelSettings(settings);
-    };
-
-    loadSettings();
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'modelSettings') {
-        loadSettings();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
 
   const handleFollowUpAction = async (action: string) => {
     if (!user || !currentSessionId) return;

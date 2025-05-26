@@ -2,6 +2,7 @@ import { MCPConfiguration, MCPToolDefinition } from '@/types/mcpConfig';
 import { MCP } from '@/types/mcp';
 import { mcpConfigService } from './mcpConfigService';
 import { mcpService } from './mcpService';
+import { getModelSettings } from './modelProviderService';
 
 /**
  * Service for managing unified MCP configurations that combine all available tools
@@ -22,6 +23,9 @@ export class UnifiedMcpService {
    */
   async generateUnifiedConfiguration(): Promise<MCPConfiguration> {
     try {
+      // Get current global model settings
+      const modelSettings = getModelSettings();
+      
       // Get database MCPs
       const databaseMCPs = await mcpService.fetchMCPs();
       
@@ -42,15 +46,16 @@ export class UnifiedMcpService {
         ...databaseToolDefinitions
       ]);
       
-      // Generate unified configuration
+      // Generate unified configuration with current model settings
       const unifiedConfig: MCPConfiguration = {
         protocol: 'ModelContextProtocol',
         version: '1.0.0',
         model: {
-          name: 'gpt-4o-mini',
-          provider: 'openai',
+          name: modelSettings.selectedModel || 'gpt-4o-mini',
+          provider: modelSettings.provider || 'openai',
           max_tokens: 2000,
-          temperature: 0.7
+          temperature: 0.7,
+          localUrl: modelSettings.localModelUrl
         },
         session: {
           timeout: 3600,
@@ -89,10 +94,12 @@ export class UnifiedMcpService {
         },
         metadata: {
           name: 'ZeroLoop Unified AI Agent',
-          description: 'Comprehensive multi-tool AI agent with all available MCP tools',
+          description: `Comprehensive multi-tool AI agent using ${modelSettings.provider} provider with all available MCP tools`,
           created: new Date().toISOString().split('T')[0],
           updated: new Date().toISOString().split('T')[0],
-          author: 'ZeroLoop'
+          author: 'ZeroLoop',
+          modelProvider: modelSettings.provider,
+          selectedModel: modelSettings.selectedModel
         }
       };
       

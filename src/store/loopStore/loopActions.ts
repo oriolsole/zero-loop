@@ -1,718 +1,275 @@
-import { LearningStep, LoopHistory } from '../../types/intelligence';
-import { LoopState } from '../useLoopStore';
-import { domainEngines } from '../../engines/domainEngines';
-import { extractInsightsFromReflection } from '../../utils/knowledgeGraph';
-import { toast } from '@/components/ui/sonner';
+import { StateCreator } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
+import { LearningStep, LoopHistory } from '../../types/intelligence';
+import { domainEngines } from '../../engines/domainEngines';
+import { saveLoopToSupabase } from '../../utils/supabase/loopOperations';
+import { getModelSettings } from '../../services/modelProviderService';
 
-type SetFunction = (
-  partial: LoopState | Partial<LoopState> | ((state: LoopState) => LoopState | Partial<LoopState>),
-  replace?: boolean,
-) => void;
+export interface LoopActions {
+  startNewLoop: () => Promise<void>;
+  advanceToNextStep: () => Promise<void>;
+  completeLoop: () => void;
+  cancelCurrentLoop: () => void;
+  loadPreviousLoop: (loopId?: string) => void;
+  toggleContinuousMode: () => void;
+  setLoopDelay: (delay: number) => void;
+  pauseLoops: () => void;
+}
 
-type GetFunction = () => LoopState;
-
-export const createLoopActions = (
-  set: SetFunction,
-  get: GetFunction
-) => ({
+export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, get) => ({
   startNewLoop: async () => {
-    const { domains, activeDomainId } = get();
-    const activeDomainIndex = domains.findIndex(d => d.id === activeDomainId);
+    const { domains, activeDomainId, isContinuousMode } = get();
+    const activeDomain = domains.find((d: any) => d.id === activeDomainId);
     
-    if (activeDomainIndex === -1) return;
+    if (!activeDomain || !activeDomain.engine) {
+      console.error('No active domain or engine selected');
+      return;
+    }
+
+    // Get current global model settings
+    const modelSettings = getModelSettings();
+    console.log('Starting new loop with model settings:', modelSettings);
+
+    const engine = domainEngines[activeDomain.engine];
+    if (!engine) {
+      console.error('Domain engine not found:', activeDomain.engine);
+      return;
+    }
+
+    const loopId = uuidv4();
+    const createdAt = new Date().toISOString();
     
-    // Create initial step with pending status
-    const initialStep: LearningStep = {
-      id: uuidv4(), // Add unique ID for the step
-      type: 'task',
-      title: 'Task Generation',
-      description: 'Generating a new task...',
-      status: 'pending',
-      content: ''
-    };
-    
-    // Clone current domain
-    const updatedDomains = [...domains];
-    const currentDomain = { ...updatedDomains[activeDomainIndex] };
-    
-    // Set up new loop with pending task
-    currentDomain.currentLoop = [initialStep];
-    updatedDomains[activeDomainIndex] = currentDomain;
-    
-    set({ domains: updatedDomains, isRunningLoop: true, currentStepIndex: 0 });
-    
-    // Generate the task using domain engine
     try {
-      console.log("Starting task generation for domain:", activeDomainId);
+      // Pass model settings to the task generation
+      const taskResult = await engine.generateTask(activeDomain, { modelSettings });
       
-      // Use the domain's engineType to select the engine, with fallback
-      const engineType = currentDomain.engineType || activeDomainId;
-      const engine = domainEngines[engineType] || domainEngines[Object.keys(domainEngines)[0]];
-      
-      // Log the engine being used
-      console.log(`Using engine ${engineType} for domain ${currentDomain.name}`);
-      
-      const taskContent = await engine.generateTask(activeDomainId);
-      
-      // Handle both string and complex object responses
-      let content = '';
-      let metadata = undefined;
-      
-      if (taskContent !== null && taskContent !== undefined) {
-        if (typeof taskContent === 'string') {
-          content = taskContent;
-        } else if (typeof taskContent === 'object') {
-          // Add proper type assertions to avoid 'never' type errors
-          const taskObj = taskContent as { content?: string; metadata?: any };
-          content = taskObj.content !== undefined ? String(taskObj.content) : '';
-          metadata = taskObj.metadata;
-        }
+      if (!taskResult.success) {
+        console.error('Failed to generate task:', taskResult.error);
+        return;
       }
-      
-      console.log("Task generated successfully, updating step status to success");
-      
-      const updatedStep: LearningStep = {
-        ...initialStep,
-        status: 'success',  // Explicitly set to success to enable advancement
-        content,
-        metadata,
-        title: 'Task',
-        description: 'A new problem to solve'
+
+      const initialStep: LearningStep = {
+        id: uuidv4(),
+        type: 'task',
+        title: 'Task Generation',
+        content: taskResult.task || '',
+        timestamp: new Date().toISOString(),
+        isCompleted: true,
+        result: taskResult
       };
-      
-      // Update domain with generated task
-      const newDomains = [...get().domains];
-      const domain = { ...newDomains[activeDomainIndex] };
-      domain.currentLoop = [updatedStep];
-      newDomains[activeDomainIndex] = domain;
-      
-      set({ domains: newDomains });
-      
-      // If in continuous mode, automatically go to the next step after delay
-      if (get().isContinuousMode) {
+
+      set({
+        isRunningLoop: true,
+        currentStepIndex: 0,
+        loopHistory: [{
+          id: loopId,
+          domainId: activeDomainId,
+          domainName: activeDomain.name,
+          steps: [initialStep],
+          startTime: createdAt,
+          isCompleted: false,
+          modelSettings // Store which model settings were used
+        }, ...get().loopHistory]
+      });
+
+      // Auto-advance if in continuous mode
+      if (isContinuousMode) {
         setTimeout(() => {
-          const currentState = get();
-          if (currentState.isContinuousMode && currentState.isRunningLoop) {
-            get().advanceToNextStep();
+          const state = get();
+          if (state.isRunningLoop) {
+            state.advanceToNextStep();
           }
         }, get().loopDelay);
       }
-      
-      // Log success message
-      console.log("Task generated successfully:", content.substring(0, 50) + "...");
-      toast.success("Task generated successfully");
+
     } catch (error) {
-      // Handle error in task generation
-      console.error("Error generating task:", error);
-      toast.error("Error generating task");
-      
-      const updatedStep: LearningStep = {
-        ...initialStep,
-        status: 'failure',
-        content: `Error generating task: ${error}`,
-        title: 'Task Generation Failed',
-        description: 'An error occurred while generating the task'
-      };
-      
-      const newDomains = [...get().domains];
-      const domain = { ...newDomains[activeDomainIndex] };
-      domain.currentLoop = [updatedStep];
-      newDomains[activeDomainIndex] = domain;
-      
-      set({ domains: newDomains });
+      console.error('Error starting new loop:', error);
+      set({ isRunningLoop: false, currentStepIndex: null });
     }
   },
-  
+
   advanceToNextStep: async () => {
-    const { domains, activeDomainId, currentStepIndex } = get();
-    const activeDomainIndex = domains.findIndex(d => d.id === activeDomainId);
+    const { 
+      domains, 
+      activeDomainId, 
+      loopHistory, 
+      currentStepIndex, 
+      isContinuousMode,
+      useRemoteLogging
+    } = get();
     
-    if (activeDomainIndex === -1 || currentStepIndex === null) return;
+    const activeDomain = domains.find((d: any) => d.id === activeDomainId);
+    const currentLoop = loopHistory[0];
     
-    const domain = domains[activeDomainIndex];
-    const currentLoop = [...domain.currentLoop];
+    if (!activeDomain || !currentLoop || currentStepIndex === null) {
+      console.error('Cannot advance step: missing domain or loop');
+      return;
+    }
+
+    const engine = domainEngines[activeDomain.engine];
+    if (!engine) {
+      console.error('Domain engine not found:', activeDomain.engine);
+      return;
+    }
+
     const nextStepIndex = currentStepIndex + 1;
+    const stepTypes: LearningStep['type'][] = ['task', 'solution', 'verification', 'reflection', 'mutation'];
     
-    // UPDATED: More flexible validation - allow advancement for learning from failures
-    const currentStep = currentLoop[currentStepIndex];
-    
-    // Only require success for the initial task generation (need something to work with)
-    // For all other steps, allow advancement to learn from both success and failure
-    if (currentStep.type === 'task' && currentStep.status !== 'success') {
-      console.log("Cannot advance: task generation must be successful", {
-        stepType: currentStep.type,
-        stepStatus: currentStep.status
-      });
-      toast.error("Task generation must be completed successfully before proceeding");
+    if (nextStepIndex >= stepTypes.length) {
+      get().completeLoop();
       return;
     }
+
+    // Get current global model settings for each step
+    const modelSettings = getModelSettings();
+
+    const stepType = stepTypes[nextStepIndex];
+    const timestamp = new Date().toISOString();
     
-    // For non-task steps, allow advancement as long as step is not pending
-    if (currentStep.status === 'pending') {
-      console.log("Cannot advance: current step is still pending", {
-        stepType: currentStep.type,
-        stepStatus: currentStep.status
-      });
-      toast.error("Please wait for the current step to complete");
-      return;
-    }
-    
-    // Determine next step type based on current step
-    let nextStep: LearningStep;
-    
-    switch (currentLoop[currentStepIndex].type) {
-      case 'task':
-        nextStep = {
-          id: uuidv4(), // Add unique ID
-          type: 'solution',
-          title: 'Solution Generation',
-          description: 'Solving the task...',
-          status: 'pending',
-          content: ''
-        };
-        break;
-      case 'solution':
-        nextStep = {
-          id: uuidv4(), // Add unique ID
-          type: 'verification',
-          title: 'Verification',
-          description: 'Verifying the solution...',
-          status: 'pending',
-          content: ''
-        };
-        break;
-      case 'verification':
-        nextStep = {
-          id: uuidv4(), // Add unique ID
-          type: 'reflection',
-          title: 'Reflection',
-          description: 'Analyzing the results...',
-          status: 'pending',
-          content: ''
-        };
-        break;
-      case 'reflection':
-        nextStep = {
-          id: uuidv4(), // Add unique ID
-          type: 'mutation',
-          title: 'Task Mutation',
-          description: 'Adapting for next loop...',
-          status: 'pending',
-          content: ''
-        };
-        break;
-      default:
-        console.log("No more steps available in this loop");
-        toast.info("This loop is complete. Start a new one to continue learning.");
-        return; // No more steps
-    }
-    
-    console.log(`Advancing to next step: ${nextStep.type} (learning from previous step: ${currentStep.status})`);
-    
-    // Add the next step to the loop with pending status
-    currentLoop.push(nextStep);
-    
-    // Clone and update domains
-    const updatedDomains = [...domains];
-    const updatedDomain = { ...domain, currentLoop };
-    updatedDomains[activeDomainIndex] = updatedDomain;
-    
-    set({ 
-      domains: updatedDomains, 
-      currentStepIndex: nextStepIndex 
-    });
-    
-    // Execute the step using domain engine
     try {
-      // Use the domain's engineType to select the engine, with fallback
-      const engineType = domain.engineType || activeDomainId;
-      const engine = domainEngines[engineType] || domainEngines[Object.keys(domainEngines)[0]];
-      
-      console.log(`Using engine ${engineType} for step ${nextStep.type}`);
-      
       let result;
-      let metrics = {};
-      
-      switch (nextStep.type) {
+      const context = { 
+        previousSteps: currentLoop.steps,
+        domain: activeDomain,
+        modelSettings // Pass current model settings to each step
+      };
+
+      switch (stepType) {
         case 'solution':
-          result = await engine.solveTask(currentLoop[0].content, activeDomainId);
-          metrics = { timeMs: Math.floor(Math.random() * 1000) + 200 };
+          result = await engine.generateSolution(currentLoop.steps[0].result?.task || '', context);
           break;
-        case 'verification': {
-          const solutionStep = currentLoop[1];
-          // Fix for type conversion issues
-          const solutionContent = typeof solutionStep === 'object' && solutionStep !== null 
-            ? solutionStep.content 
-            : String(solutionStep);
-  
-          // Use either verifyTask or verifySolution, whichever is available
-          result = engine.verifyTask 
-            ? await engine.verifyTask(currentLoop[0].content, solutionContent)
-            : await engine.verifySolution(currentLoop[0].content, solutionContent, activeDomainId);
-          
-          // Process verification result properly
-          let content = '';
-          let isCorrect = false;
-          
-          // Check if result is an object with isCorrect and explanation properties
-          if (typeof result === 'object' && result !== null) {
-            // Handle structured verification result
-            if ('isCorrect' in result && 'explanation' in result) {
-              content = String(result.explanation);
-              isCorrect = Boolean(result.isCorrect);
-            } else if ('content' in result) {
-              // Handle result with content field
-              content = String(result.content);
-              isCorrect = !content.toLowerCase().includes('incorrect');
-            } else {
-              // Fallback for other object structures
-              content = JSON.stringify(result);
-              isCorrect = !content.toLowerCase().includes('incorrect');
-            }
-          } else {
-            // Handle string result
-            content = String(result);
-            isCorrect = !content.toLowerCase().includes('incorrect');
-          }
-            
-          metrics = { 
-            correct: isCorrect,
-            timeMs: Math.floor(Math.random() * 300) + 50 
-          };
-          
-          // Set the result variable to ensure it's properly passed to later code
-          result = { content, isCorrect };
+        case 'verification':
+          result = await engine.verifySolution(
+            currentLoop.steps[0].result?.task || '',
+            currentLoop.steps[1].result?.solution || '',
+            context
+          );
           break;
-        }
-        case 'reflection': {
-          const verificationData = currentLoop[2];
-          const verificationContent = typeof verificationData === 'object' && verificationData !== null
-            ? verificationData.content
-            : String(verificationData);
-          
-          // ENHANCED: Pass previous step status to reflection for learning from failures
-          const previousStepStatus = currentLoop[currentStepIndex].status;
-          const wasSuccessful = previousStepStatus === 'success';
-          
-          // Enhanced reflection prompt to include failure analysis
-          const reflectionContext = wasSuccessful 
-            ? "The previous verification was successful. Analyze what worked well."
-            : "The previous verification failed. Analyze what went wrong and how to improve.";
-            
-          // Use either reflectOnTask or reflect, whichever is available
-          result = engine.reflectOnTask
-            ? await engine.reflectOnTask(
-                currentLoop[0].content,
-                currentLoop[1].content || String(currentLoop[1]),
-                verificationContent + "\n\nContext: " + reflectionContext
-              )
-            : await engine.reflect(
-                currentLoop[0].content,
-                currentLoop[1].content || String(currentLoop[1]),
-                verificationContent + "\n\nContext: " + reflectionContext,
-                activeDomainId
-              );
-          
-          metrics = { 
-            insightCount: typeof result === 'object' && result !== null
-              ? String(result.content).split('.').length - 1 
-              : String(result).split('.').length - 1,
-            learnedFromFailure: !wasSuccessful
-          };
-          
-          // Check for knowledge insights in reflection
-          const reflectionText = typeof result === 'object' && result !== null ? 
-            String(result.content) : String(result);
-          
-          if (nextStep.type === 'reflection' && !reflectionText.toLowerCase().includes('error')) {
-            const insights = extractInsightsFromReflection(reflectionText);
-            if (insights.length > 0) {
-              const { createKnowledgeNode } = await import('../../utils/knowledgeGraph');
-              const newDomains = [...get().domains];
-              const domain = { ...newDomains[activeDomainIndex] };
-              
-              // Add knowledge nodes from insights
-              insights.forEach(insight => {
-                const newNode = createKnowledgeNode(insight, domain.totalLoops + 1, domain.id);
-                domain.knowledgeNodes = [...(domain.knowledgeNodes || []), newNode];
-              });
-              
-              newDomains[activeDomainIndex] = domain;
-              set({ domains: newDomains });
-            }
-          }
+        case 'reflection':
+          result = await engine.generateReflection(currentLoop.steps, context);
           break;
-        }
         case 'mutation':
           result = await engine.mutateTask(
-            currentLoop[0].content,
-            currentLoop[1].content || '',
-            currentLoop[2].content || '',
-            currentLoop[3].content || ''
+            currentLoop.steps[0].result?.task || '',
+            currentLoop.steps[3].result?.insights || [],
+            context
           );
-          metrics = { complexity: Math.floor(Math.random() * 10) + 1 };
           break;
         default:
-          result = "Unexpected step type";
+          console.error('Unknown step type:', stepType);
+          return;
       }
-      
-      // Extract content from the result
-      let content = '';
-      let metadata = undefined;
-      
-      if (typeof result === 'object' && result !== null) {
-        // Handle object results
-        if ('content' in result) {
-          content = String(result.content);
-        } else if ('explanation' in result) {
-          content = String(result.explanation);
-        } else {
-          content = JSON.stringify(result);
-        }
-        
-        metadata = 'metadata' in result ? result.metadata : undefined;
-      } else {
-        // Handle string or other primitive results
-        content = String(result);
+
+      if (!result?.success) {
+        console.error(`Failed to execute ${stepType} step:`, result?.error);
+        return;
       }
-      
-      // UPDATED: More nuanced status determination
-      let status: 'success' | 'failure' = 'success';
-      
-      // For verification step, determine status based on correctness
-      if (nextStep.type === 'verification') {
-        if (typeof result === 'object' && 'isCorrect' in result) {
-          status = result.isCorrect ? 'success' : 'failure';
-        } else {
-          // Fallback: check if content suggests incorrectness
-          status = content.toLowerCase().includes('incorrect') || 
-                   content.toLowerCase().includes('wrong') ||
-                   content.toLowerCase().includes('failed') ? 'failure' : 'success';
-        }
-      } else {
-        // For other steps, only mark as failure if there's an explicit error
-        status = content.toLowerCase().includes('error') ? 'failure' : 'success';
-      }
-      
-      const updatedStep: LearningStep = {
-        ...nextStep,
-        status,
-        content,
-        metadata,
-        metrics
+
+      const newStep: LearningStep = {
+        id: uuidv4(),
+        type: stepType,
+        title: stepType.charAt(0).toUpperCase() + stepType.slice(1),
+        content: result.content || JSON.stringify(result, null, 2),
+        timestamp,
+        isCompleted: true,
+        result
       };
-      
-      // Update domain with completed step
-      const newDomains = [...get().domains];
-      const currentDomain = { ...newDomains[activeDomainIndex] };
-      currentDomain.currentLoop[nextStepIndex] = updatedStep;
-      
-      // Update metrics if this is the verification step
-      if (nextStep.type === 'verification') {
-        // Update success rate in domain metrics
-        const successRate = status === 'success' 
-          ? Math.min((currentDomain.metrics?.successRate || 0) + 2, 100)
-          : Math.max((currentDomain.metrics?.successRate || 0) - 1, 0); // Smaller penalty for learning
-          
-        currentDomain.metrics = {
-          ...(currentDomain.metrics || {}),
-          successRate
-        };
-      }
-      
-      newDomains[activeDomainIndex] = currentDomain;
-      
-      set({ domains: newDomains });
-      
-      console.log(`Step ${nextStep.type} completed with status: ${status}`);
-      
-      // If this was the mutation step, mark the loop as complete
-      if (nextStep.type === 'mutation') {
-        get().completeLoop();
-      } else if (get().isContinuousMode) {
-        // Continue to next step after delay if in continuous mode
+
+      const updatedLoop = {
+        ...currentLoop,
+        steps: [...currentLoop.steps, newStep],
+        modelSettings: modelSettings // Update model settings for the loop
+      };
+
+      set({
+        currentStepIndex: nextStepIndex,
+        loopHistory: [updatedLoop, ...loopHistory.slice(1)]
+      });
+
+      // Auto-advance if in continuous mode and not the last step
+      if (isContinuousMode && nextStepIndex < stepTypes.length - 1) {
         setTimeout(() => {
-          const currentState = get();
-          if (currentState.isContinuousMode && currentState.isRunningLoop) {
-            get().advanceToNextStep();
+          const state = get();
+          if (state.isRunningLoop) {
+            state.advanceToNextStep();
           }
         }, get().loopDelay);
       }
+
     } catch (error) {
-      // Handle error in step execution
-      console.error(`Error executing ${nextStep.type} step:`, error);
-      toast.error(`Error in ${nextStep.type} step: ${error}`);
-      
-      const updatedStep: LearningStep = {
-        ...nextStep,
-        status: 'failure',
-        content: `Error: ${error}`
-      };
-      
-      const newDomains = [...get().domains];
-      const currentDomain = { ...newDomains[activeDomainIndex] };
-      currentDomain.currentLoop[nextStepIndex] = updatedStep;
-      newDomains[activeDomainIndex] = currentDomain;
-      
-      set({ domains: newDomains });
+      console.error(`Error in ${stepType} step:`, error);
     }
   },
-  
+
   completeLoop: () => {
-    const { domains, activeDomainId, useRemoteLogging } = get();
-    const activeDomainIndex = domains.findIndex(d => d.id === activeDomainId);
+    const { loopHistory, useRemoteLogging } = get();
+    const currentLoop = loopHistory[0];
     
-    if (activeDomainIndex === -1) return;
-    
-    const updatedDomains = [...domains];
-    const domain = { ...updatedDomains[activeDomainIndex] };
-    const reflectionStep = domain.currentLoop?.find(step => step.type === 'reflection');
-    const reflectionText = reflectionStep?.content || '';
-    
-    // Extract insights from reflection
-    const insights = extractInsightsFromReflection(reflectionText);
-    let newNodes = [];
-    let newEdges = [];
-    
-    // Use dynamic imports to resolve circular dependencies
-    import('../../utils/knowledgeGraph').then(({ createKnowledgeNode, createEdgesBetweenNodes, calculateGraphLayout }) => {
-      // Create knowledge nodes from insights
-      if (insights.length > 0) {
-        insights.forEach(insight => {
-          const newNode = createKnowledgeNode(insight, domain.totalLoops + 1, domain.id);
-          domain.knowledgeNodes = [...(domain.knowledgeNodes || []), newNode];
-          newNodes.push(newNode);
-          
-          // Create edges between the new node and existing nodes
-          const nodeEdges = createEdgesBetweenNodes(newNode, domain.knowledgeNodes || []);
-          domain.knowledgeEdges = [...(domain.knowledgeEdges || []), ...nodeEdges];
-          newEdges = [...newEdges, ...nodeEdges];
-        });
-        
-        // Recalculate node positions for better layout
-        domain.knowledgeNodes = calculateGraphLayout(domain.knowledgeNodes || [], domain.knowledgeEdges || []);
-      }
-      
-      // Generate a loop history record with proper UUID
-      const loopId = uuidv4();
-      const completedLoop: LoopHistory = {
-        id: loopId,
-        domainId: domain.id,
-        steps: [...(domain.currentLoop || [])],
-        timestamp: Date.now(),
-        totalTime: Math.floor(Math.random() * 5000) + 3000,
-        success: domain.currentLoop?.some(step => step.type === 'verification' && step.status === 'success') || false,
-        score: (domain.metrics?.successRate || 0),
-        startTime: new Date().toISOString(),
-        status: 'completed',
-        insights: insights.map((text, index) => ({
-          text,
-          confidence: newNodes[index]?.confidence || 0.7,
-          nodeIds: newNodes[index] ? [newNodes[index].id] : undefined
-        }))
-      };
-      
-      // Add to history
-      const updatedHistory = [...get().loopHistory, completedLoop];
-      
-      // Trim history if too large (keep most recent 100 loops)
-      const trimmedHistory = updatedHistory.length > 100 
-        ? updatedHistory.slice(updatedHistory.length - 100) 
-        : updatedHistory;
-      
-      // If remote logging is enabled, save to Supabase
-      if (useRemoteLogging) {
-        import('../../utils/supabase').then(({ 
-          logLoopToSupabase, 
-          saveKnowledgeNodeToSupabase, 
-          saveKnowledgeEdgeToSupabase, 
-          updateDomainInSupabase 
-        }) => {
-          console.log("Attempting to save loop to Supabase:", completedLoop);
-          
-          // Log the completed loop
-          logLoopToSupabase(completedLoop)
-            .then(success => {
-              if (success) {
-                console.log("Loop saved successfully to Supabase");
-              } else {
-                console.error("Failed to save loop to Supabase");
-              }
-            })
-            .catch(error => {
-              console.error("Exception when saving loop:", error);
-            });
-          
-          // Log each new knowledge node
-          newNodes.forEach(node => {
-            saveKnowledgeNodeToSupabase(node);
-          });
-          
-          // Log each new knowledge edge
-          newEdges.forEach(edge => {
-            saveKnowledgeEdgeToSupabase(edge);
-          });
-          
-          // Update the domain with the new total loops count
-          updateDomainInSupabase(domain);
-        });
-      }
-      
-      // Increment total loops
-      domain.totalLoops = (domain.totalLoops || 0) + 1;
-      
-      // Update metrics
-      // Add a new node to knowledge growth
-      const knowledgeGrowth = domain.metrics?.knowledgeGrowth || [];
-      const lastEntry = knowledgeGrowth[knowledgeGrowth.length - 1] || { nodes: 0 };
-      knowledgeGrowth.push({
-        name: `Loop ${domain.totalLoops}`,
-        nodes: lastEntry.nodes + insights.length
-      });
-      
-      // Update task difficulty
-      const taskDifficulty = [...(domain.metrics?.taskDifficulty || [])];
-      const difficulty = Math.floor(Math.random() * 10) + 1;
-      const success = Math.random() > 0.3 ? difficulty - 1 : difficulty - 3;
-      taskDifficulty.push({
-        name: `Loop ${domain.totalLoops}`,
-        difficulty,
-        success: Math.max(0, success)
-      });
-      if (taskDifficulty.length > 10) {
-        taskDifficulty.shift(); // Keep only last 10 entries
-      }
-      
-      // Update skills
-      const skills = [...(domain.metrics?.skills || [])];
-      skills.forEach((skill, i) => {
-        // Randomly increase some skills
-        if (Math.random() > 0.7) {
-          skills[i] = {
-            ...skill,
-            level: Math.min(skill.level + Math.floor(Math.random() * 3), 100)
-          };
-        }
-      });
-      
-      domain.metrics = {
-        ...(domain.metrics || {}),
-        knowledgeGrowth,
-        taskDifficulty,
-        skills
-      };
-      
-      updatedDomains[activeDomainIndex] = domain;
-      
-      // Reset for next loop
-      set({ 
-        domains: updatedDomains,
-        loopHistory: trimmedHistory,
-        isRunningLoop: false,
-        currentStepIndex: null
-      });
-      
-      // If continuous mode is on, start a new loop after delay
-      if (get().isContinuousMode) {
-        setTimeout(() => {
-          const currentState = get();
-          if (currentState.isContinuousMode) {
-            get().startNewLoop();
-          }
-        }, get().loopDelay);
-      }
+    if (!currentLoop) return;
+
+    const completedLoop: LoopHistory = {
+      ...currentLoop,
+      endTime: new Date().toISOString(),
+      isCompleted: true
+    };
+
+    set({
+      isRunningLoop: false,
+      currentStepIndex: null,
+      loopHistory: [completedLoop, ...loopHistory.slice(1)]
     });
+
+    // Save to Supabase if remote logging is enabled
+    if (useRemoteLogging) {
+      saveLoopToSupabase(completedLoop).catch(error => {
+        console.error('Error saving completed loop to Supabase:', error);
+      });
+    }
+
+    console.log('Loop completed:', completedLoop.id);
   },
-  
+
   cancelCurrentLoop: () => {
-    const { domains, activeDomainId } = get();
-    const activeDomainIndex = domains.findIndex(d => d.id === activeDomainId);
-    
-    if (activeDomainIndex === -1) return;
-    
-    // Log the cancellation for debugging
-    console.log('Canceling current learning loop');
-    
-    // Reset the running state AND clear the current loop
-    const updatedDomains = [...domains];
-    const updatedDomain = { ...updatedDomains[activeDomainIndex] };
-    // Clear the current loop completely so we can start a new one
-    updatedDomain.currentLoop = [];
-    updatedDomains[activeDomainIndex] = updatedDomain;
-    
-    // Update the state
-    set({ 
-      domains: updatedDomains,
+    set({
       isRunningLoop: false,
       currentStepIndex: null
     });
-    
-    // Show confirmation to the user
-    toast.success('Learning loop cancelled');
   },
-  
-  loadPreviousLoop: (loopId) => {
+
+  loadPreviousLoop: (loopId?: string) => {
     const { loopHistory } = get();
     
-    if (loopHistory.length === 0) {
-      console.log('No loop history available');
-      return;
+    let loopToLoad;
+    if (loopId) {
+      loopToLoad = loopHistory.find(loop => loop.id === loopId);
+    } else {
+      loopToLoad = loopHistory.find(loop => loop.isCompleted);
     }
     
-    // Find the loop by ID or get the most recent one
-    const loop = loopId 
-      ? loopHistory.find(l => l.id === loopId) 
-      : loopHistory[loopHistory.length - 1];
-      
-    if (!loop) {
-      console.log(`Loop with ID ${loopId} not found`);
+    if (!loopToLoad) {
+      console.error('No previous loop found to load');
       return;
     }
-    
-    // Update the current domain with the selected loop data
-    const { domains } = get();
-    const domainIndex = domains.findIndex(d => d.id === loop.domainId);
-    
-    if (domainIndex === -1) {
-      console.log(`Domain ${loop.domainId} not found`);
-      return;
-    }
-    
-    const updatedDomains = [...domains];
-    const domain = { ...updatedDomains[domainIndex] };
-    
-    // Set the current loop to the historical loop
-    domain.currentLoop = [...loop.steps];
-    
-    updatedDomains[domainIndex] = domain;
-    
-    // Update state
+
     set({
-      domains: updatedDomains,
-      activeDomainId: loop.domainId,
-      isRunningLoop: false, // We're viewing history, not running
-      currentStepIndex: null
+      currentStepIndex: loopToLoad.steps.length - 1,
+      isRunningLoop: false,
+      loopHistory: [loopToLoad, ...loopHistory.filter(loop => loop.id !== loopToLoad.id)]
     });
   },
-  
+
   toggleContinuousMode: () => {
-    const currentMode = get().isContinuousMode;
-    const newMode = !currentMode;
-    
-    set({ isContinuousMode: newMode });
-    
-    // If turning on continuous mode and no active loop, start one
-    if (newMode && !get().isRunningLoop) {
-      get().startNewLoop();
-    }
+    set(state => ({ isContinuousMode: !state.isContinuousMode }));
   },
-  
-  setLoopDelay: (delay) => {
+
+  setLoopDelay: (delay: number) => {
     set({ loopDelay: delay });
   },
-  
+
   pauseLoops: () => {
-    set({ isContinuousMode: false });
-  },
+    set({ 
+      isRunningLoop: false, 
+      isContinuousMode: false 
+    });
+  }
 });
