@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardHeader } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
@@ -6,10 +7,10 @@ import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConve
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
-import { useEnhancedToolDecision } from '@/hooks/useEnhancedToolDecision';
 import { useAIPhases } from '@/hooks/useAIPhases';
 import { useConversationContext } from '@/hooks/useConversationContext';
-import { usePlanOrchestrator } from '@/hooks/usePlanOrchestrator';
+import { useAIPlanDetector } from '@/hooks/useAIPlanDetector';
+import { useDynamicPlanOrchestrator } from '@/hooks/useDynamicPlanOrchestrator';
 import AIAgentHeader from './AIAgentHeader';
 import AIAgentChatInterface from './AIAgentChatInterface';
 import AIAgentInput from './AIAgentInput';
@@ -35,20 +36,14 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
   
+  const { detectPlan } = useAIPlanDetector();
   const {
-    toolDecision,
-    currentStep,
-    isExecuting,
     currentPlan,
-    planProgress,
-    analyzeRequest,
-    startExecution,
-    nextStep,
-    completeExecution,
-    resetDecision,
-    onStepUpdate,
-    onPlanComplete
-  } = useEnhancedToolDecision();
+    isExecuting,
+    createDynamicPlan,
+    executeDynamicPlan,
+    getProgress
+  } = useDynamicPlanOrchestrator();
 
   const {
     currentPhase,
@@ -75,8 +70,6 @@ const AIAgentChat: React.FC = () => {
     storeToolResult,
     getContextForMessage
   } = useConversationContext();
-
-  const { createPlan, executePlan } = usePlanOrchestrator();
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -121,16 +114,14 @@ const AIAgentChat: React.FC = () => {
 
     addMessage(userMessage);
     
-    setPhase('analyzing', 'Understanding your request...', 15);
-    const decision = analyzeRequest(enhancedMessage, getConversationHistory());
+    setPhase('analyzing', 'AI is analyzing your request...', 10);
     
     const analysisMessage: ConversationMessage = {
       id: `analysis-${Date.now()}`,
       role: 'system',
-      content: `I'm analyzing your request... ${decision.reasoning}`,
+      content: 'AI is determining the best approach for your request...',
       timestamp: new Date(),
-      messageType: 'analysis',
-      toolDecision: decision
+      messageType: 'analysis'
     };
     
     addMessage(analysisMessage);
@@ -139,81 +130,62 @@ const AIAgentChat: React.FC = () => {
     setIsLoading(true);
     clearTools();
 
-    const timeoutId = setTimeout(() => {
-      if (isLoading) {
-        setIsLoading(false);
-        setPhase('error', 'Request timed out');
-        resetDecision();
-        resetPhases();
-        toast.error('Request timed out');
-        
-        const timeoutMessage: ConversationMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: 'I apologize, but my response timed out. Please try your request again.',
-          timestamp: new Date()
-        };
-        addMessage(timeoutMessage);
-      }
-    }, 120000); // Extended timeout for multi-step plans
-
     try {
-      const conversationHistory = getConversationHistory();
+      // Use AI to detect if we need a plan
+      const planDetection = await detectPlan(enhancedMessage, getConversationHistory());
+      
+      console.log('AI Plan Detection Result:', planDetection);
 
-      // Check if we should use multi-step planning
-      if (decision.detectedType === 'multi-step-plan' && decision.planType) {
-        console.log('Executing multi-step plan:', decision.planType);
+      if (planDetection.shouldUsePlan && planDetection.suggestedSteps.length > 0) {
+        // Create and execute dynamic plan
+        setPhase('planning', 'Creating dynamic execution plan...', 5);
         
-        const plan = createPlan(decision.planType, enhancedMessage, decision.planContext);
+        const plan = await createDynamicPlan(
+          enhancedMessage,
+          planDetection.suggestedSteps,
+          planDetection.planType
+        );
         
         const planningMessage: ConversationMessage = {
           id: `planning-${Date.now()}`,
           role: 'system',
-          content: `I'll execute a comprehensive plan: ${plan.title}`,
+          content: `🤖 AI has created a ${planDetection.estimatedComplexity} plan: ${plan.title}\n\nSteps: ${planDetection.suggestedSteps.join(' → ')}`,
           timestamp: new Date(),
           messageType: 'planning',
           executionPlan: plan
         };
         addMessage(planningMessage);
         
-        startExecution();
-        setPhase('executing', `Executing ${plan.steps.length} steps...`, plan.totalEstimatedTime);
+        setPhase('executing', `Executing ${plan.steps.length} AI-generated steps...`, plan.steps.length * 8);
 
-        // Execute the plan
-        await executePlan(plan, onStepUpdate, (result) => {
-          const assistantMessage: ConversationMessage = {
-            id: (Date.now() + 2).toString(),
-            role: 'assistant',
-            content: result,
-            timestamp: new Date(),
-            messageType: 'response',
-            executionPlan: plan
-          };
-          addMessage(assistantMessage);
-          onPlanComplete(result);
-        });
+        // Execute the dynamic plan
+        await executeDynamicPlan(
+          plan,
+          enhancedMessage,
+          (step) => {
+            console.log('AI Plan step updated:', step);
+          },
+          (result) => {
+            const assistantMessage: ConversationMessage = {
+              id: (Date.now() + 2).toString(),
+              role: 'assistant',
+              content: result,
+              timestamp: new Date(),
+              messageType: 'response',
+              executionPlan: plan
+            };
+            addMessage(assistantMessage);
+          }
+        );
 
-        clearTimeout(timeoutId);
-        setPhase('completed', 'Plan execution completed');
-        toast.success(`Successfully completed ${plan.steps.length}-step plan`);
+        setPhase('completed', 'AI plan execution completed');
+        toast.success(`AI successfully completed ${plan.steps.length}-step plan`);
         
       } else {
-        // Single-step execution (existing logic)
-        if (decision.shouldUseTools && decision.suggestedTools.length > 0) {
-          const planningMessage: ConversationMessage = {
-            id: `planning-${Date.now()}`,
-            role: 'system',
-            content: `I'll use these tools to help you: ${decision.suggestedTools.map(tool => tool.replace('execute_', '')).join(', ')}`,
-            timestamp: new Date(),
-            messageType: 'planning'
-          };
-          addMessage(planningMessage);
-          
-          startExecution();
-          setPhase('executing', `Using ${decision.suggestedTools.length} tools...`, decision.estimatedSteps * 3);
-        } else {
-          setPhase('planning', 'Processing your request...', 10);
-        }
+        // Single-step execution for simple requests
+        setPhase('processing', 'Processing your request...', 15);
+        
+        const conversationHistory = getConversationHistory();
 
         const { data, error } = await supabase.functions.invoke('ai-agent', {
           body: {
@@ -226,8 +198,6 @@ const AIAgentChat: React.FC = () => {
           }
         });
 
-        clearTimeout(timeoutId);
-
         if (error) {
           throw new Error(error.message);
         }
@@ -236,67 +206,8 @@ const AIAgentChat: React.FC = () => {
           throw new Error(data?.error || 'Failed to get response from AI agent');
         }
 
-        // Add tool execution messages if tools were used
-        if (data.toolProgress && data.toolProgress.length > 0) {
-          const executionMessage: ConversationMessage = {
-            id: `execution-${Date.now()}`,
-            role: 'system',
-            content: 'Executing tools...',
-            timestamp: new Date(),
-            messageType: 'execution',
-            toolProgress: data.toolProgress,
-            isStreaming: false
-          };
-          addMessage(executionMessage);
-
-          // Process tool results
-          data.toolProgress.forEach((toolItem: any) => {
-            nextStep();
-            
-            const toolId = startTool(
-              toolItem.name || 'unknown-tool',
-              toolItem.name?.replace('execute_', '') || 'Unknown Tool',
-              toolItem.parameters
-            );
-
-            updateTool(toolId, {
-              status: toolItem.status,
-              endTime: toolItem.endTime,
-              result: toolItem.result,
-              error: toolItem.error,
-              progress: toolItem.status === 'completed' ? 100 : toolItem.status === 'failed' ? 0 : 50
-            });
-
-            if (toolItem.result) {
-              storeToolResult(toolId, toolItem.result);
-            }
-          });
-        }
-
-        // Update context based on tool results
-        if (data.toolsUsed) {
-          data.toolsUsed.forEach((tool: any) => {
-            if (tool.name.includes('github') && tool.result?.url) {
-              const urlParts = tool.result.url.split('/');
-              if (urlParts.length >= 5) {
-                updateGitHubContext({
-                  owner: urlParts[3],
-                  repo: urlParts[4],
-                  url: tool.result.url
-                });
-              }
-            }
-            
-            if (tool.name.includes('search') && tool.result) {
-              updateSearchContext(input, tool.result);
-            }
-          });
-        }
-
-        completeExecution();
         setPhase('completed', 'Done');
 
-        // Add final response message
         const assistantMessage: ConversationMessage = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
@@ -304,8 +215,7 @@ const AIAgentChat: React.FC = () => {
           timestamp: new Date(),
           messageType: 'response',
           toolsUsed: data.toolsUsed || [],
-          selfReflection: data.selfReflection,
-          toolDecision: data.toolDecision
+          selfReflection: data.selfReflection
         };
 
         addMessage(assistantMessage);
@@ -313,19 +223,13 @@ const AIAgentChat: React.FC = () => {
         if (data.toolsUsed && data.toolsUsed.length > 0) {
           const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
           if (successCount > 0) {
-            const successfulTools = data.toolsUsed
-              .filter((tool: any) => tool.success)
-              .map((tool: any) => tool.name.replace('execute_', ''))
-              .join(', ');
-            
-            toast.success(`Used ${successCount} tool(s): ${successfulTools}`);
+            toast.success(`Used ${successCount} tool(s) successfully`);
           }
         }
       }
 
     } catch (error) {
       console.error('Error sending message:', error);
-      clearTimeout(timeoutId);
       setPhase('error', `Error: ${error.message}`);
       
       toast.error('Failed to send message', {
@@ -344,7 +248,6 @@ const AIAgentChat: React.FC = () => {
     } finally {
       setIsLoading(false);
       setTimeout(() => {
-        resetDecision();
         resetPhases();
       }, 3000);
     }
@@ -379,7 +282,7 @@ const AIAgentChat: React.FC = () => {
         <div className="flex-1 flex flex-col overflow-hidden">
           {currentPlan && (
             <div className="px-6 pb-0">
-              <PlanExecutionProgress plan={currentPlan} progress={planProgress} />
+              <PlanExecutionProgress plan={currentPlan} progress={getProgress()} />
             </div>
           )}
           
