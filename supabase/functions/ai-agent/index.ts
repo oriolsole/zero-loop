@@ -7,7 +7,6 @@ import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
 import { generateSystemPrompt } from './system-prompts.ts';
 import { extractAssistantMessage } from './response-handler.ts';
-import { simpleAnalyzeToolRequirements, logSimpleToolDecision } from './enhanced-tool-decision.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -70,10 +69,6 @@ serve(async (req) => {
     const tools = convertMCPsToTools(mcps);
     console.log('Generated tools:', tools.map(t => t.function.name));
 
-    // Simple tool analysis for UI and logging purposes only
-    const toolDecision = simpleAnalyzeToolRequirements(message, conversationHistory);
-    logSimpleToolDecision(toolDecision, message);
-
     // Generate comprehensive system prompt
     const systemPrompt = generateSystemPrompt(mcps);
 
@@ -94,7 +89,7 @@ serve(async (req) => {
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: 'auto', // Always let model decide
+      tool_choice: 'auto',
       temperature: 0.7,
       max_tokens: 2000,
       stream: streaming,
@@ -106,7 +101,7 @@ serve(async (req) => {
       })
     };
 
-    console.log('Calling AI model with natural tool selection - tools available:', tools.length);
+    console.log('Calling AI model - tools available:', tools.length);
 
     const response = await supabase.functions.invoke('ai-model-proxy', {
       body: modelRequestBody
@@ -121,7 +116,6 @@ serve(async (req) => {
     console.log('AI Model response received, checking for tool calls...');
 
     if (streaming) {
-      // Handle streaming response
       return new Response(JSON.stringify(data), {
         headers: {
           ...corsHeaders,
@@ -130,7 +124,7 @@ serve(async (req) => {
       });
     }
 
-    // Extract assistant message - this is the critical fix
+    // Extract assistant message
     const assistantMessage = extractAssistantMessage(data);
     let fallbackUsed = data.fallback_used || false;
     let fallbackReason = data.fallback_reason || '';
@@ -148,7 +142,6 @@ serve(async (req) => {
 
     let finalResponse = assistantMessage.content;
     let toolsUsed: any[] = [];
-    let selfReflection = '';
     let toolProgress: any[] = [];
 
     // Execute tools if the model chose to use them
@@ -182,12 +175,9 @@ serve(async (req) => {
         finalResponse = createFallbackResponse(message, toolsUsed);
       }
       
-      selfReflection = `Used ${toolsUsed.length} tools for ${toolDecision.detectedType} request.`;
-      
       console.log('Tool execution and synthesis completed successfully');
     } else {
       console.log('AI model chose not to use tools - providing direct response');
-      selfReflection = `Direct response for ${toolDecision.detectedType} request - no tools needed.`;
     }
 
     // Store assistant response in database
@@ -198,8 +188,6 @@ serve(async (req) => {
         role: 'assistant',
         content: finalResponse,
         tools_used: toolsUsed,
-        self_reflection: selfReflection,
-        tool_decision: toolDecision,
         created_at: new Date().toISOString()
       });
     }
@@ -217,11 +205,9 @@ serve(async (req) => {
           result: t.result
         })),
         toolProgress,
-        selfReflection,
         sessionId,
         fallbackUsed,
-        fallbackReason,
-        toolDecision
+        fallbackReason
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

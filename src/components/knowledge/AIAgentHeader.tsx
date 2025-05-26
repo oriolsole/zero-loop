@@ -5,8 +5,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Bot, Cloud, HardDrive, Zap, Settings, MessageSquare, Plus } from 'lucide-react';
 import { ModelProvider } from '@/services/modelProviderService';
-import ProgressPhaseIndicator from './ProgressPhaseIndicator';
-import { AIPhase } from './ProgressPhaseIndicator';
 
 interface AIAgentHeaderProps {
   modelSettings: {
@@ -17,9 +15,6 @@ interface AIAgentHeaderProps {
   onToggleSessions: () => void;
   onNewSession: () => void;
   isLoading: boolean;
-  currentPhase: AIPhase;
-  phaseDetails: string;
-  estimatedTimeRemaining: number;
 }
 
 const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
@@ -27,10 +22,7 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
   showSessions,
   onToggleSessions,
   onNewSession,
-  isLoading,
-  currentPhase,
-  phaseDetails,
-  estimatedTimeRemaining
+  isLoading
 }) => {
   const getProviderIcon = (provider: ModelProvider) => {
     switch (provider) {
@@ -59,64 +51,55 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
   };
 
   return (
-    <>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            AI Agent Chat
-          </CardTitle>
-          
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="flex items-center gap-1">
-              {getProviderIcon(modelSettings.provider)}
-              <span className="text-xs font-medium">
-                {modelSettings.provider.toUpperCase()}
-                {modelSettings.selectedModel && ` - ${modelSettings.selectedModel}`}
-              </span>
-              <div className={`w-2 h-2 rounded-full ${getProviderColor(modelSettings.provider)}`} />
-            </Badge>
-          </div>
-        </div>
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <CardTitle className="flex items-center gap-2">
+          <Bot className="h-5 w-5" />
+          AI Agent Chat
+          {isLoading && (
+            <span className="text-sm text-muted-foreground ml-2">Thinking...</span>
+          )}
+        </CardTitle>
         
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.location.href = '/settings'}
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            Model Settings
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onToggleSessions}
-          >
-            <MessageSquare className="h-4 w-4 mr-2" />
-            {showSessions ? 'Hide' : 'Show'} History
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onNewSession}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Chat
-          </Button>
+          <Badge variant="outline" className="flex items-center gap-1">
+            {getProviderIcon(modelSettings.provider)}
+            <span className="text-xs font-medium">
+              {modelSettings.provider.toUpperCase()}
+              {modelSettings.selectedModel && ` - ${modelSettings.selectedModel}`}
+            </span>
+            <div className={`w-2 h-2 rounded-full ${getProviderColor(modelSettings.provider)}`} />
+          </Badge>
         </div>
       </div>
-
-      {(isLoading && currentPhase !== 'analyzing') && (
-        <div className="mt-4">
-          <ProgressPhaseIndicator 
-            currentPhase={currentPhase}
-            phaseDetails={phaseDetails}
-            estimatedTimeRemaining={estimatedTimeRemaining}
-          />
-        </div>
-      )}
-    </>
+      
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => window.location.href = '/settings'}
+        >
+          <Settings className="h-4 w-4 mr-2" />
+          Model Settings
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onToggleSessions}
+        >
+          <MessageSquare className="h-4 w-4 mr-2" />
+          {showSessions ? 'Hide' : 'Show'} History
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onNewSession}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          New Chat
+        </Button>
+      </div>
+    </div>
   );
 };
 

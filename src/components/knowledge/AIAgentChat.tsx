@@ -7,7 +7,6 @@ import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConve
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
-import { useAIPhases } from '@/hooks/useAIPhases';
 import { useConversationContext } from '@/hooks/useConversationContext';
 import AIAgentHeader from './AIAgentHeader';
 import AIAgentChatInterface from './AIAgentChatInterface';
@@ -34,14 +33,6 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
 
-  const {
-    currentPhase,
-    phaseDetails,
-    estimatedTimeRemaining,
-    setPhase,
-    resetPhases
-  } = useAIPhases();
-  
   const {
     tools,
     isActive: toolsActive,
@@ -112,11 +103,8 @@ const AIAgentChat: React.FC = () => {
 
     setIsLoading(true);
     clearTools();
-    resetPhases();
 
     try {
-      setPhase('analyzing', 'Analyzing your request...');
-      
       const conversationHistory = getConversationHistory();
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
@@ -144,8 +132,7 @@ const AIAgentChat: React.FC = () => {
         content: data.message,
         timestamp: new Date(),
         messageType: 'response',
-        toolsUsed: data.toolsUsed || [],
-        selfReflection: data.selfReflection
+        toolsUsed: data.toolsUsed || []
       };
 
       addMessage(assistantMessage);
@@ -175,7 +162,6 @@ const AIAgentChat: React.FC = () => {
       addMessage(errorMessage);
     } finally {
       setIsLoading(false);
-      resetPhases();
     }
   };
 
@@ -217,9 +203,6 @@ const AIAgentChat: React.FC = () => {
             onToggleSessions={() => setShowSessions(!showSessions)}
             onNewSession={startNewSession}
             isLoading={isLoading}
-            currentPhase={currentPhase}
-            phaseDetails={phaseDetails}
-            estimatedTimeRemaining={estimatedTimeRemaining}
           />
         </CardHeader>
         
