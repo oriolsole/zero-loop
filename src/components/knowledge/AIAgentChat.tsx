@@ -7,7 +7,6 @@ import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConve
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
-import { EnhancedToolDecision } from './EnhancedToolDecision';
 import { useEnhancedToolDecision } from '@/hooks/useEnhancedToolDecision';
 import { useAIPhases } from '@/hooks/useAIPhases';
 import { useConversationContext } from '@/hooks/useConversationContext';
@@ -25,6 +24,7 @@ const AIAgentChat: React.FC = () => {
     startNewSession,
     loadSession,
     addMessage,
+    updateMessage,
     getConversationHistory,
     deleteSession
   } = useAgentConversation();
@@ -78,7 +78,7 @@ const AIAgentChat: React.FC = () => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [conversations, tools]);
+  }, [conversations]);
 
   // Load model settings on component mount and when they change
   useEffect(() => {
@@ -99,20 +99,6 @@ const AIAgentChat: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Helper function to normalize toolDecision data
-  const normalizeToolDecision = (toolDecision: any): EnhancedToolDecision => {
-    return {
-      shouldUseTools: toolDecision.shouldUseTools || false,
-      detectedType: toolDecision.detectedType || 'general',
-      reasoning: toolDecision.reasoning || 'No reasoning provided',
-      confidence: toolDecision.confidence || 0.5,
-      suggestedTools: toolDecision.suggestedTools || [],
-      complexity: toolDecision.complexity || 'simple',
-      estimatedSteps: toolDecision.estimatedSteps || 1,
-      fallbackStrategy: toolDecision.fallbackStrategy
-    };
-  };
-
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !user || !currentSessionId) return;
 
@@ -128,8 +114,20 @@ const AIAgentChat: React.FC = () => {
 
     addMessage(userMessage);
     
+    // Start analysis phase and add analysis message
     setPhase('analyzing', 'Understanding your request...', 15);
     const decision = analyzeRequest(enhancedMessage);
+    
+    const analysisMessage: ConversationMessage = {
+      id: `analysis-${Date.now()}`,
+      role: 'system',
+      content: `I'm analyzing your request... ${decision.reasoning}`,
+      timestamp: new Date(),
+      messageType: 'analysis',
+      toolDecision: decision
+    };
+    
+    addMessage(analysisMessage);
     
     setInput('');
     setIsLoading(true);
@@ -156,10 +154,21 @@ const AIAgentChat: React.FC = () => {
     try {
       const conversationHistory = getConversationHistory();
 
-      setPhase('planning', 'Processing your request...', 10);
-      if (decision.shouldUseTools) {
+      // Add planning message if tools will be used
+      if (decision.shouldUseTools && decision.suggestedTools.length > 0) {
+        const planningMessage: ConversationMessage = {
+          id: `planning-${Date.now()}`,
+          role: 'system',
+          content: `I'll use these tools to help you: ${decision.suggestedTools.map(tool => tool.replace('execute_', '')).join(', ')}`,
+          timestamp: new Date(),
+          messageType: 'planning'
+        };
+        addMessage(planningMessage);
+        
         startExecution();
         setPhase('executing', `Using ${decision.suggestedTools.length} tools...`, decision.estimatedSteps * 3);
+      } else {
+        setPhase('planning', 'Processing your request...', 10);
       }
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
@@ -183,10 +192,20 @@ const AIAgentChat: React.FC = () => {
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
-      setPhase('reflecting', 'Finalizing response...', 5);
-
-      // Process and store tool results
+      // Add tool execution messages if tools were used
       if (data.toolProgress && data.toolProgress.length > 0) {
+        const executionMessage: ConversationMessage = {
+          id: `execution-${Date.now()}`,
+          role: 'system',
+          content: 'Executing tools...',
+          timestamp: new Date(),
+          messageType: 'execution',
+          toolProgress: data.toolProgress,
+          isStreaming: false
+        };
+        addMessage(executionMessage);
+
+        // Process tool results
         data.toolProgress.forEach((toolItem: any) => {
           nextStep();
           
@@ -233,11 +252,13 @@ const AIAgentChat: React.FC = () => {
       completeExecution();
       setPhase('completed', 'Done');
 
+      // Add final response message
       const assistantMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.message,
         timestamp: new Date(),
+        messageType: 'response',
         toolsUsed: data.toolsUsed || [],
         selfReflection: data.selfReflection,
         toolDecision: data.toolDecision
@@ -307,10 +328,6 @@ const AIAgentChat: React.FC = () => {
             currentPhase={currentPhase}
             phaseDetails={phaseDetails}
             estimatedTimeRemaining={estimatedTimeRemaining}
-            toolDecision={toolDecision}
-            isExecuting={isExecuting}
-            currentStep={currentStep}
-            normalizeToolDecision={normalizeToolDecision}
           />
         </CardHeader>
         
@@ -320,7 +337,6 @@ const AIAgentChat: React.FC = () => {
           modelSettings={modelSettings}
           tools={tools}
           toolsActive={toolsActive}
-          normalizeToolDecision={normalizeToolDecision}
           scrollAreaRef={scrollAreaRef}
         />
         

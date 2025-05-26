@@ -1,207 +1,176 @@
-import { useState, useCallback, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+
+import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface ConversationMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system' | 'tool-progress';
   content: string;
   timestamp: Date;
   toolsUsed?: any[];
   selfReflection?: string;
-  toolDecision?: {
-    shouldUseTools: boolean;
-    detectedType: string;
-    reasoning: string;
-    confidence: number;
-    suggestedTools?: string[];
-  };
+  toolDecision?: any;
+  messageType?: 'analysis' | 'planning' | 'execution' | 'response' | 'tool-update';
+  isStreaming?: boolean;
+  toolProgress?: any[];
 }
 
 export interface ConversationSession {
   id: string;
   title: string;
-  lastMessage: Date;
-  messageCount: number;
+  created_at: Date;
+  updated_at: Date;
 }
 
-export function useAgentConversation() {
+export const useAgentConversation = () => {
   const { user } = useAuth();
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationMessage[]>([]);
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
 
-  // Generate a new session ID
-  const generateSessionId = () => {
-    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const generateSessionTitle = (firstMessage: string): string => {
+    const truncated = firstMessage.length > 50 
+      ? firstMessage.substring(0, 50) + '...' 
+      : firstMessage;
+    return truncated;
   };
 
-  // Start a new conversation session
-  const startNewSession = () => {
-    const newSessionId = generateSessionId();
-    setCurrentSessionId(newSessionId);
-    setConversations([]);
-    return newSessionId;
-  };
-
-  // Load conversation history for a session
-  const loadSession = async (sessionId: string) => {
+  const startNewSession = useCallback(async () => {
     if (!user) return;
 
-    setIsLoading(true);
+    const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    setCurrentSessionId(sessionId);
+    setConversations([]);
+    
+    const newSession: ConversationSession = {
+      id: sessionId,
+      title: 'New Conversation',
+      created_at: new Date(),
+      updated_at: new Date()
+    };
+    
+    setSessions(prev => [newSession, ...prev]);
+  }, [user]);
+
+  const addMessage = useCallback(async (message: ConversationMessage) => {
+    if (!currentSessionId || !user) return;
+
+    setConversations(prev => [...prev, message]);
+
+    // Update session title if this is the first user message
+    if (message.role === 'user' && conversations.length === 0) {
+      const title = generateSessionTitle(message.content);
+      setSessions(prev => prev.map(session => 
+        session.id === currentSessionId 
+          ? { ...session, title, updated_at: new Date() }
+          : session
+      ));
+    }
+
+    try {
+      await supabase
+        .from('agent_conversations')
+        .insert({
+          session_id: currentSessionId,
+          user_id: user.id,
+          role: message.role,
+          content: message.content,
+          message_type: message.messageType,
+          tools_used: message.toolsUsed,
+          self_reflection: message.selfReflection,
+          tool_decision: message.toolDecision,
+          tool_progress: message.toolProgress,
+          timestamp: message.timestamp.toISOString()
+        });
+    } catch (error) {
+      console.error('Error saving message:', error);
+    }
+  }, [currentSessionId, user, conversations.length]);
+
+  const updateMessage = useCallback((messageId: string, updates: Partial<ConversationMessage>) => {
+    setConversations(prev => prev.map(msg => 
+      msg.id === messageId ? { ...msg, ...updates } : msg
+    ));
+  }, []);
+
+  const loadSession = useCallback(async (sessionId: string) => {
+    if (!user) return;
+
+    setCurrentSessionId(sessionId);
+    
     try {
       const { data, error } = await supabase
         .from('agent_conversations')
         .select('*')
-        .eq('user_id', user.id)
         .eq('session_id', sessionId)
-        .order('created_at', { ascending: true });
+        .eq('user_id', user.id)
+        .order('timestamp', { ascending: true });
 
       if (error) throw error;
 
-      const messages: ConversationMessage[] = (data || []).map(row => ({
-        id: row.id,
-        role: row.role as 'user' | 'assistant',
+      const messages: ConversationMessage[] = data.map(row => ({
+        id: row.id.toString(),
+        role: row.role as ConversationMessage['role'],
         content: row.content,
-        timestamp: new Date(row.created_at),
-        toolsUsed: Array.isArray(row.tools_used) ? row.tools_used as any[] : undefined,
-        selfReflection: row.self_reflection || undefined,
-        toolDecision: row.tool_decision ? {
-          shouldUseTools: (row.tool_decision as any).should_use_tools,
-          detectedType: (row.tool_decision as any).detected_type,
-          reasoning: (row.tool_decision as any).reasoning,
-          confidence: (row.tool_decision as any).confidence,
-          suggestedTools: (row.tool_decision as any).suggested_tools
-        } : undefined
+        timestamp: new Date(row.timestamp),
+        messageType: row.message_type,
+        toolsUsed: row.tools_used,
+        selfReflection: row.self_reflection,
+        toolDecision: row.tool_decision,
+        toolProgress: row.tool_progress
       }));
 
       setConversations(messages);
-      setCurrentSessionId(sessionId);
     } catch (error) {
       console.error('Error loading session:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load conversation history",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, [user]);
 
-  // Load available sessions
-  const loadSessions = async () => {
+  const deleteSession = useCallback(async (sessionId: string) => {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
+      await supabase
         .from('agent_conversations')
-        .select('session_id, created_at, content')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id);
 
-      if (error) throw error;
-
-      // Group by session and create session summaries
-      const sessionMap = new Map<string, ConversationSession>();
+      setSessions(prev => prev.filter(session => session.id !== sessionId));
       
-      (data || []).forEach(row => {
-        const sessionId = row.session_id;
-        if (!sessionMap.has(sessionId)) {
-          sessionMap.set(sessionId, {
-            id: sessionId,
-            title: row.content.slice(0, 50) + (row.content.length > 50 ? '...' : ''),
-            lastMessage: new Date(row.created_at),
-            messageCount: 1
-          });
-        } else {
-          const session = sessionMap.get(sessionId)!;
-          session.messageCount++;
-          if (new Date(row.created_at) > session.lastMessage) {
-            session.lastMessage = new Date(row.created_at);
-          }
-        }
-      });
-
-      setSessions(Array.from(sessionMap.values()));
+      if (currentSessionId === sessionId) {
+        setCurrentSessionId(null);
+        setConversations([]);
+      }
     } catch (error) {
-      console.error('Error loading sessions:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load conversation sessions",
-        variant: "destructive"
-      });
+      console.error('Error deleting session:', error);
     }
-  };
+  }, [user, currentSessionId]);
 
-  // Add message to current conversation
-  const addMessage = (message: ConversationMessage) => {
-    setConversations(prev => [...prev, message]);
-  };
-
-  // Get conversation history for API calls
-  const getConversationHistory = () => {
-    return conversations.map(msg => ({
+  const getConversationHistory = useCallback(() => {
+    return conversations.filter(msg => msg.role === 'user' || msg.role === 'assistant').map(msg => ({
       role: msg.role,
       content: msg.content
     }));
-  };
+  }, [conversations]);
 
-  // Delete a session
-  const deleteSession = async (sessionId: string) => {
-    if (!user) return;
-
-    try {
-      const { error } = await supabase
-        .from('agent_conversations')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('session_id', sessionId);
-
-      if (error) throw error;
-
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
-      
-      if (currentSessionId === sessionId) {
-        startNewSession();
-      }
-
-      toast({
-        title: "Success",
-        description: "Conversation deleted"
-      });
-    } catch (error) {
-      console.error('Error deleting session:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete conversation",
-        variant: "destructive"
-      });
+  // Initialize with a new session if none exists
+  React.useEffect(() => {
+    if (user && !currentSessionId) {
+      startNewSession();
     }
-  };
-
-  // Load sessions when user changes
-  useEffect(() => {
-    if (user) {
-      loadSessions();
-      if (!currentSessionId) {
-        startNewSession();
-      }
-    }
-  }, [user]);
+  }, [user, currentSessionId, startNewSession]);
 
   return {
     currentSessionId,
     conversations,
     sessions,
-    isLoading,
     startNewSession,
     loadSession,
-    loadSessions,
     addMessage,
-    getConversationHistory,
-    deleteSession
+    updateMessage,
+    deleteSession,
+    getConversationHistory
   };
-}
+};

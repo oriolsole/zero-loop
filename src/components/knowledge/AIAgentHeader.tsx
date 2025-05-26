@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Bot, Cloud, HardDrive, Zap, Settings, MessageSquare, Plus } from 'lucide-react';
 import { ModelProvider } from '@/services/modelProviderService';
 import ProgressPhaseIndicator from './ProgressPhaseIndicator';
-import EnhancedToolDecisionDisplay, { EnhancedToolDecision } from './EnhancedToolDecision';
 import { AIPhase } from './ProgressPhaseIndicator';
 
 interface AIAgentHeaderProps {
@@ -21,10 +20,6 @@ interface AIAgentHeaderProps {
   currentPhase: AIPhase;
   phaseDetails: string;
   estimatedTimeRemaining: number;
-  toolDecision: any;
-  isExecuting: boolean;
-  currentStep: number;
-  normalizeToolDecision: (decision: any) => EnhancedToolDecision;
 }
 
 const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
@@ -35,11 +30,7 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
   isLoading,
   currentPhase,
   phaseDetails,
-  estimatedTimeRemaining,
-  toolDecision,
-  isExecuting,
-  currentStep,
-  normalizeToolDecision
+  estimatedTimeRemaining
 }) => {
   const getProviderIcon = (provider: ModelProvider) => {
     switch (provider) {
@@ -116,21 +107,13 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
         </div>
       </div>
 
-      {(isLoading || currentPhase !== 'analyzing') && (
-        <div className="mt-4 space-y-3">
+      {(isLoading && currentPhase !== 'analyzing') && (
+        <div className="mt-4">
           <ProgressPhaseIndicator 
             currentPhase={currentPhase}
             phaseDetails={phaseDetails}
             estimatedTimeRemaining={estimatedTimeRemaining}
           />
-          
-          {toolDecision && (
-            <EnhancedToolDecisionDisplay 
-              decision={normalizeToolDecision(toolDecision)}
-              isExecuting={isExecuting}
-              currentStep={currentStep}
-            />
-          )}
         </div>
       )}
     </>

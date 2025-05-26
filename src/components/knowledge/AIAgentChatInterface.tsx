@@ -7,9 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Bot, Loader2 } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
-import { EnhancedToolDecision } from './EnhancedToolDecision';
 import { ToolProgressItem } from '@/types/tools';
-import ToolProgressStream from './ToolProgressStream';
 import AIAgentMessage from './AIAgentMessage';
 
 interface AIAgentChatInterfaceProps {
@@ -21,7 +19,6 @@ interface AIAgentChatInterfaceProps {
   };
   tools: ToolProgressItem[];
   toolsActive: boolean;
-  normalizeToolDecision: (decision: any) => EnhancedToolDecision;
   scrollAreaRef: React.RefObject<HTMLDivElement>;
 }
 
@@ -31,7 +28,6 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
   modelSettings,
   tools,
   toolsActive,
-  normalizeToolDecision,
   scrollAreaRef
 }) => {
   const getProviderIcon = (provider: ModelProvider) => {
@@ -80,12 +76,11 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
             <AIAgentMessage 
               key={message.id}
               message={message}
-              normalizeToolDecision={normalizeToolDecision}
             />
           ))}
           
           {isLoading && (
-            <div className="flex justify-start">
+            <div className="flex justify-start animate-fade-in">
               <Avatar className="h-8 w-8 mt-0.5">
                 <AvatarFallback>
                   <Bot className="h-4 w-4" />
@@ -95,33 +90,9 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
                 <div className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span className="text-sm">
-                    Thinking with {modelSettings.provider.toUpperCase()}...
+                    Processing with {modelSettings.provider.toUpperCase()}...
                   </span>
                 </div>
-                
-                {(toolsActive || tools.length > 0) && (
-                  <ToolProgressStream 
-                    tools={tools}
-                    isActive={toolsActive}
-                    className="mt-3"
-                  />
-                )}
-              </div>
-            </div>
-          )}
-
-          {!isLoading && tools.length > 0 && (
-            <div className="flex justify-start">
-              <Avatar className="h-8 w-8 mt-0.5">
-                <AvatarFallback>
-                  <Bot className="h-4 w-4" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="ml-3 max-w-[80%]">
-                <ToolProgressStream 
-                  tools={tools}
-                  isActive={false}
-                />
               </div>
             </div>
           )}
