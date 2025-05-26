@@ -11,6 +11,7 @@ import { convertMCPsToTools } from './mcp-tools.ts';
 import { generateSystemPrompt } from './system-prompts.ts';
 import { extractAssistantMessage, generateSelfReflection } from './response-handler.ts';
 import { analyzeToolRequirements, logToolDecision } from './tool-decision-logger.ts';
+import { enhancedAnalyzeToolRequirements, logEnhancedToolDecision } from './enhanced-tool-decision.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -73,9 +74,22 @@ serve(async (req) => {
     const tools = convertMCPsToTools(mcps);
     console.log('Generated tools:', tools.map(t => t.function.name));
 
-    // ENHANCED TOOL DECISION ANALYSIS
-    const toolDecision = analyzeToolRequirements(message);
-    logToolDecision(toolDecision, message);
+    // ENHANCED TOOL DECISION ANALYSIS with Lovable principles
+    const enhancedDecision = enhancedAnalyzeToolRequirements(message);
+    logEnhancedToolDecision(enhancedDecision, message);
+
+    // Legacy analysis for backward compatibility
+    const legacyDecision = analyzeToolRequirements(message);
+    logToolDecision(legacyDecision, message);
+
+    // Use enhanced decision for execution logic
+    const toolDecision = {
+      shouldUseTools: enhancedDecision.shouldUseTools,
+      detectedType: enhancedDecision.detectedType,
+      reasoning: enhancedDecision.reasoning,
+      confidence: enhancedDecision.confidence,
+      suggestedTools: enhancedDecision.suggestedTools
+    };
 
     // Detect request types (legacy compatibility)
     const isSearchRequest = detectSearchRequest(message);
@@ -83,17 +97,21 @@ serve(async (req) => {
 
     console.log('Legacy detection - Is search request:', isSearchRequest);
     console.log('Legacy detection - Is GitHub request:', isGitHubRequest, githubInfo);
-    console.log('Enhanced detection - Tool decision:', toolDecision);
+    console.log('Enhanced detection - Tool decision:', enhancedDecision);
 
     // Generate system prompt with enhanced tool usage instructions
     let enhancedSystemPrompt = generateSystemPrompt(mcps, isSearchRequest, isGitHubRequest);
     
-    // Add aggressive tool usage instructions based on decision analysis
-    if (toolDecision.shouldUseTools) {
-      enhancedSystemPrompt += `\n\n**CRITICAL TOOL EXECUTION DIRECTIVE**: 
-Based on analysis, this message REQUIRES tool usage. Type: ${toolDecision.detectedType}
-Reasoning: ${toolDecision.reasoning}
-Required tools: ${toolDecision.suggestedTools.join(', ')}
+    // Add enhanced directive based on complexity and confidence
+    if (enhancedDecision.shouldUseTools) {
+      enhancedSystemPrompt += `\n\n**ENHANCED TOOL EXECUTION DIRECTIVE**: 
+Based on enhanced analysis, this message REQUIRES tool usage with ${enhancedDecision.confidence.toFixed(2)} confidence.
+Request Type: ${enhancedDecision.detectedType}
+Complexity: ${enhancedDecision.complexity}
+Execution Plan: ${enhancedDecision.estimatedSteps} steps
+Reasoning: ${enhancedDecision.reasoning}
+Required tools: ${enhancedDecision.suggestedTools.join(', ')}
+${enhancedDecision.fallbackStrategy ? `Fallback: ${enhancedDecision.fallbackStrategy}` : ''}
 You MUST generate appropriate tool calls for this request. Do not provide generic responses.`;
     }
 
@@ -110,11 +128,13 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
       }
     ];
 
-    // Use auto tool choice but with strong system prompt enforcement
+    // Use tool choice based on enhanced confidence
+    const toolChoice = enhancedDecision.shouldUseTools && enhancedDecision.confidence > 0.7 ? 'required' : 'auto';
+
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: toolDecision.shouldUseTools ? 'required' : 'auto',
+      tool_choice: toolChoice,
       temperature: 0.7,
       max_tokens: 2000,
       stream: streaming,
@@ -126,7 +146,7 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
       })
     };
 
-    console.log('Calling AI model proxy with tools:', tools.length, 'tool_choice:', toolDecision.shouldUseTools ? 'required' : 'auto');
+    console.log('Calling AI model proxy with enhanced analysis - tools:', tools.length, 'tool_choice:', toolChoice, 'confidence:', enhancedDecision.confidence);
 
     const response = await supabase.functions.invoke('ai-model-proxy', {
       body: modelRequestBody
@@ -164,14 +184,14 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
     let selfReflection = '';
     let toolProgress: any[] = [];
 
-    // ENHANCED FORCED TOOL EXECUTION
-    // Check if tools should be used but weren't called by the AI model
-    if (toolDecision.shouldUseTools && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
-      console.log('AI MODEL FAILED TO GENERATE REQUIRED TOOL CALLS - FORCING EXECUTION');
-      console.log('Tool decision analysis indicated tools were required but AI model did not generate tool calls');
+    // ENHANCED FORCED TOOL EXECUTION with fallback strategies
+    if (enhancedDecision.shouldUseTools && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
+      console.log('AI MODEL FAILED TO GENERATE REQUIRED TOOL CALLS - APPLYING ENHANCED FALLBACK STRATEGY');
+      console.log('Enhanced decision analysis indicated tools were required but AI model did not generate tool calls');
+      console.log('Fallback strategy:', enhancedDecision.fallbackStrategy);
       
       const forcedResult = await executeBasedOnDecision(
-        toolDecision,
+        toolDecision, // Use legacy format for compatibility
         message,
         githubInfo,
         mcps,
@@ -184,11 +204,18 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
         toolsUsed = forcedResult.toolsUsed;
         toolProgress = forcedResult.toolProgress;
         selfReflection = forcedResult.selfReflection;
+        
+        // Enhance reflection with fallback information
+        selfReflection += `\n\nFallback Execution: Applied enhanced fallback strategy due to AI model not generating expected tool calls. ${enhancedDecision.fallbackStrategy}`;
+      } else if (enhancedDecision.fallbackStrategy) {
+        // Apply fallback strategy as text response
+        finalResponse = `I understand you're looking for ${enhancedDecision.detectedType} information. ${enhancedDecision.fallbackStrategy}`;
+        selfReflection = `Applied fallback strategy due to tool execution failure: ${enhancedDecision.fallbackStrategy}`;
       }
     }
     // Enhanced tool execution with detailed progress tracking
     else if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-      console.log('AI MODEL GENERATED TOOL CALLS - EXECUTING NORMALLY');
+      console.log('AI MODEL GENERATED TOOL CALLS - EXECUTING WITH ENHANCED MONITORING');
       const { toolResults, toolsUsed: executedTools, toolProgress: progress } = await executeTools(
         assistantMessage.tool_calls,
         mcps,
@@ -199,27 +226,34 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
       toolsUsed = executedTools;
       toolProgress = progress;
       
-      console.log('Tool execution summary:', {
+      console.log('Enhanced tool execution summary:', {
         total: toolsUsed.length,
         successful: toolsUsed.filter(t => t.success).length,
-        failed: toolsUsed.filter(t => !t.success).length
+        failed: toolsUsed.filter(t => !t.success).length,
+        expectedSteps: enhancedDecision.estimatedSteps,
+        actualSteps: toolsUsed.length
       });
       
-      // Make another AI call with the tool results and self-reflection
+      // Make another AI call with the tool results and enhanced reflection
       const followUpMessages = [
         ...messages,
         assistantMessage,
         ...toolResults,
         {
           role: 'system',
-          content: `Now reflect on the tool results. Assess:
-1. Did the tools provide useful information for the user's request?
-2. Are there any gaps or issues with the results?
-3. Should you recommend additional actions or tools?
-4. If tools failed, explain what went wrong and suggest alternatives
+          content: `Enhanced reflection based on execution plan analysis:
+Expected ${enhancedDecision.estimatedSteps} steps with ${enhancedDecision.complexity} complexity.
+Actual execution: ${toolsUsed.length} tools used.
+Success rate: ${toolsUsed.filter(t => t.success).length}/${toolsUsed.length}
+
+Reflect on:
+1. Did the tools provide the expected information for this ${enhancedDecision.detectedType} request?
+2. How well did the execution match the planned complexity (${enhancedDecision.complexity})?
+3. Are there any gaps that need the fallback strategy: "${enhancedDecision.fallbackStrategy}"?
+4. Should additional tools be recommended for better results?
 5. Provide a clear, helpful response based on all available information.
 
-Be transparent about any limitations or failures. If GitHub tools failed, mention that the user should check their GitHub token configuration.`
+Be transparent about any limitations or failures. If tools failed, explain what went wrong and apply the fallback strategy if needed.`
         }
       ];
       
@@ -235,7 +269,7 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
         })
       };
 
-      console.log('Making follow-up call with tool results');
+      console.log('Making enhanced follow-up call with execution analysis');
 
       const followUpResponse = await supabase.functions.invoke('ai-model-proxy', {
         body: followUpRequestBody
@@ -263,14 +297,15 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
       
       // Generate enhanced self-reflection summary
       selfReflection = generateSelfReflection(toolsUsed, toolProgress);
+      selfReflection += `\n\nEnhanced Analysis: Executed ${enhancedDecision.detectedType} request with ${enhancedDecision.complexity} complexity. Expected ${enhancedDecision.estimatedSteps} steps, used ${toolsUsed.length} tools. Confidence: ${enhancedDecision.confidence.toFixed(2)}.`;
 
-      console.log('Follow-up response completed successfully');
+      console.log('Enhanced follow-up response completed successfully');
     } else {
       console.log('No tool calls were made by the AI model and none were forced');
-      selfReflection = `No tools were used for this request. Tool decision analysis: ${toolDecision.reasoning}`;
+      selfReflection = `No tools were used for this request. Enhanced analysis: ${enhancedDecision.reasoning} (Confidence: ${enhancedDecision.confidence.toFixed(2)})`;
     }
 
-    // Store assistant response in database
+    // Store assistant response in database with enhanced decision data
     if (userId && sessionId) {
       await supabase.from('agent_conversations').insert({
         user_id: userId,
@@ -279,11 +314,12 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
         content: finalResponse,
         tools_used: toolsUsed,
         self_reflection: selfReflection,
+        tool_decision: enhancedDecision, // Store the full enhanced decision
         created_at: new Date().toISOString()
       });
     }
 
-    console.log('Returning response with', toolsUsed.length, 'tools used');
+    console.log('Returning enhanced response with', toolsUsed.length, 'tools used');
 
     return new Response(
       JSON.stringify({
@@ -300,12 +336,7 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
         sessionId,
         fallbackUsed,
         fallbackReason,
-        toolDecision: {
-          shouldUseTools: toolDecision.shouldUseTools,
-          detectedType: toolDecision.detectedType,
-          reasoning: toolDecision.reasoning,
-          confidence: toolDecision.confidence
-        }
+        toolDecision: enhancedDecision // Return the enhanced decision
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
