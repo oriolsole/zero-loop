@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -112,7 +111,10 @@ serve(async (req) => {
                            lowerMessage.includes('find') || 
                            lowerMessage.includes('look up') ||
                            lowerMessage.includes('information about') ||
-                           lowerMessage.includes('tell me about');
+                           lowerMessage.includes('tell me about') ||
+                           lowerMessage.includes('knowledge base');
+
+    console.log('Is search request:', isSearchRequest);
 
     // Enhanced system prompt with mandatory tool usage for searches
     const systemPrompt = `You are an advanced AI agent with access to various tools and self-reflection capabilities. You can help users by:
@@ -161,14 +163,11 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
       }
     ];
 
-    // Use mandatory tool choice for search requests
-    const toolChoice = isSearchRequest ? 'required' : 'auto';
-
-    // Use the ai-model-proxy instead of calling OpenAI directly
+    // Use auto tool choice but with strong system prompt enforcement
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: toolChoice,
+      tool_choice: 'auto', // Changed from 'required' to 'auto' for better compatibility
       temperature: 0.7,
       max_tokens: 2000,
       stream: streaming,
@@ -180,7 +179,7 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
       })
     };
 
-    console.log('Calling AI model proxy with tools:', tools.length, 'tool_choice:', toolChoice);
+    console.log('Calling AI model proxy with tools:', tools.length, 'tool_choice: auto');
 
     const response = await supabase.functions.invoke('ai-model-proxy', {
       body: modelRequestBody
@@ -252,10 +251,106 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
     let selfReflection = '';
     let toolProgress: any[] = [];
 
+    // Check if this was a search request but no tools were called - FORCE tool execution
+    if (isSearchRequest && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
+      console.log('Search request detected but no tools called - forcing knowledge search');
+      
+      // Force a knowledge base search as fallback
+      const searchMcp = mcps?.find(m => m.default_key === 'knowledge-search-v2');
+      if (searchMcp) {
+        console.log('Forcing knowledge base search with query:', message);
+        
+        const toolProgressItem = {
+          id: `tool-${Date.now()}-forced`,
+          name: 'execute_knowledge-search-v2',
+          displayName: 'Knowledge Base Search (Forced)',
+          status: 'executing',
+          startTime: new Date().toISOString(),
+          parameters: { query: message, limit: 5 },
+          progress: 50
+        };
+        toolProgress.push(toolProgressItem);
+        
+        try {
+          const { data: edgeResult, error: edgeError } = await supabase.functions.invoke('knowledge-proxy', {
+            body: {
+              action: 'search',
+              parameters: {
+                query: message,
+                limit: 5,
+                includeNodes: true,
+                matchThreshold: 0.5
+              }
+            }
+          });
+          
+          if (edgeError) {
+            throw new Error(`Knowledge search error: ${edgeError.message}`);
+          }
+          
+          let searchResults = edgeResult;
+          if (edgeResult && edgeResult.results) {
+            searchResults = edgeResult.results;
+          }
+          
+          toolProgress[0].status = 'completed';
+          toolProgress[0].endTime = new Date().toISOString();
+          toolProgress[0].progress = 100;
+          toolProgress[0].result = searchResults;
+          
+          toolsUsed.push({
+            name: 'execute_knowledge-search-v2',
+            parameters: { query: message, limit: 5 },
+            result: searchResults,
+            success: true
+          });
+          
+          // Generate response based on search results
+          if (searchResults && searchResults.length > 0) {
+            finalResponse = `I searched your knowledge base for "${message}" and found ${searchResults.length} relevant results:\n\n`;
+            
+            searchResults.slice(0, 3).forEach((result: any, index: number) => {
+              finalResponse += `${index + 1}. **${result.title}**\n`;
+              if (result.content) {
+                finalResponse += `   ${result.content.substring(0, 200)}${result.content.length > 200 ? '...' : ''}\n\n`;
+              }
+            });
+            
+            if (searchResults.length > 3) {
+              finalResponse += `...and ${searchResults.length - 3} more results in your knowledge base.`;
+            }
+          } else {
+            finalResponse = `I searched your knowledge base for "${message}" but didn't find any relevant results. You might want to add more information to your knowledge base or try rephrasing your search query.`;
+          }
+          
+          selfReflection = `Forced knowledge base search due to AI not using tools. Found ${searchResults?.length || 0} results.`;
+          
+        } catch (error) {
+          console.error('Forced tool execution failed:', error);
+          toolProgress[0].status = 'failed';
+          toolProgress[0].error = error.message;
+          
+          toolsUsed.push({
+            name: 'execute_knowledge-search-v2',
+            parameters: { query: message, limit: 5 },
+            result: { error: error.message },
+            success: false
+          });
+          
+          finalResponse = `I tried to search your knowledge base for "${message}" but encountered an error. The search functionality might need to be configured properly.`;
+          selfReflection = `Forced tool execution failed: ${error.message}`;
+        }
+      } else {
+        finalResponse = `I understand you're looking for information about "${message}". However, the search tools are not properly configured. Please ensure your knowledge base and search tools are set up correctly.`;
+        selfReflection = 'Search request detected but no working search tools available';
+      }
+    }
     // Enhanced tool execution with detailed progress tracking
-    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+    else if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       console.log('Processing', assistantMessage.tool_calls.length, 'tool calls');
       const toolResults = [];
+      
+      // ... keep existing code (tool execution logic)
       
       for (const toolCall of assistantMessage.tool_calls) {
         const functionName = toolCall.function.name;
@@ -514,6 +609,7 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
       console.log('Follow-up response completed successfully');
     } else {
       console.log('No tool calls were made by the AI model');
+      selfReflection = 'No tools were used for this request';
     }
 
     // Store assistant response in database
