@@ -134,14 +134,27 @@ export const createLoopActions = (
     const currentLoop = [...domain.currentLoop];
     const nextStepIndex = currentStepIndex + 1;
     
-    // FIXED: Validate current step has been completed successfully before advancing
+    // UPDATED: More flexible validation - allow advancement for learning from failures
     const currentStep = currentLoop[currentStepIndex];
-    if (currentStep.status !== 'success') {
-      console.log("Cannot advance: current step is not successful", {
+    
+    // Only require success for the initial task generation (need something to work with)
+    // For all other steps, allow advancement to learn from both success and failure
+    if (currentStep.type === 'task' && currentStep.status !== 'success') {
+      console.log("Cannot advance: task generation must be successful", {
         stepType: currentStep.type,
         stepStatus: currentStep.status
       });
-      toast.error("Cannot advance: current step needs to be completed successfully first");
+      toast.error("Task generation must be completed successfully before proceeding");
+      return;
+    }
+    
+    // For non-task steps, allow advancement as long as step is not pending
+    if (currentStep.status === 'pending') {
+      console.log("Cannot advance: current step is still pending", {
+        stepType: currentStep.type,
+        stepStatus: currentStep.status
+      });
+      toast.error("Please wait for the current step to complete");
       return;
     }
     
@@ -195,7 +208,7 @@ export const createLoopActions = (
         return; // No more steps
     }
     
-    console.log(`Advancing to next step: ${nextStep.type}`);
+    console.log(`Advancing to next step: ${nextStep.type} (learning from previous step: ${currentStep.status})`);
     
     // Add the next step to the loop with pending status
     currentLoop.push(nextStep);
@@ -277,24 +290,35 @@ export const createLoopActions = (
           const verificationContent = typeof verificationData === 'object' && verificationData !== null
             ? verificationData.content
             : String(verificationData);
+          
+          // ENHANCED: Pass previous step status to reflection for learning from failures
+          const previousStepStatus = currentLoop[currentStepIndex].status;
+          const wasSuccessful = previousStepStatus === 'success';
+          
+          // Enhanced reflection prompt to include failure analysis
+          const reflectionContext = wasSuccessful 
+            ? "The previous verification was successful. Analyze what worked well."
+            : "The previous verification failed. Analyze what went wrong and how to improve.";
             
           // Use either reflectOnTask or reflect, whichever is available
           result = engine.reflectOnTask
             ? await engine.reflectOnTask(
                 currentLoop[0].content,
                 currentLoop[1].content || String(currentLoop[1]),
-                verificationContent
+                verificationContent + "\n\nContext: " + reflectionContext
               )
             : await engine.reflect(
                 currentLoop[0].content,
                 currentLoop[1].content || String(currentLoop[1]),
-                verificationContent,
+                verificationContent + "\n\nContext: " + reflectionContext,
                 activeDomainId
               );
           
-          metrics = { insightCount: typeof result === 'object' && result !== null
-            ? String(result.content).split('.').length - 1 
-            : String(result).split('.').length - 1 
+          metrics = { 
+            insightCount: typeof result === 'object' && result !== null
+              ? String(result.content).split('.').length - 1 
+              : String(result).split('.').length - 1,
+            learnedFromFailure: !wasSuccessful
           };
           
           // Check for knowledge insights in reflection
@@ -353,9 +377,23 @@ export const createLoopActions = (
         content = String(result);
       }
       
-      const status = content.toLowerCase().includes('error') || 
-                   (nextStep.type === 'verification' && content.toLowerCase().includes('incorrect')) 
-                   ? 'failure' : 'success';
+      // UPDATED: More nuanced status determination
+      let status: 'success' | 'failure' = 'success';
+      
+      // For verification step, determine status based on correctness
+      if (nextStep.type === 'verification') {
+        if (typeof result === 'object' && 'isCorrect' in result) {
+          status = result.isCorrect ? 'success' : 'failure';
+        } else {
+          // Fallback: check if content suggests incorrectness
+          status = content.toLowerCase().includes('incorrect') || 
+                   content.toLowerCase().includes('wrong') ||
+                   content.toLowerCase().includes('failed') ? 'failure' : 'success';
+        }
+      } else {
+        // For other steps, only mark as failure if there's an explicit error
+        status = content.toLowerCase().includes('error') ? 'failure' : 'success';
+      }
       
       const updatedStep: LearningStep = {
         ...nextStep,
@@ -375,7 +413,7 @@ export const createLoopActions = (
         // Update success rate in domain metrics
         const successRate = status === 'success' 
           ? Math.min((currentDomain.metrics?.successRate || 0) + 2, 100)
-          : Math.max((currentDomain.metrics?.successRate || 0) - 5, 0);
+          : Math.max((currentDomain.metrics?.successRate || 0) - 1, 0); // Smaller penalty for learning
           
         currentDomain.metrics = {
           ...(currentDomain.metrics || {}),

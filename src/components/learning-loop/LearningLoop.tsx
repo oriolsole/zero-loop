@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useLoopStore } from '../../store/useLoopStore';
 import LearningStep from './LearningStep';
@@ -73,12 +74,19 @@ const LearningLoop: React.FC = () => {
     currentLoop.some(step => step && step.type === 'reflection') &&
     currentLoop.some(step => step && step.type === 'mutation');
   
-  const allStepsComplete = hasCompletedAllStepTypes && completedSteps.length === currentLoop.length;
-  const hasInProgressStep = currentLoop.some(step => step && step.status !== 'success' && step.status !== 'pending');
+  const allStepsComplete = hasCompletedAllStepTypes && pendingSteps.length === 0;
+  const hasInProgressStep = currentLoop.some(step => step && step.status === 'pending');
   const isLastStepPending = currentLoop.length > 0 && currentLoop[currentLoop.length - 1] ? currentLoop[currentLoop.length - 1].status === 'pending' : false;
   
-  const firstStepIsSuccess = currentLoop.length > 0 && currentLoop[0] && currentLoop[0].status === 'success';
-  const canAdvance = !isLastStepPending && !hasInProgressStep && firstStepIsSuccess && !hasCompletedAllStepTypes;
+  // UPDATED: More flexible advancement rules for learning from failures
+  const firstStepExists = currentLoop.length > 0 && currentLoop[0];
+  const firstStepIsSuccessful = firstStepExists && currentLoop[0].status === 'success';
+  
+  // Can advance if:
+  // 1. No step is currently pending (must wait for completion)
+  // 2. First step (task) is successful (need something to work with)
+  // 3. Haven't completed all step types yet
+  const canAdvance = !isLastStepPending && firstStepIsSuccessful && !hasCompletedAllStepTypes;
   
   const currentStepType = currentLoop.length > 0 && currentLoop[currentLoop.length - 1] ? currentLoop[currentLoop.length - 1].type : null;
   const nextStepType = currentStepType ? getNextStepType(currentStepType) : null;
@@ -88,7 +96,7 @@ const LearningLoop: React.FC = () => {
   useEffect(() => {
     if (currentLoop.length > 0) {
       console.log("Loop status:", {
-        firstStepIsSuccess,
+        firstStepIsSuccessful,
         canAdvance,
         allStepsComplete,
         isLastStepPending,
@@ -97,10 +105,11 @@ const LearningLoop: React.FC = () => {
         currentStepType,
         nextStepType,
         stepsCount: currentLoop.length,
-        firstStepStatus: currentLoop[0]?.status
+        firstStepStatus: currentLoop[0]?.status,
+        learningFromFailures: currentLoop.some(step => step && step.status === 'failure')
       });
     }
-  }, [currentLoop, firstStepIsSuccess, canAdvance, allStepsComplete, isLastStepPending, hasInProgressStep, hasCompletedAllStepTypes, currentStepType, nextStepType]);
+  }, [currentLoop, firstStepIsSuccessful, canAdvance, allStepsComplete, isLastStepPending, hasInProgressStep, hasCompletedAllStepTypes, currentStepType, nextStepType]);
 
   // Helper function to determine next step type
   function getNextStepType(currentType: string): string {
@@ -181,6 +190,12 @@ const LearningLoop: React.FC = () => {
           {isLoopFinished && (
             <Badge variant="outline" className="ml-2 bg-green-500/10 text-green-600 border-green-200">
               <CheckCircle className="h-3 w-3 mr-1" /> Complete
+            </Badge>
+          )}
+          {/* ADDED: Show learning indicator when we have failed steps */}
+          {currentLoop.some(step => step && step.status === 'failure') && (
+            <Badge variant="outline" className="ml-2 bg-orange-500/10 text-orange-600 border-orange-200">
+              Learning from Failures
             </Badge>
           )}
         </div>
@@ -270,16 +285,14 @@ const LearningLoop: React.FC = () => {
                         <p>
                           {isLastStepPending 
                             ? "Please wait for the current step to complete" 
-                            : !firstStepIsSuccess
-                              ? "First step is not completed successfully"
+                            : !firstStepIsSuccessful
+                              ? "Task generation must be completed successfully first"
                               : hasCompletedAllStepTypes 
                                 ? "All step types have been completed" 
-                                : hasInProgressStep 
-                                  ? "A step is currently in progress" 
-                                  : "All steps are complete"}
+                                : "Waiting for step completion"}
                         </p>
                       ) : (
-                        <p>Click to advance to the next step ({nextStepType}) in the learning process</p>
+                        <p>Click to advance to the next step ({nextStepType}) - learning from both successes and failures</p>
                       )}
                     </TooltipContent>
                   </Tooltip>
@@ -305,7 +318,16 @@ const LearningLoop: React.FC = () => {
         <Alert className="bg-green-50 border-green-200">
           <CheckCircle className="h-4 w-4 text-green-600" />
           <AlertDescription className="text-green-700">
-            Learning loop completed successfully. You can now start a new loop or review the insights generated.
+            Learning loop completed successfully. Insights have been extracted from both successes and failures. You can now start a new loop or review the knowledge gained.
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      {/* ADDED: Show information about learning from failures */}
+      {currentLoop.some(step => step && step.status === 'failure') && !isLoopFinished && (
+        <Alert className="bg-orange-50 border-orange-200">
+          <AlertDescription className="text-orange-700">
+            <strong>Learning Mode Active:</strong> The system is continuing through failed steps to extract insights and improve future performance. This is how we learn and grow!
           </AlertDescription>
         </Alert>
       )}
@@ -345,8 +367,6 @@ const LearningLoop: React.FC = () => {
           </div>
         </Card>
       )}
-
-      {/* Debug Status Card has been removed */}
       
       <Separator />
       
