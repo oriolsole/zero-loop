@@ -130,14 +130,21 @@ serve(async (req) => {
       });
     }
 
-    // Extract assistant message
+    // Extract assistant message - this is the critical fix
     const assistantMessage = extractAssistantMessage(data);
     let fallbackUsed = data.fallback_used || false;
     let fallbackReason = data.fallback_reason || '';
 
     if (!assistantMessage) {
+      console.error('Failed to extract assistant message from response:', JSON.stringify(data).substring(0, 500));
       throw new Error('No valid message content received from AI model');
     }
+
+    console.log('Successfully extracted assistant message:', {
+      hasContent: !!assistantMessage.content,
+      hasToolCalls: !!assistantMessage.tool_calls,
+      toolCallCount: assistantMessage.tool_calls?.length || 0
+    });
 
     let finalResponse = assistantMessage.content;
     let toolsUsed: any[] = [];

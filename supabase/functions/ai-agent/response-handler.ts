@@ -13,6 +13,14 @@ export function extractAssistantMessage(data: any): { content: string; role: str
   if (data.choices && Array.isArray(data.choices) && data.choices.length > 0) {
     assistantMessage = data.choices[0].message;
     console.log('Using OpenAI format - Assistant message tool calls:', assistantMessage.tool_calls?.length || 0);
+    
+    // Handle tool calls - if there are tool calls but no content, provide default content
+    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      if (!assistantMessage.content || assistantMessage.content.trim() === '') {
+        assistantMessage.content = 'I\'ll help you with that request using the available tools.';
+        console.log('Added default content for tool call response');
+      }
+    }
   }
   // Check for NPAW response format with 'result' field
   else if (data.result) {
@@ -43,8 +51,15 @@ export function extractAssistantMessage(data: any): { content: string; role: str
     return null;
   }
 
-  if (!assistantMessage || !assistantMessage.content) {
+  // Ensure we have valid content - this is critical for tool call responses
+  if (!assistantMessage || (!assistantMessage.content && !assistantMessage.tool_calls)) {
+    console.error('No valid content or tool calls in assistant message:', assistantMessage);
     return null;
+  }
+
+  // Ensure content is a string, even if empty
+  if (!assistantMessage.content) {
+    assistantMessage.content = '';
   }
 
   return assistantMessage;
