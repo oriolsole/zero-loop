@@ -193,7 +193,7 @@ export const defaultMCPs: MCP[] = [
   {
     id: uuidv4(),
     title: "Jira Tools",
-    description: "Interact with Jira projects, issues, and workflows. Create, update, search issues and manage project data.",
+    description: "Interact with Jira projects, issues, pull requests, and workflows. Create, update, search issues and manage project data. Requires Jira Cloud instance with API token.",
     endpoint: "jira-tools",
     icon: "kanban-square",
     parameters: [
@@ -280,7 +280,7 @@ export const defaultMCPs: MCP[] = [
       "List all projects and their details",
       "Search issues using JQL queries"
     ],
-    suggestedPrompt: "Create a new bug issue in project XYZ with high priority",
+    suggestedPrompt: "List all projects in my Jira instance",
     requiresAuth: true,
     authType: "api_key",
     requirestoken: "jira"

@@ -63,17 +63,42 @@ serve(async (req) => {
       throw new Error('Jira API credentials not found. Please configure your Jira API token in the settings.');
     }
 
-    // Parse Jira configuration from the secret key
+    // Parse Jira configuration from the secret key with improved handling
     let jiraConfig: JiraConfig;
     try {
-      jiraConfig = JSON.parse(secrets[0].key);
+      const secretKey = secrets[0].key;
+      
+      // Try to parse as JSON first (new format)
+      try {
+        jiraConfig = JSON.parse(secretKey);
+        
+        // Validate required fields
+        if (!jiraConfig.baseUrl || !jiraConfig.email || !jiraConfig.apiToken) {
+          throw new Error('Missing required fields in Jira configuration');
+        }
+      } catch (jsonError) {
+        // If JSON parsing fails, assume it's just an API token (legacy format)
+        throw new Error(
+          'Invalid Jira configuration format. Please update your Jira settings with the following JSON format:\n\n' +
+          '{\n' +
+          '  "baseUrl": "https://your-domain.atlassian.net",\n' +
+          '  "email": "your-email@example.com",\n' +
+          '  "apiToken": "your-api-token"\n' +
+          '}\n\n' +
+          'You can get your API token from: https://id.atlassian.com/manage-profile/security/api-tokens'
+        );
+      }
     } catch (e) {
-      throw new Error('Invalid Jira configuration format. Expected JSON with baseUrl, email, and apiToken.');
+      throw new Error(`Configuration error: ${e.message}`);
     }
 
-    if (!jiraConfig.baseUrl || !jiraConfig.email || !jiraConfig.apiToken) {
-      throw new Error('Jira configuration missing required fields: baseUrl, email, apiToken');
+    // Validate baseUrl format
+    if (!jiraConfig.baseUrl.startsWith('http')) {
+      throw new Error('Base URL must start with http:// or https://');
     }
+
+    // Remove trailing slash from baseUrl if present
+    jiraConfig.baseUrl = jiraConfig.baseUrl.replace(/\/$/, '');
 
     const authHeader = `Basic ${btoa(`${jiraConfig.email}:${jiraConfig.apiToken}`)}`;
     const baseHeaders = {
