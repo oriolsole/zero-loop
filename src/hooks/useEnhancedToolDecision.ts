@@ -1,16 +1,27 @@
 
 import { useState, useCallback } from 'react';
-import { EnhancedToolDecision } from '@/components/knowledge/EnhancedToolDecision';
 import { usePlanDetector } from './usePlanDetector';
 import { usePlanOrchestrator } from './usePlanOrchestrator';
 
+export interface SimpleToolDecision {
+  shouldUseTools: boolean;
+  detectedType: 'jira' | 'github' | 'search' | 'knowledge' | 'general';
+  reasoning: string;
+  confidence: number;
+  complexity: 'simple' | 'moderate' | 'complex';
+  estimatedSteps: number;
+  fallbackStrategy?: string;
+  planType?: string;
+  planContext?: any;
+}
+
 export interface UseEnhancedToolDecisionReturn {
-  toolDecision: EnhancedToolDecision | null;
+  toolDecision: SimpleToolDecision | null;
   currentStep: number;
   isExecuting: boolean;
   currentPlan: any;
   planProgress: { current: number; total: number; percentage: number };
-  analyzeRequest: (message: string, conversationHistory?: any[]) => EnhancedToolDecision;
+  analyzeRequest: (message: string, conversationHistory?: any[]) => SimpleToolDecision;
   startExecution: () => void;
   nextStep: () => void;
   completeExecution: () => void;
@@ -20,7 +31,7 @@ export interface UseEnhancedToolDecisionReturn {
 }
 
 export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
-  const [toolDecision, setToolDecision] = useState<EnhancedToolDecision | null>(null);
+  const [toolDecision, setToolDecision] = useState<SimpleToolDecision | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [isExecuting, setIsExecuting] = useState(false);
   
@@ -33,19 +44,18 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
     getProgress 
   } = usePlanOrchestrator();
 
-  const analyzeRequest = useCallback((message: string, conversationHistory: any[] = []): EnhancedToolDecision => {
+  const analyzeRequest = useCallback((message: string, conversationHistory: any[] = []): SimpleToolDecision => {
     const lowerMessage = message.toLowerCase();
     
     // First check if we should use multi-step planning
     const planDetection = detectPlan(message, conversationHistory);
     
     if (planDetection.shouldUsePlan) {
-      const decision: EnhancedToolDecision = {
+      const decision: SimpleToolDecision = {
         shouldUseTools: true,
-        detectedType: 'multi-step-plan',
+        detectedType: 'github', // Default for plans
         reasoning: planDetection.reasoning,
         confidence: planDetection.confidence,
-        suggestedTools: ['multi-step-execution'],
         complexity: 'complex',
         estimatedSteps: planDetection.planType === 'news-search' ? 4 : planDetection.planType === 'repo-analysis' ? 4 : 3,
         fallbackStrategy: 'If plan execution fails, revert to single-step tool execution',
@@ -57,66 +67,75 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       return decision;
     }
     
-    // Simplified tool decision logic - let the model decide naturally
+    // Simplified tool decision logic for UI
     const decision = createSimpleToolDecision(message, conversationHistory);
     setToolDecision(decision);
     return decision;
   }, [detectPlan]);
 
-  const createSimpleToolDecision = (message: string, conversationHistory: any[]): EnhancedToolDecision => {
+  const createSimpleToolDecision = (message: string, conversationHistory: any[]): SimpleToolDecision => {
     const lowerMessage = message.toLowerCase();
     
-    // Simple intent detection - does this need external data/tools?
-    const needsExternalData = requiresExternalTools(message);
-    
-    if (!needsExternalData) {
+    // Simple pattern matching for UI display
+    if (lowerMessage.includes('jira') || 
+        /\b(retrieve|list|get|show)\s+(projects?|my\s+projects?)\b/.test(lowerMessage) ||
+        lowerMessage.includes('create ticket') || 
+        lowerMessage.includes('search issues')) {
       return {
-        shouldUseTools: false,
-        detectedType: 'general',
-        reasoning: 'This appears to be a general question that can be answered with existing knowledge',
+        shouldUseTools: true,
+        detectedType: 'jira',
+        reasoning: 'Detected Jira-related request',
         confidence: 0.8,
-        suggestedTools: [],
         complexity: 'simple',
         estimatedSteps: 1
       };
     }
-
-    // If external tools are needed, let the model decide which ones
-    return {
-      shouldUseTools: true,
-      detectedType: 'general', // Let model decide specific type
-      reasoning: 'This request may benefit from external tools - letting the model choose the most appropriate ones',
-      confidence: 0.7,
-      suggestedTools: [], // Don't pre-suggest tools, let model decide
-      complexity: 'moderate',
-      estimatedSteps: 2,
-      fallbackStrategy: 'If no tools are used, provide response based on existing knowledge'
-    };
-  };
-
-  const requiresExternalTools = (message: string): boolean => {
-    const lowerMessage = message.toLowerCase();
     
-    // Very basic indicators that external data might be needed
-    const externalDataIndicators = [
-      'search', 'find', 'look up', 'current', 'latest', 'recent', 'today',
-      'github', 'repository', 'repo', 'jira', 'knowledge base',
-      'what is', 'who is', 'how to', 'analyze', 'check'
-    ];
-    
-    // Simple conversational responses that don't need tools
-    const conversationalPatterns = [
-      'hello', 'hi', 'hey', 'thanks', 'thank you', 'good morning',
-      'good afternoon', 'good evening', 'how are you', 'what can you do'
-    ];
-    
-    // Check if it's clearly conversational
-    if (conversationalPatterns.some(pattern => lowerMessage.includes(pattern))) {
-      return false;
+    if (lowerMessage.includes('github') || 
+        lowerMessage.includes('repository') || 
+        lowerMessage.includes('repo') ||
+        /github\.com\/[\w-]+\/[\w-]+/.test(message)) {
+      return {
+        shouldUseTools: true,
+        detectedType: 'github', 
+        reasoning: 'Detected GitHub repository request',
+        confidence: 0.8,
+        complexity: 'simple',
+        estimatedSteps: 1
+      };
     }
     
-    // Check if it might need external data
-    return externalDataIndicators.some(indicator => lowerMessage.includes(indicator));
+    if (/\b(search|find|look\s+up)\b/.test(lowerMessage) && 
+        !/\b(my|personal|knowledge|documents?|notes?)\b/.test(lowerMessage)) {
+      return {
+        shouldUseTools: true,
+        detectedType: 'search',
+        reasoning: 'Detected web search request',
+        confidence: 0.7,
+        complexity: 'simple',
+        estimatedSteps: 1
+      };
+    }
+    
+    if (/\b(my|personal|knowledge|documents?|notes?|saved?|uploaded?)\b/.test(lowerMessage)) {
+      return {
+        shouldUseTools: true,
+        detectedType: 'knowledge',
+        reasoning: 'Detected knowledge base search request', 
+        confidence: 0.7,
+        complexity: 'simple',
+        estimatedSteps: 1
+      };
+    }
+    
+    return {
+      shouldUseTools: false,
+      detectedType: 'general',
+      reasoning: 'General conversation - no tools needed',
+      confidence: 0.8,
+      complexity: 'simple',
+      estimatedSteps: 1
+    };
   };
 
   const startExecution = useCallback(() => {
