@@ -164,6 +164,13 @@ export const useLoopStore = create<LoopState>()(
     },
     {
       name: 'intelligence-loop-storage',
+      partialize: (state) => ({
+        domains: state.domains,
+        activeDomainId: state.activeDomainId,
+        useRemoteLogging: state.useRemoteLogging,
+        loopDelay: state.loopDelay,
+        loopHistory: state.loopHistory
+      }),
       onRehydrateStorage: () => {
         return (state) => {
           if (state) {
