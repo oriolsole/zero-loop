@@ -200,13 +200,22 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
       );
       
       if (forcedResult) {
-        finalResponse = forcedResult.finalResponse;
         toolsUsed = forcedResult.toolsUsed;
         toolProgress = forcedResult.toolProgress;
-        selfReflection = forcedResult.selfReflection;
         
-        // Enhance reflection with fallback information
-        selfReflection += `\n\nFallback Execution: Applied enhanced fallback strategy due to AI model not generating expected tool calls. ${enhancedDecision.fallbackStrategy}`;
+        // CRITICAL FIX: Make follow-up call to synthesize the results
+        console.log('Making synthesis call with forced tool results');
+        const synthesizedResponse = await synthesizeToolResults(
+          message,
+          conversationHistory,
+          toolsUsed,
+          forcedResult.finalResponse,
+          modelSettings,
+          supabase
+        );
+        
+        finalResponse = synthesizedResponse || forcedResult.finalResponse;
+        selfReflection = forcedResult.selfReflection + `\n\nFallback Execution: Applied enhanced fallback strategy due to AI model not generating expected tool calls. ${enhancedDecision.fallbackStrategy}`;
       } else if (enhancedDecision.fallbackStrategy) {
         // Apply fallback strategy as text response
         finalResponse = `I understand you're looking for ${enhancedDecision.detectedType} information. ${enhancedDecision.fallbackStrategy}`;
@@ -234,72 +243,35 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
         actualSteps: toolsUsed.length
       });
       
-      // Make another AI call with the tool results and enhanced reflection
-      const followUpMessages = [
-        ...messages,
-        assistantMessage,
-        ...toolResults,
-        {
-          role: 'system',
-          content: `Enhanced reflection based on execution plan analysis:
-Expected ${enhancedDecision.estimatedSteps} steps with ${enhancedDecision.complexity} complexity.
-Actual execution: ${toolsUsed.length} tools used.
-Success rate: ${toolsUsed.filter(t => t.success).length}/${toolsUsed.length}
-
-Reflect on:
-1. Did the tools provide the expected information for this ${enhancedDecision.detectedType} request?
-2. How well did the execution match the planned complexity (${enhancedDecision.complexity})?
-3. Are there any gaps that need the fallback strategy: "${enhancedDecision.fallbackStrategy}"?
-4. Should additional tools be recommended for better results?
-5. Provide a clear, helpful response based on all available information.
-
-Be transparent about any limitations or failures. If tools failed, explain what went wrong and apply the fallback strategy if needed.`
-        }
-      ];
+      // CRITICAL FIX: Improved follow-up call with better synthesis prompt
+      console.log('Making enhanced synthesis call with tool results');
+      const synthesizedResponse = await synthesizeToolResults(
+        message,
+        conversationHistory,
+        toolsUsed,
+        assistantMessage.content,
+        modelSettings,
+        supabase
+      );
       
-      const followUpRequestBody = {
-        messages: followUpMessages,
-        temperature: 0.7,
-        max_tokens: 2000,
-        // Pass model settings if provided
-        ...(modelSettings && {
-          provider: modelSettings.provider,
-          model: modelSettings.selectedModel,
-          localModelUrl: modelSettings.localModelUrl
-        })
-      };
-
-      console.log('Making enhanced follow-up call with execution analysis');
-
-      const followUpResponse = await supabase.functions.invoke('ai-model-proxy', {
-        body: followUpRequestBody
-      });
-      
-      if (followUpResponse.error) {
-        throw new Error(`AI Model Proxy follow-up error: ${followUpResponse.error.message}`);
-      }
-      
-      const followUpData = followUpResponse.data;
-      const followUpMessage = extractAssistantMessage(followUpData);
-      
-      if (followUpMessage) {
-        finalResponse = followUpMessage.content;
+      if (synthesizedResponse) {
+        finalResponse = synthesizedResponse;
       } else {
-        console.error('Unexpected follow-up response format:', followUpData);
-        finalResponse = assistantMessage.content; // Fall back to original response
+        console.error('Synthesis failed, falling back to original response');
+        finalResponse = assistantMessage.content;
       }
       
       // Check if fallback was used in follow-up
-      if (followUpData.fallback_used) {
+      if (data.fallback_used) {
         fallbackUsed = true;
-        fallbackReason = followUpData.fallback_reason;
+        fallbackReason = data.fallback_reason;
       }
       
       // Generate enhanced self-reflection summary
       selfReflection = generateSelfReflection(toolsUsed, toolProgress);
       selfReflection += `\n\nEnhanced Analysis: Executed ${enhancedDecision.detectedType} request with ${enhancedDecision.complexity} complexity. Expected ${enhancedDecision.estimatedSteps} steps, used ${toolsUsed.length} tools. Confidence: ${enhancedDecision.confidence.toFixed(2)}.`;
 
-      console.log('Enhanced follow-up response completed successfully');
+      console.log('Enhanced synthesis response completed successfully');
     } else {
       console.log('No tool calls were made by the AI model and none were forced');
       selfReflection = `No tools were used for this request. Enhanced analysis: ${enhancedDecision.reasoning} (Confidence: ${enhancedDecision.confidence.toFixed(2)})`;
@@ -362,3 +334,90 @@ Be transparent about any limitations or failures. If tools failed, explain what 
     );
   }
 });
+
+/**
+ * NEW FUNCTION: Synthesize tool results into a coherent response
+ */
+async function synthesizeToolResults(
+  originalMessage: string,
+  conversationHistory: any[],
+  toolsUsed: any[],
+  originalResponse: string,
+  modelSettings: any,
+  supabase: any
+): Promise<string | null> {
+  try {
+    // Create synthesis prompt with tool results
+    const toolResultsSummary = toolsUsed.map(tool => {
+      if (tool.success && tool.result) {
+        return `Tool: ${tool.name}\nResult: ${typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result)}`;
+      }
+      return `Tool: ${tool.name}\nStatus: Failed - ${tool.error || 'Unknown error'}`;
+    }).join('\n\n');
+
+    const synthesisMessages = [
+      {
+        role: 'system',
+        content: `You are an AI assistant that synthesizes tool results into helpful, conversational responses. 
+
+CRITICAL INSTRUCTIONS:
+1. Use the tool results to provide a comprehensive, helpful answer to the user's question
+2. Don't just list the results - synthesize them into a coherent, informative response
+3. If the tools found relevant information, use it to directly answer the user's question
+4. Be conversational and helpful, not robotic
+5. If tool results are incomplete or failed, acknowledge limitations but provide what information you can
+6. Focus on being helpful and informative based on the available data
+
+The user asked: "${originalMessage}"
+
+Available tool results:
+${toolResultsSummary}
+
+Provide a helpful, synthesized response based on this information.`
+      },
+      ...conversationHistory.slice(-3), // Include some recent context
+      {
+        role: 'user',
+        content: originalMessage
+      }
+    ];
+
+    const synthesisRequestBody = {
+      messages: synthesisMessages,
+      temperature: 0.7,
+      max_tokens: 1500,
+      // Pass model settings if provided
+      ...(modelSettings && {
+        provider: modelSettings.provider,
+        model: modelSettings.selectedModel,
+        localModelUrl: modelSettings.localModelUrl
+      })
+    };
+
+    console.log('Making synthesis call to AI model');
+
+    const synthesisResponse = await supabase.functions.invoke('ai-model-proxy', {
+      body: synthesisRequestBody
+    });
+    
+    if (synthesisResponse.error) {
+      console.error('Synthesis call failed:', synthesisResponse.error);
+      return null;
+    }
+    
+    const synthesisData = synthesisResponse.data;
+    const synthesisMessage = extractAssistantMessage(synthesisData);
+    
+    if (synthesisMessage && synthesisMessage.content) {
+      console.log('Synthesis successful, returning synthesized response');
+      return synthesisMessage.content;
+    } else {
+      console.error('Failed to extract synthesis response');
+      return null;
+    }
+    
+  } catch (error) {
+    console.error('Error in synthesis:', error);
+    return null;
+  }
+}
