@@ -1,17 +1,18 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Loader2, Shield } from 'lucide-react';
+import { Plus, Loader2, Shield, Download, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { mcpService } from '@/services/mcpService';
+import { mcpConfigService } from '@/services/mcpConfigService';
 import MCPGrid from './MCPGrid';
 import MCPForm from './MCPForm';
 import MCPChatInterface from './MCPChatInterface';
+import MCPToolsSearch from './MCPToolsSearch';
 import TokenManager from './TokenManager';
 import { MCP } from '@/types/mcp';
-import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/sonner';
 
@@ -20,6 +21,8 @@ const MCPsTab: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [editingMCP, setEditingMCP] = useState<MCP | null>(null);
   const [filter, setFilter] = useState<'all' | 'default' | 'custom'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [seedingAttempted, setSeedingAttempted] = useState(false);
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const { user, isInitialized } = useAuth();
@@ -28,9 +31,8 @@ const MCPsTab: React.FC = () => {
   const { data: mcps, isLoading, refetch } = useQuery({
     queryKey: ['mcps'],
     queryFn: mcpService.fetchMCPs,
-    // Don't retry on error - we'll handle retries for seeding separately
     retry: false,
-    enabled: !!user && isInitialized // Only run when user is authenticated
+    enabled: !!user && isInitialized
   });
 
   // Seed default MCPs when component mounts and user is available
@@ -46,17 +48,50 @@ const MCPsTab: React.FC = () => {
         } catch (error) {
           console.error('Error in seedDefaultTools:', error);
         }
-      } else {
-        console.log('Cannot seed MCPs yet:', { 
-          userAuthenticated: !!user, 
-          isInitialized, 
-          seedingAttempted 
-        });
       }
     };
     
     seedDefaultTools();
   }, [user, isInitialized, seedingAttempted, refetch]);
+
+  // Get unique categories from MCPs
+  const categories = useMemo(() => {
+    if (!mcps) return [];
+    const uniqueCategories = new Set(
+      mcps.filter(mcp => mcp.category).map(mcp => mcp.category!)
+    );
+    return Array.from(uniqueCategories).sort();
+  }, [mcps]);
+
+  // Filter MCPs based on all criteria
+  const filteredMCPs = useMemo(() => {
+    if (!mcps) return [];
+    
+    return mcps.filter(mcp => {
+      // Type filter
+      if (filter === 'default' && !mcp.isDefault) return false;
+      if (filter === 'custom' && mcp.isDefault) return false;
+      
+      // Category filter
+      if (selectedCategory && mcp.category !== selectedCategory) return false;
+      
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const searchableFields = [
+          mcp.title,
+          mcp.description,
+          mcp.category,
+          ...(mcp.tags || []),
+          ...(mcp.parameters || []).map(p => p.name)
+        ].filter(Boolean).join(' ').toLowerCase();
+        
+        if (!searchableFields.includes(query)) return false;
+      }
+      
+      return true;
+    });
+  }, [mcps, filter, selectedCategory, searchQuery]);
 
   const handleCreateNew = () => {
     setEditingMCP(null);
@@ -87,7 +122,6 @@ const MCPsTab: React.FC = () => {
   const handleDelete = async (id: string) => {
     const mcp = mcps?.find(m => m.id === id);
     
-    // Prevent deletion of default MCPs
     if (mcp?.isDefault) {
       toast.error('Default MCPs cannot be deleted. You can create a custom copy instead.');
       return;
@@ -122,19 +156,26 @@ const MCPsTab: React.FC = () => {
     }
   };
 
-  // Filter MCPs based on the selected filter
-  const filteredMCPs = React.useMemo(() => {
-    if (!mcps) return [];
+  const handleExportAll = async () => {
+    if (!mcps) return;
     
-    switch (filter) {
-      case 'default':
-        return mcps.filter(mcp => mcp.isDefault);
-      case 'custom':
-        return mcps.filter(mcp => !mcp.isDefault);
-      default:
-        return mcps;
+    try {
+      const config = await mcpConfigService.exportConfiguration(mcps);
+      const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'mcp-agent-config.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Configuration exported successfully');
+    } catch (error) {
+      console.error('Export failed:', error);
+      toast.error('Failed to export configuration');
     }
-  }, [mcps, filter]);
+  };
 
   if (isCreating) {
     return (
@@ -157,9 +198,13 @@ const MCPsTab: React.FC = () => {
             </CardDescription>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={handleExportAll} disabled={!mcps?.length}>
+              <Download className="mr-2 h-4 w-4" />
+              Export All
+            </Button>
             <Button variant="outline" onClick={() => setTokenDialogOpen(true)}>
               <Shield className="mr-2 h-4 w-4" />
-              Manage API Tokens
+              API Tokens
             </Button>
             <Button onClick={handleCreateNew}>
               <Plus className="mr-2 h-4 w-4" />
@@ -176,60 +221,53 @@ const MCPsTab: React.FC = () => {
             </TabsList>
             
             <TabsContent value="grid">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="text-sm font-medium">Filter:</div>
-                <Badge 
-                  variant={filter === 'all' ? 'default' : 'outline'}
-                  className="cursor-pointer"
-                  onClick={() => setFilter('all')}
-                >
-                  All
-                </Badge>
-                <Badge 
-                  variant={filter === 'default' ? 'default' : 'outline'}
-                  className="cursor-pointer"
-                  onClick={() => setFilter('default')}
-                >
-                  Default
-                </Badge>
-                <Badge 
-                  variant={filter === 'custom' ? 'default' : 'outline'}
-                  className="cursor-pointer"
-                  onClick={() => setFilter('custom')}
-                >
-                  Custom
-                </Badge>
-              </div>
-              
-              {isLoading ? (
-                <div className="flex justify-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : filteredMCPs.length > 0 ? (
-                <MCPGrid 
-                  mcps={filteredMCPs} 
-                  onEdit={handleEditMCP} 
-                  onDelete={handleDelete} 
-                  onClone={handleCloneMCP}
+              <div className="space-y-4">
+                <MCPToolsSearch
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  filter={filter}
+                  onFilterChange={setFilter}
+                  selectedCategory={selectedCategory}
+                  onCategoryChange={setSelectedCategory}
+                  categories={categories}
+                  totalCount={mcps?.length || 0}
+                  filteredCount={filteredMCPs.length}
                 />
-              ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  {user ? (
-                    <>
-                      <p>No MCPs found. {filter !== 'all' && 'Try changing the filter.'}</p>
-                      <Button 
-                        variant="outline" 
-                        className="mt-4"
-                        onClick={handleRetrySeed}
-                      >
-                        Retry Seeding Default MCPs
-                      </Button>
-                    </>
-                  ) : (
-                    <p>Please sign in to view and manage MCPs</p>
-                  )}
-                </div>
-              )}
+                
+                {isLoading ? (
+                  <div className="flex justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : filteredMCPs.length > 0 ? (
+                  <MCPGrid 
+                    mcps={filteredMCPs} 
+                    onEdit={handleEditMCP} 
+                    onDelete={handleDelete} 
+                    onClone={handleCloneMCP}
+                  />
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    {user ? (
+                      <>
+                        <p>
+                          {mcps?.length ? 'No tools match your current filters.' : 'No MCPs found.'}
+                        </p>
+                        {!mcps?.length && (
+                          <Button 
+                            variant="outline" 
+                            className="mt-4"
+                            onClick={handleRetrySeed}
+                          >
+                            Retry Seeding Default MCPs
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <p>Please sign in to view and manage MCPs</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </TabsContent>
             
             <TabsContent value="chat">
