@@ -1,3 +1,4 @@
+
 // Define the external source interface
 export interface ExternalSource {
   title: string;
@@ -42,7 +43,7 @@ export interface Domain {
   icon?: string;
   color?: string;
   isActive?: boolean;
-  engine?: string; // Changed from engineType to engine for consistency
+  engineType?: string;
   createdAt?: string;
   updatedAt?: string;
   metadata?: Record<string, any>;
@@ -68,8 +69,6 @@ export interface LearningStep {
   sources?: ExternalSource[];
   title?: string;
   description?: string;
-  isCompleted?: boolean; // Added for compatibility
-  result?: any; // Added for storing step results
   metrics?: {
     accuracy?: number;
     relevance?: number;
@@ -90,7 +89,6 @@ export interface LearningStep {
 export interface LoopHistory {
   id: string;
   domainId: string;
-  domainName?: string; // Added for display purposes
   startTime: string;
   endTime?: string;
   status: 'active' | 'completed' | 'error';
@@ -102,7 +100,6 @@ export interface LoopHistory {
   success?: boolean;
   score?: number;
   totalTime?: number;
-  isCompleted?: boolean; // Added for compatibility
 }
 
 export interface KnowledgeNode {
@@ -177,7 +174,7 @@ export interface DomainEngineMetadata {
 
 // Update DomainEngine interface to match the implementation
 export interface DomainEngine {
-  generateTask: (domain?: any, options?: any) => Promise<string>;
+  generateTask: (domainId?: string, previousSteps?: LearningStep[]) => Promise<string>;
   solveTask: (task: string, options?: any) => Promise<any>;
   verifyTask?: (task: string, solution: any) => Promise<{ result: boolean; explanation: string; score: number }>;
   reflectOnTask?: (task: string, solution: any, verification: any) => Promise<{ reflection: string; insights: string[] }>;

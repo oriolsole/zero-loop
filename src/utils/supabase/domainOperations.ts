@@ -1,3 +1,4 @@
+
 import { Domain } from '../../types/intelligence';
 import { supabase, isSupabaseConfigured } from '../supabase-client';
 import { isValidUUID } from './helpers';
@@ -37,7 +38,7 @@ export async function saveDomainToSupabase(domain: Domain): Promise<boolean> {
       id: domain.id,
       name: domain.name,
       totalLoops: domain.totalLoops,
-      engine: domain.engine,
+      engineType: domain.engineType,
       hasMetrics: !!domain.metrics,
       metadataSize: JSON.stringify(metadataJson).length
     });
@@ -54,7 +55,7 @@ export async function saveDomainToSupabase(domain: Domain): Promise<boolean> {
         name: domain.name,
         short_desc: domain.shortDesc,
         description: domain.description,
-        engine_type: domain.engine, // Save the engine type
+        engine_type: domain.engineType, // Save the engine type
         total_loops: domain.totalLoops,
         metadata: metadataJson,
         updated_at: new Date().toISOString(),
@@ -110,7 +111,7 @@ export async function updateDomainInSupabase(domain: Domain): Promise<boolean> {
         name: domain.name,
         short_desc: domain.shortDesc,
         description: domain.description,
-        engine_type: domain.engine, // Update the engine type
+        engine_type: domain.engineType, // Update the engine type
         total_loops: domain.totalLoops,
         metadata: metadataJson,
         updated_at: new Date().toISOString(),
@@ -207,7 +208,7 @@ export async function loadDomainsFromSupabase(): Promise<Domain[]> {
         name: item.name,
         shortDesc: item.short_desc || '',
         description: item.description || '',
-        engine: item.engine_type || 'logic', // Load engine type from database
+        engineType: item.engine_type || 'logic', // Load engine type from database
         totalLoops: item.total_loops || 0,
         currentLoop: currentLoop,
         knowledgeNodes: [], // These will be loaded separately

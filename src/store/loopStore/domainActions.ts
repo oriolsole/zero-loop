@@ -28,15 +28,15 @@ export const createDomainActions = (
     // Replace any non-UUID formatted ID with a new UUID
     const domainId = isValidUUID(domain.id) ? domain.id : uuidv4();
     
-    // Ensure the domain has an engine set, defaulting to a valid one if missing
-    const engine = domain.engine && domainEngines[domain.engine] 
-      ? domain.engine 
+    // Ensure the domain has an engineType set, defaulting to a valid one if missing
+    const engineType = domain.engineType && domainEngines[domain.engineType] 
+      ? domain.engineType 
       : Object.keys(domainEngines)[0];
     
     const completeDomain: Domain = {
       ...domain,
       id: domainId,
-      engine,
+      engineType,
       totalLoops: domain.totalLoops || 0,
       currentLoop: domain.currentLoop || [],
       knowledgeNodes: domain.knowledgeNodes || [],
@@ -78,10 +78,10 @@ export const createDomainActions = (
       return;
     }
     
-    // Ensure engine is valid if it exists
-    if (updatedDomain.engine && !domainEngines[updatedDomain.engine]) {
-      console.warn(`Invalid engine type ${updatedDomain.engine}, defaulting to ${Object.keys(domainEngines)[0]}`);
-      updatedDomain.engine = Object.keys(domainEngines)[0];
+    // Ensure engineType is valid if it exists
+    if (updatedDomain.engineType && !domainEngines[updatedDomain.engineType]) {
+      console.warn(`Invalid engine type ${updatedDomain.engineType}, defaulting to ${Object.keys(domainEngines)[0]}`);
+      updatedDomain.engineType = Object.keys(domainEngines)[0];
     }
     
     set(state => {
@@ -97,7 +97,7 @@ export const createDomainActions = (
         name: updatedDomain.name,
         shortDesc: updatedDomain.shortDesc,
         description: updatedDomain.description,
-        engine: updatedDomain.engine || existingDomain.engine,
+        engineType: updatedDomain.engineType || existingDomain.engineType,
       };
 
       // If remote logging is enabled, update in Supabase
