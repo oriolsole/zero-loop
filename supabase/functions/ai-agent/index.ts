@@ -191,7 +191,15 @@ Remember: You can use multiple tools in sequence and should reflect on their out
       assistantMessage = data.choices[0].message;
       console.log('Using OpenAI format - Assistant message:', assistantMessage);
     }
-    // Check for NPAW or other direct response formats
+    // Check for NPAW response format with 'result' field
+    else if (data.result) {
+      assistantMessage = {
+        content: data.result,
+        role: 'assistant'
+      };
+      console.log('Using NPAW format - Assistant message:', assistantMessage);
+    }
+    // Check for other direct response formats
     else if (data.content || data.message) {
       assistantMessage = {
         content: data.content || data.message,
@@ -344,6 +352,8 @@ Be transparent about any limitations or failures.`
       // Handle follow-up response with same defensive checking
       if (followUpData.choices && Array.isArray(followUpData.choices) && followUpData.choices.length > 0) {
         finalResponse = followUpData.choices[0].message.content;
+      } else if (followUpData.result) {
+        finalResponse = followUpData.result;
       } else if (followUpData.content || followUpData.message) {
         finalResponse = followUpData.content || followUpData.message;
       } else if (typeof followUpData === 'string') {
