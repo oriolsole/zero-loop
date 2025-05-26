@@ -37,7 +37,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings, ModelProvider } from '@/services/modelProviderService';
 import ToolProgressStream from './ToolProgressStream';
 import { useToolProgress } from '@/hooks/useToolProgress';
-import EnhancedToolDecisionDisplay from './EnhancedToolDecision';
+import EnhancedToolDecisionDisplay, { EnhancedToolDecision } from './EnhancedToolDecision';
 import ProgressPhaseIndicator from './ProgressPhaseIndicator';
 import { useEnhancedToolDecision } from '@/hooks/useEnhancedToolDecision';
 import { useAIPhases } from '@/hooks/useAIPhases';
@@ -120,6 +120,20 @@ const AIAgentChat: React.FC = () => {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  // Helper function to normalize toolDecision data
+  const normalizeToolDecision = (toolDecision: any): EnhancedToolDecision => {
+    return {
+      shouldUseTools: toolDecision.shouldUseTools || false,
+      detectedType: toolDecision.detectedType || 'general',
+      reasoning: toolDecision.reasoning || 'No reasoning provided',
+      confidence: toolDecision.confidence || 0.5,
+      suggestedTools: toolDecision.suggestedTools || [],
+      complexity: toolDecision.complexity || 'simple',
+      estimatedSteps: toolDecision.estimatedSteps || 1,
+      fallbackStrategy: toolDecision.fallbackStrategy
+    };
+  };
 
   const getProviderIcon = (provider: ModelProvider) => {
     switch (provider) {
@@ -521,7 +535,7 @@ Please try again, or check the edge function logs in the Supabase dashboard if y
               
               {toolDecision && (
                 <EnhancedToolDecisionDisplay 
-                  decision={toolDecision}
+                  decision={normalizeToolDecision(toolDecision)}
                   isExecuting={isExecuting}
                   currentStep={currentStep}
                 />
@@ -581,9 +595,9 @@ Please try again, or check the edge function logs in the Supabase dashboard if y
                   >
                     <div className="whitespace-pre-wrap text-sm">{message.content}</div>
                     
-                    {/* Enhanced Tool Decision Display - Fixed prop name */}
+                    {/* Enhanced Tool Decision Display - Fixed with normalized data */}
                     {message.toolDecision && message.role === 'assistant' && (
-                      <EnhancedToolDecisionDisplay decision={message.toolDecision} />
+                      <EnhancedToolDecisionDisplay decision={normalizeToolDecision(message.toolDecision)} />
                     )}
                     
                     {message.toolsUsed && message.toolsUsed.length > 0 && (
