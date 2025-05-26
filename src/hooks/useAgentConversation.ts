@@ -197,6 +197,7 @@ export const useAgentConversation = () => {
           self_reflection: message.selfReflection || null,
           tool_decision: message.toolDecision || null,
           tool_progress: message.toolProgress || null,
+          ai_reasoning: message.aiReasoning || null,
           created_at: message.timestamp.toISOString()
         });
     } catch (error) {
@@ -244,7 +245,8 @@ export const useAgentConversation = () => {
           name: string;
           status: 'pending' | 'executing' | 'completed' | 'failed';
           displayName?: string;
-        }> : undefined
+        }> : undefined,
+        aiReasoning: row.ai_reasoning || undefined
       }));
 
       setConversations(messages);

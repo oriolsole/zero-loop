@@ -164,7 +164,8 @@ const AIAgentChat: React.FC = () => {
         content: data.message,
         timestamp: new Date(),
         messageType: 'response',
-        toolsUsed: data.toolsUsed || []
+        toolsUsed: data.toolsUsed || [],
+        aiReasoning: data.aiReasoning || undefined
       };
 
       addMessage(assistantMessage);

@@ -11,6 +11,7 @@ export type Database = {
     Tables: {
       agent_conversations: {
         Row: {
+          ai_reasoning: string | null
           content: string
           created_at: string
           id: string
@@ -24,6 +25,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_reasoning?: string | null
           content: string
           created_at?: string
           id?: string
@@ -37,6 +39,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_reasoning?: string | null
           content?: string
           created_at?: string
           id?: string
