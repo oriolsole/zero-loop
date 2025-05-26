@@ -1,0 +1,79 @@
+
+{
+  "protocol": "ModelContextProtocol",
+  "version": "1.0.0",
+  "tool": {
+    "id": "jira-tools",
+    "name": "execute_jira_tools",
+    "title": "Jira Tools",
+    "description": "Interact with Jira to search issues, get project information, and manage tickets",
+    "endpoint": "jira-tools",
+    "icon": "ticket",
+    "category": "project-management",
+    "tags": ["jira", "tickets", "issues", "project-management", "atlassian"],
+    "schema": {
+      "input": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "name": "action",
+            "type": "string",
+            "description": "The Jira action to perform",
+            "required": true,
+            "enum": ["search_issues", "get_issue", "get_projects", "create_issue"]
+          },
+          "query": {
+            "name": "query",
+            "type": "string",
+            "description": "JQL query or search term",
+            "required": false
+          },
+          "issueKey": {
+            "name": "issueKey",
+            "type": "string",
+            "description": "Jira issue key (e.g., PROJ-123)",
+            "required": false
+          },
+          "projectKey": {
+            "name": "projectKey",
+            "type": "string",
+            "description": "Jira project key",
+            "required": false
+          }
+        },
+        "required": ["action"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "Jira API response data"
+          }
+        }
+      }
+    },
+    "security": {
+      "authentication": {
+        "type": "api_key",
+        "provider": "jira",
+        "required": true
+      },
+      "permissions": ["issue_read", "project_read"]
+    },
+    "metadata": {
+      "version": "1.0.0",
+      "author": "ZeroLoop",
+      "sampleUseCases": [
+        "Search for issues by status or assignee",
+        "Get detailed information about specific tickets",
+        "List projects and their metadata"
+      ],
+      "suggestedPrompt": "Search Jira for [issue type] or get details about [ticket]"
+    }
+  },
+  "compatibility": {
+    "frameworks": ["openai-functions", "supabase-edge"],
+    "versions": ["1.0.x"]
+  }
+}

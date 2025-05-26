@@ -1,0 +1,79 @@
+
+{
+  "protocol": "ModelContextProtocol",
+  "version": "1.0.0",
+  "tool": {
+    "id": "github-tools",
+    "name": "execute_github_tools",
+    "title": "GitHub Tools",
+    "description": "Access GitHub repositories, search code, get file contents, and analyze repository structure",
+    "endpoint": "github-tools",
+    "icon": "github",
+    "category": "development",
+    "tags": ["github", "git", "code", "repository", "development"],
+    "schema": {
+      "input": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "name": "action",
+            "type": "string",
+            "description": "The GitHub action to perform",
+            "required": true,
+            "enum": ["search_repositories", "get_file_content", "list_files", "get_repository_info"]
+          },
+          "repository": {
+            "name": "repository",
+            "type": "string",
+            "description": "Repository in format owner/repo",
+            "required": false
+          },
+          "query": {
+            "name": "query",
+            "type": "string",
+            "description": "Search query for repositories or code",
+            "required": false
+          },
+          "path": {
+            "name": "path",
+            "type": "string",
+            "description": "File or directory path within the repository",
+            "required": false
+          }
+        },
+        "required": ["action"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "GitHub API response data"
+          }
+        }
+      }
+    },
+    "security": {
+      "authentication": {
+        "type": "api_key",
+        "provider": "github",
+        "required": true
+      },
+      "permissions": ["repository_read", "code_search"]
+    },
+    "metadata": {
+      "version": "1.0.0",
+      "author": "ZeroLoop",
+      "sampleUseCases": [
+        "Search for repositories by topic or language",
+        "Get specific file contents from a repository",
+        "Analyze repository structure and documentation"
+      ],
+      "suggestedPrompt": "Search GitHub for [topic] repositories or get file from [owner/repo]"
+    }
+  },
+  "compatibility": {
+    "frameworks": ["openai-functions", "supabase-edge"],
+    "versions": ["1.0.x"]
+  }
+}

@@ -1,0 +1,88 @@
+
+{
+  "protocol": "ModelContextProtocol",
+  "version": "1.0.0",
+  "tool": {
+    "id": "knowledge-search-v2",
+    "name": "execute_knowledge_search_v2",
+    "title": "Knowledge Search",
+    "description": "Search the knowledge base using semantic similarity and embeddings to find relevant information",
+    "endpoint": "knowledge-search",
+    "icon": "database",
+    "category": "knowledge",
+    "tags": ["knowledge", "search", "embeddings", "semantic", "ai"],
+    "schema": {
+      "input": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "name": "query",
+            "type": "string",
+            "description": "The search query to find relevant knowledge",
+            "required": true
+          },
+          "limit": {
+            "name": "limit",
+            "type": "number",
+            "description": "Maximum number of results to return",
+            "required": false,
+            "default": 5
+          },
+          "includeNodes": {
+            "name": "includeNodes",
+            "type": "boolean",
+            "description": "Include knowledge graph nodes in results",
+            "required": false,
+            "default": true
+          },
+          "matchThreshold": {
+            "name": "matchThreshold",
+            "type": "number",
+            "description": "Minimum similarity threshold for matches",
+            "required": false,
+            "default": 0.5
+          },
+          "useEmbeddings": {
+            "name": "useEmbeddings",
+            "type": "boolean",
+            "description": "Use embeddings for semantic search",
+            "required": false,
+            "default": true
+          }
+        },
+        "required": ["query"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "description": "Array of knowledge chunks and nodes matching the query"
+          }
+        }
+      }
+    },
+    "security": {
+      "authentication": {
+        "type": "api_key",
+        "provider": "supabase",
+        "required": true
+      },
+      "permissions": ["knowledge_read"]
+    },
+    "metadata": {
+      "version": "2.0.0",
+      "author": "ZeroLoop",
+      "sampleUseCases": [
+        "Search internal knowledge base for specific topics",
+        "Find related documents and insights",
+        "Semantic search across uploaded content"
+      ],
+      "suggestedPrompt": "Search the knowledge base for information about [topic]"
+    }
+  },
+  "compatibility": {
+    "frameworks": ["openai-functions", "supabase-edge"],
+    "versions": ["2.0.x"]
+  }
+}

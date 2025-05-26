@@ -1,0 +1,70 @@
+
+{
+  "protocol": "ModelContextProtocol",
+  "version": "1.0.0",
+  "model": {
+    "name": "gpt-4o-mini",
+    "provider": "openai",
+    "max_tokens": 2000,
+    "temperature": 0.7
+  },
+  "session": {
+    "timeout": 3600,
+    "persistent": true
+  },
+  "context": {
+    "tools": [
+      {
+        "id": "web-search",
+        "source": "./web-search.mcp.json"
+      },
+      {
+        "id": "github-tools",
+        "source": "./github-tools.mcp.json"
+      },
+      {
+        "id": "knowledge-search-v2",
+        "source": "./knowledge-search.mcp.json"
+      },
+      {
+        "id": "jira-tools",
+        "source": "./jira-tools.mcp.json"
+      },
+      {
+        "id": "web-scraper",
+        "source": "./web-scraper.mcp.json"
+      }
+    ],
+    "sources": [
+      {
+        "id": "supabase-mcps",
+        "type": "database",
+        "uri": "supabase://mcps",
+        "metadata": {
+          "description": "Database-stored MCP definitions"
+        }
+      }
+    ],
+    "history": {
+      "include_last_n_messages": 10,
+      "persistent": true
+    }
+  },
+  "security": {
+    "encryption": "AES256",
+    "permissions": [
+      "web_search",
+      "repository_read",
+      "knowledge_read",
+      "issue_read",
+      "web_scraping"
+    ]
+  },
+  "metadata": {
+    "name": "ZeroLoop AI Agent",
+    "description": "Multi-tool AI agent with web search, GitHub integration, knowledge management, Jira tools, and web scraping capabilities",
+    "created": "2025-01-26",
+    "updated": "2025-01-26",
+    "author": "ZeroLoop"
+  }
+}

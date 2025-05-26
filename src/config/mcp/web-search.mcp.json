@@ -1,0 +1,67 @@
+
+{
+  "protocol": "ModelContextProtocol",
+  "version": "1.0.0",
+  "tool": {
+    "id": "web-search",
+    "name": "execute_web_search",
+    "title": "Web Search",
+    "description": "Search the web using Google Custom Search API to find relevant information across the internet",
+    "endpoint": "google-search",
+    "icon": "search",
+    "category": "search",
+    "tags": ["search", "web", "google", "information"],
+    "schema": {
+      "input": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "name": "query",
+            "type": "string",
+            "description": "The search query to find relevant web results",
+            "required": true
+          },
+          "limit": {
+            "name": "limit",
+            "type": "number",
+            "description": "Maximum number of search results to return",
+            "required": false,
+            "default": 5
+          }
+        },
+        "required": ["query"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "description": "Array of search results with titles, links, and snippets"
+          }
+        }
+      }
+    },
+    "security": {
+      "authentication": {
+        "type": "api_key",
+        "provider": "google",
+        "required": true
+      },
+      "permissions": ["web_search"]
+    },
+    "metadata": {
+      "version": "1.0.0",
+      "author": "ZeroLoop",
+      "sampleUseCases": [
+        "Search for latest news on a topic",
+        "Find research papers or articles",
+        "Look up current information about companies or technologies"
+      ],
+      "suggestedPrompt": "Search the web for information about [topic]"
+    }
+  },
+  "compatibility": {
+    "frameworks": ["openai-functions", "supabase-edge"],
+    "versions": ["1.0.x"]
+  }
+}
