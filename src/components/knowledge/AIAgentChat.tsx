@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { modelProviderService } from '@/services/modelProviderService';
-import { useConversationContext } from '@/hooks/useConversationContext';
 import { useAgentConversation } from '@/hooks/useAgentConversation';
 import { useToolProgress } from '@/hooks/useToolProgress';
 import AIAgentHeader from './AIAgentHeader';
@@ -15,16 +14,20 @@ const AIAgentChat: React.FC = () => {
   const [input, setInput] = useState('');
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(modelProviderService.getSettings());
+  const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
-  const { currentSessionId, switchSession, createNewSession } = useConversationContext();
-  
   const {
+    currentSessionId,
     conversations,
-    isLoading,
-    sendMessage,
-    handleFollowUpAction
-  } = useAgentConversation(currentSessionId);
+    sessions,
+    isLoadingSessions,
+    startNewSession,
+    loadSession,
+    addMessage,
+    deleteSession,
+    getConversationHistory
+  } = useAgentConversation();
 
   const {
     tools,
@@ -45,6 +48,36 @@ const AIAgentChat: React.FC = () => {
     }
   }, [conversations, isLoading]);
 
+  const sendMessage = async (message: string) => {
+    if (!message.trim() || isLoading) return;
+    
+    setIsLoading(true);
+    
+    try {
+      // Add user message
+      await addMessage({
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: message,
+        timestamp: new Date()
+      });
+
+      // Simulate AI response for now
+      setTimeout(async () => {
+        await addMessage({
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: `I received your message: "${message}". This is a placeholder response while the AI agent functionality is being implemented.`,
+          timestamp: new Date()
+        });
+        setIsLoading(false);
+      }, 1000);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setIsLoading(false);
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
     
@@ -58,8 +91,12 @@ const AIAgentChat: React.FC = () => {
   };
 
   const handleNewSession = () => {
-    createNewSession();
+    startNewSession();
     setInput('');
+  };
+
+  const handleFollowUpAction = (action: string) => {
+    setInput(action);
   };
 
   return (
@@ -67,9 +104,12 @@ const AIAgentChat: React.FC = () => {
       {showSessions && (
         <div className="w-80 flex-shrink-0">
           <SessionsSidebar 
+            sessions={sessions}
             currentSessionId={currentSessionId}
-            onSessionSelect={switchSession}
-            onNewSession={handleNewSession}
+            onStartNewSession={handleNewSession}
+            onLoadSession={loadSession}
+            onDeleteSession={deleteSession}
+            isLoading={isLoadingSessions}
           />
         </div>
       )}
@@ -104,7 +144,7 @@ const AIAgentChat: React.FC = () => {
           />
         </Card>
         
-        <ToolProgressStream tools={tools} isVisible={toolsActive} />
+        <ToolProgressStream tools={tools} isActive={toolsActive} />
       </div>
     </div>
   );

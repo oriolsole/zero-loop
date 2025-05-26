@@ -203,3 +203,14 @@ export function isLocalUrl(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * Model provider service object
+ */
+export const modelProviderService = {
+  getSettings: getModelSettings,
+  saveSettings: saveModelSettings,
+  getNpawModels,
+  getOpenAIModels,
+  isLocalUrl
+};
