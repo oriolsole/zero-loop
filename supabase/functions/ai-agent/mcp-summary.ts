@@ -20,6 +20,19 @@ export interface MCPSummary {
 }
 
 /**
+ * Normalizes tags into an array format
+ */
+function normalizeTags(tags: any): string[] {
+  if (!tags) return [];
+  if (Array.isArray(tags)) return tags;
+  if (typeof tags === 'string') {
+    // Handle comma-separated string
+    return tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+  }
+  return [];
+}
+
+/**
  * Creates a condensed summary of MCP metadata for system prompts
  */
 export function createMCPSummary(mcp: any): MCPSummary {
@@ -53,7 +66,7 @@ export function createMCPSummary(mcp: any): MCPSummary {
     title: mcp.title,
     description: mcp.description,
     category: mcp.category,
-    tags: mcp.tags,
+    tags: normalizeTags(mcp.tags),
     keyParameters,
     sampleUseCases,
     endpoint: mcp.endpoint,
