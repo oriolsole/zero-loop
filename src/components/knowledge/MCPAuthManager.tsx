@@ -21,7 +21,8 @@ const MCPAuthManager: React.FC<MCPAuthManagerProps> = ({
     return (
       <JiraConfigHelper 
         onConfigSaved={() => {
-          // Refresh the page or trigger a re-render to update the auth status
+          // Close the dialog and trigger a refresh
+          onCancel();
           window.location.reload();
         }}
       />
@@ -35,6 +36,7 @@ const MCPAuthManager: React.FC<MCPAuthManagerProps> = ({
       onSave={(data) => {
         // Handle saving the token
         console.log('Saving token:', data);
+        onCancel();
       }}
       onCancel={onCancel}
     />

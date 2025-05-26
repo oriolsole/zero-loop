@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import TokenList from './TokenList';
 import TokenForm from './TokenForm';
+import JiraConfigHelper from './JiraConfigHelper';
 import { UserSecret } from '@/types/mcp';
 import { userSecretService } from '@/services/userSecretService';
 import { useQuery } from '@tanstack/react-query';
@@ -62,6 +63,7 @@ const TokenManager: React.FC<TokenManagerProps> = ({ open, onOpenChange }) => {
   
   const handleEditToken = (token: UserSecret) => {
     setEditingSecret(token);
+    setCurrentProvider(token.provider);
     setIsAddingToken(true);
   };
   
@@ -99,9 +101,39 @@ const TokenManager: React.FC<TokenManagerProps> = ({ open, onOpenChange }) => {
       setEditingSecret(null);
     }
   };
+
+  const handleJiraConfigSaved = () => {
+    refetch();
+    setIsAddingToken(false);
+    setEditingSecret(null);
+  };
   
   // If showing the form, render that instead
   if (isAddingToken) {
+    // Special handling for Jira
+    if (currentProvider === 'jira' || editingSecret?.provider === 'jira') {
+      return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Key className="h-5 w-5 text-primary" />
+                Configure Jira Integration
+              </DialogTitle>
+              <DialogDescription>
+                Set up your Jira connection with instance URL, email, and API token.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <JiraConfigHelper 
+              onConfigSaved={handleJiraConfigSaved}
+            />
+          </DialogContent>
+        </Dialog>
+      );
+    }
+
+    // Default token form for other providers
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-md">
