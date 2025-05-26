@@ -29,7 +29,7 @@ const GitHubTokenSetup: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      await userSecretService.createSecret({
+      await userSecretService.createUserSecret({
         provider: 'github',
         key: token.trim(),
         label: 'GitHub Fine-grained Token'
