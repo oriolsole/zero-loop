@@ -144,14 +144,15 @@ export const useAgentConversation = () => {
           success: boolean;
           result?: any;
           error?: string;
-        }> : [],
+        }> : undefined,
         selfReflection: row.self_reflection || undefined,
-        toolDecision: row.tool_decision || undefined,
+        toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 
+          row.tool_decision as { reasoning: string; selectedTools: string[]; } : undefined,
         toolProgress: Array.isArray(row.tool_progress) ? row.tool_progress as Array<{
           name: string;
           status: 'pending' | 'executing' | 'completed' | 'failed';
           displayName?: string;
-        }> : []
+        }> : undefined
       }));
 
       setConversations(messages);
