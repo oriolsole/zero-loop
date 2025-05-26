@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -47,7 +46,7 @@ const TokenForm: React.FC<TokenFormProps> = ({
     },
   });
   
-  // List of supported providers
+  // List of supported providers - added jira to the list
   const providers = [
     { id: 'github', name: 'GitHub' },
     { id: 'openai', name: 'OpenAI' },
@@ -55,6 +54,7 @@ const TokenForm: React.FC<TokenFormProps> = ({
     { id: 'azure', name: 'Azure' },
     { id: 'aws', name: 'AWS' },
     { id: 'stripe', name: 'Stripe' },
+    { id: 'jira', name: 'Jira' },
     { id: 'custom', name: 'Custom' },
   ];
 
