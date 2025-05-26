@@ -19,6 +19,33 @@ export const useAIPlanDetector = () => {
     conversationHistory: any[] = []
   ): Promise<AIPlanDetectionResult> => {
     try {
+      // Quick GitHub detection to prevent wrong plan types
+      const githubPattern = /github\.com\/([^\/\s]+)\/([^\/\s]+)|latest commit|repository|repo/i;
+      const isGitHubRequest = githubPattern.test(message);
+      
+      if (isGitHubRequest) {
+        // For GitHub requests, create specific GitHub plans
+        if (message.toLowerCase().includes('latest commit')) {
+          return {
+            shouldUsePlan: true,
+            planType: 'github-commits',
+            confidence: 0.95,
+            reasoning: 'GitHub commit history request detected',
+            suggestedSteps: ['Fetch latest commits from repository'],
+            estimatedComplexity: 'simple'
+          };
+        }
+        
+        return {
+          shouldUsePlan: true,
+          planType: 'github-repository',
+          confidence: 0.9,
+          reasoning: 'GitHub repository analysis request detected',
+          suggestedSteps: ['Analyze repository information', 'Fetch repository details'],
+          estimatedComplexity: 'moderate'
+        };
+      }
+
       const modelSettings = getModelSettings();
       
       // Create a context-aware prompt for plan detection
@@ -44,11 +71,12 @@ Respond with a JSON object containing:
 }
 
 Guidelines:
-- Use plans for: comprehensive research, multi-source data gathering, complex analysis, breaking news searches, repository deep-dives
+- Use plans for: comprehensive research, multi-source data gathering, complex analysis
 - Single responses for: simple questions, basic explanations, direct answers
 - Consider available tools: web search, GitHub analysis, knowledge base search
-- Maximum 5 steps per plan
-- Each step should be specific and actionable`;
+- Maximum 3 steps per plan for efficiency
+- Each step should be specific and actionable
+- Avoid plans for basic greetings or simple queries`;
 
       const { data, error } = await supabase.functions.invoke('ai-model-proxy', {
         body: {
@@ -107,6 +135,29 @@ Guidelines:
 function createFallbackPlan(message: string): AIPlanDetectionResult {
   const lowerMessage = message.toLowerCase();
   
+  // GitHub-specific fallback
+  if (lowerMessage.includes('github') || lowerMessage.includes('repository') || lowerMessage.includes('repo')) {
+    if (lowerMessage.includes('commit')) {
+      return {
+        shouldUsePlan: true,
+        planType: 'github-commits',
+        confidence: 0.8,
+        reasoning: 'Fallback: GitHub commit request detected',
+        suggestedSteps: ['Fetch repository commits'],
+        estimatedComplexity: 'simple'
+      };
+    }
+    
+    return {
+      shouldUsePlan: true,
+      planType: 'github-repository',
+      confidence: 0.7,
+      reasoning: 'Fallback: GitHub repository request detected',
+      suggestedSteps: ['Analyze repository'],
+      estimatedComplexity: 'simple'
+    };
+  }
+  
   // Simple heuristics as fallback
   if (lowerMessage.includes('news') || lowerMessage.includes('latest')) {
     return {
@@ -114,8 +165,8 @@ function createFallbackPlan(message: string): AIPlanDetectionResult {
       planType: 'news-search',
       confidence: 0.7,
       reasoning: 'Fallback: News request detected',
-      suggestedSteps: ['Search current news', 'Organize findings'],
-      estimatedComplexity: 'moderate'
+      suggestedSteps: ['Search current news'],
+      estimatedComplexity: 'simple'
     };
   }
 
@@ -125,7 +176,7 @@ function createFallbackPlan(message: string): AIPlanDetectionResult {
       planType: 'research-task',
       confidence: 0.6,
       reasoning: 'Fallback: Search request detected',
-      suggestedSteps: ['Perform web search', 'Synthesize results'],
+      suggestedSteps: ['Perform web search'],
       estimatedComplexity: 'simple'
     };
   }
