@@ -1,20 +1,14 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { MessageSquare, Plus, Trash2, Clock } from 'lucide-react';
-
-interface Session {
-  id: string;
-  title: string;
-  lastMessage: Date;
-  messageCount: number;
-}
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import { MessageSquare, Plus, Trash2 } from 'lucide-react';
+import { ConversationSession } from '@/hooks/useAgentConversation';
 
 interface SessionsSidebarProps {
-  sessions: Session[];
+  sessions: ConversationSession[];
   currentSessionId: string | null;
   onStartNewSession: () => void;
   onLoadSession: (sessionId: string) => void;
@@ -28,67 +22,81 @@ const SessionsSidebar: React.FC<SessionsSidebarProps> = ({
   onLoadSession,
   onDeleteSession
 }) => {
-  const formatTimestamp = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatDate = (date: Date) => {
+    const now = new Date();
+    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+    
+    if (diffInHours < 24) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (diffInHours < 168) {
+      return date.toLocaleDateString([], { weekday: 'short' });
+    } else {
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
   };
 
   return (
-    <Card className="w-80 flex flex-col">
+    <Card className="w-80 h-full">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <MessageSquare className="h-4 w-4" />
-          Conversations
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <MessageSquare className="h-5 w-5" />
+            Chat History
+          </CardTitle>
+          <Button variant="outline" size="sm" onClick={onStartNewSession}>
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent className="flex-1 p-0">
-        <ScrollArea className="h-full px-4">
-          <div className="space-y-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onStartNewSession}
-              className="w-full justify-start"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              New Conversation
-            </Button>
-            
-            <Separator className="my-3" />
-            
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                className={`group p-3 rounded-lg border cursor-pointer hover:bg-accent transition-colors ${
-                  session.id === currentSessionId ? 'bg-accent' : ''
-                }`}
-                onClick={() => onLoadSession(session.id)}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {session.title}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      <span>{formatTimestamp(session.lastMessage)}</span>
-                      <span>•</span>
-                      <span>{session.messageCount} messages</span>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteSession(session.id);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
+      
+      <CardContent className="p-0">
+        <ScrollArea className="h-[600px]">
+          <div className="space-y-2 p-4">
+            {sessions.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No conversations yet</p>
               </div>
-            ))}
+            ) : (
+              sessions.map((session) => (
+                <div
+                  key={session.id}
+                  className={`group p-3 rounded-lg border cursor-pointer transition-colors hover:bg-muted/50 ${
+                    currentSessionId === session.id ? 'bg-muted border-primary' : ''
+                  }`}
+                  onClick={() => onLoadSession(session.id)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-medium truncate mb-1">
+                        {session.title}
+                      </h4>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {formatDate(session.updated_at)}
+                        </Badge>
+                        {session.messageCount && session.messageCount > 0 && (
+                          <Badge variant="secondary" className="text-xs">
+                            {session.messageCount} msgs
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteSession(session.id);
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </ScrollArea>
       </CardContent>

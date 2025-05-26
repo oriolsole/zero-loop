@@ -1,5 +1,5 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -21,6 +21,8 @@ export interface ConversationSession {
   title: string;
   created_at: Date;
   updated_at: Date;
+  lastMessage?: string;
+  messageCount?: number;
 }
 
 export const useAgentConversation = () => {
@@ -47,7 +49,8 @@ export const useAgentConversation = () => {
       id: sessionId,
       title: 'New Conversation',
       created_at: new Date(),
-      updated_at: new Date()
+      updated_at: new Date(),
+      messageCount: 0
     };
     
     setSessions(prev => [newSession, ...prev]);
@@ -81,7 +84,7 @@ export const useAgentConversation = () => {
           self_reflection: message.selfReflection,
           tool_decision: message.toolDecision,
           tool_progress: message.toolProgress,
-          timestamp: message.timestamp.toISOString()
+          created_at: message.timestamp.toISOString()
         });
     } catch (error) {
       console.error('Error saving message:', error);
@@ -105,7 +108,7 @@ export const useAgentConversation = () => {
         .select('*')
         .eq('session_id', sessionId)
         .eq('user_id', user.id)
-        .order('timestamp', { ascending: true });
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
 
@@ -113,12 +116,12 @@ export const useAgentConversation = () => {
         id: row.id.toString(),
         role: row.role as ConversationMessage['role'],
         content: row.content,
-        timestamp: new Date(row.timestamp),
+        timestamp: new Date(row.created_at),
         messageType: row.message_type,
-        toolsUsed: row.tools_used,
+        toolsUsed: Array.isArray(row.tools_used) ? row.tools_used : [],
         selfReflection: row.self_reflection,
         toolDecision: row.tool_decision,
-        toolProgress: row.tool_progress
+        toolProgress: Array.isArray(row.tool_progress) ? row.tool_progress : []
       }));
 
       setConversations(messages);
@@ -156,7 +159,7 @@ export const useAgentConversation = () => {
   }, [conversations]);
 
   // Initialize with a new session if none exists
-  React.useEffect(() => {
+  useEffect(() => {
     if (user && !currentSessionId) {
       startNewSession();
     }
