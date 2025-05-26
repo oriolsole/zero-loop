@@ -104,15 +104,7 @@ serve(async (req) => {
     
     // Add enhanced directive based on complexity and confidence
     if (enhancedDecision.shouldUseTools) {
-      enhancedSystemPrompt += `\n\n**ENHANCED TOOL EXECUTION DIRECTIVE**: 
-Based on enhanced analysis, this message REQUIRES tool usage with ${enhancedDecision.confidence.toFixed(2)} confidence.
-Request Type: ${enhancedDecision.detectedType}
-Complexity: ${enhancedDecision.complexity}
-Execution Plan: ${enhancedDecision.estimatedSteps} steps
-Reasoning: ${enhancedDecision.reasoning}
-Required tools: ${enhancedDecision.suggestedTools.join(', ')}
-${enhancedDecision.fallbackStrategy ? `Fallback: ${enhancedDecision.fallbackStrategy}` : ''}
-You MUST generate appropriate tool calls for this request. Do not provide generic responses.`;
+      enhancedSystemPrompt += `\n\nThis request requires tools. Use them to get the information needed and provide a direct, helpful answer.`;
     }
 
     // Prepare messages for AI model
@@ -187,11 +179,9 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
     // ENHANCED FORCED TOOL EXECUTION with fallback strategies
     if (enhancedDecision.shouldUseTools && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
       console.log('AI MODEL FAILED TO GENERATE REQUIRED TOOL CALLS - APPLYING ENHANCED FALLBACK STRATEGY');
-      console.log('Enhanced decision analysis indicated tools were required but AI model did not generate tool calls');
-      console.log('Fallback strategy:', enhancedDecision.fallbackStrategy);
       
       const forcedResult = await executeBasedOnDecision(
-        toolDecision, // Use legacy format for compatibility
+        toolDecision,
         message,
         githubInfo,
         mcps,
@@ -203,7 +193,7 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
         toolsUsed = forcedResult.toolsUsed;
         toolProgress = forcedResult.toolProgress;
         
-        // CRITICAL FIX: Make follow-up call to synthesize the results
+        // Make synthesis call to create a proper response
         console.log('Making synthesis call with forced tool results');
         const synthesizedResponse = await synthesizeToolResults(
           message,
@@ -214,12 +204,8 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
           supabase
         );
         
-        finalResponse = synthesizedResponse || forcedResult.finalResponse;
-        selfReflection = forcedResult.selfReflection + `\n\nFallback Execution: Applied enhanced fallback strategy due to AI model not generating expected tool calls. ${enhancedDecision.fallbackStrategy}`;
-      } else if (enhancedDecision.fallbackStrategy) {
-        // Apply fallback strategy as text response
-        finalResponse = `I understand you're looking for ${enhancedDecision.detectedType} information. ${enhancedDecision.fallbackStrategy}`;
-        selfReflection = `Applied fallback strategy due to tool execution failure: ${enhancedDecision.fallbackStrategy}`;
+        finalResponse = synthesizedResponse || createFallbackResponse(message, toolsUsed);
+        selfReflection = `Enhanced Analysis: Used ${toolsUsed.length} tools with confidence ${enhancedDecision.confidence.toFixed(2)}.`;
       }
     }
     // Enhanced tool execution with detailed progress tracking
@@ -235,15 +221,7 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
       toolsUsed = executedTools;
       toolProgress = progress;
       
-      console.log('Enhanced tool execution summary:', {
-        total: toolsUsed.length,
-        successful: toolsUsed.filter(t => t.success).length,
-        failed: toolsUsed.filter(t => !t.success).length,
-        expectedSteps: enhancedDecision.estimatedSteps,
-        actualSteps: toolsUsed.length
-      });
-      
-      // CRITICAL FIX: Improved follow-up call with better synthesis prompt
+      // Make synthesis call with tool results
       console.log('Making enhanced synthesis call with tool results');
       const synthesizedResponse = await synthesizeToolResults(
         message,
@@ -257,8 +235,7 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
       if (synthesizedResponse) {
         finalResponse = synthesizedResponse;
       } else {
-        console.error('Synthesis failed, falling back to original response');
-        finalResponse = assistantMessage.content;
+        finalResponse = createFallbackResponse(message, toolsUsed);
       }
       
       // Check if fallback was used in follow-up
@@ -268,13 +245,12 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
       }
       
       // Generate enhanced self-reflection summary
-      selfReflection = generateSelfReflection(toolsUsed, toolProgress);
-      selfReflection += `\n\nEnhanced Analysis: Executed ${enhancedDecision.detectedType} request with ${enhancedDecision.complexity} complexity. Expected ${enhancedDecision.estimatedSteps} steps, used ${toolsUsed.length} tools. Confidence: ${enhancedDecision.confidence.toFixed(2)}.`;
-
+      selfReflection = `Enhanced Analysis: Used ${toolsUsed.length} tools for ${enhancedDecision.detectedType} request.`;
+      
       console.log('Enhanced synthesis response completed successfully');
     } else {
       console.log('No tool calls were made by the AI model and none were forced');
-      selfReflection = `No tools were used for this request. Enhanced analysis: ${enhancedDecision.reasoning} (Confidence: ${enhancedDecision.confidence.toFixed(2)})`;
+      selfReflection = `No tools needed for this ${enhancedDecision.detectedType} request.`;
     }
 
     // Store assistant response in database with enhanced decision data
@@ -286,7 +262,7 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
         content: finalResponse,
         tools_used: toolsUsed,
         self_reflection: selfReflection,
-        tool_decision: enhancedDecision, // Store the full enhanced decision
+        tool_decision: enhancedDecision,
         created_at: new Date().toISOString()
       });
     }
@@ -308,7 +284,7 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
         sessionId,
         fallbackUsed,
         fallbackReason,
-        toolDecision: enhancedDecision // Return the enhanced decision
+        toolDecision: enhancedDecision
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -336,7 +312,7 @@ You MUST generate appropriate tool calls for this request. Do not provide generi
 });
 
 /**
- * NEW FUNCTION: Synthesize tool results into a coherent response
+ * Synthesize tool results into a coherent response
  */
 async function synthesizeToolResults(
   originalMessage: string,
@@ -350,32 +326,23 @@ async function synthesizeToolResults(
     // Create synthesis prompt with tool results
     const toolResultsSummary = toolsUsed.map(tool => {
       if (tool.success && tool.result) {
-        return `Tool: ${tool.name}\nResult: ${typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result)}`;
+        return `${tool.name}: ${typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result)}`;
       }
-      return `Tool: ${tool.name}\nStatus: Failed - ${tool.error || 'Unknown error'}`;
-    }).join('\n\n');
+      return `${tool.name}: Failed`;
+    }).join('\n');
 
     const synthesisMessages = [
       {
         role: 'system',
-        content: `You are an AI assistant that synthesizes tool results into helpful, conversational responses. 
+        content: `Provide a direct, helpful answer to the user's question using the tool results. Be concise and informative.
 
-CRITICAL INSTRUCTIONS:
-1. Use the tool results to provide a comprehensive, helpful answer to the user's question
-2. Don't just list the results - synthesize them into a coherent, informative response
-3. If the tools found relevant information, use it to directly answer the user's question
-4. Be conversational and helpful, not robotic
-5. If tool results are incomplete or failed, acknowledge limitations but provide what information you can
-6. Focus on being helpful and informative based on the available data
+User asked: "${originalMessage}"
 
-The user asked: "${originalMessage}"
-
-Available tool results:
+Tool results:
 ${toolResultsSummary}
 
-Provide a helpful, synthesized response based on this information.`
+Give a clear answer based on this information.`
       },
-      ...conversationHistory.slice(-3), // Include some recent context
       {
         role: 'user',
         content: originalMessage
@@ -384,9 +351,8 @@ Provide a helpful, synthesized response based on this information.`
 
     const synthesisRequestBody = {
       messages: synthesisMessages,
-      temperature: 0.7,
-      max_tokens: 1500,
-      // Pass model settings if provided
+      temperature: 0.3,
+      max_tokens: 800,
       ...(modelSettings && {
         provider: modelSettings.provider,
         model: modelSettings.selectedModel,
@@ -420,4 +386,25 @@ Provide a helpful, synthesized response based on this information.`
     console.error('Error in synthesis:', error);
     return null;
   }
+}
+
+/**
+ * Create a fallback response when synthesis fails
+ */
+function createFallbackResponse(originalMessage: string, toolsUsed: any[]): string {
+  const successfulTools = toolsUsed.filter(t => t.success);
+  
+  if (successfulTools.length === 0) {
+    return "I apologize, but I wasn't able to find the information you requested at this time.";
+  }
+  
+  // Try to extract useful information from tool results
+  const results = successfulTools.map(tool => {
+    if (tool.result && typeof tool.result === 'string') {
+      return tool.result.substring(0, 200) + (tool.result.length > 200 ? '...' : '');
+    }
+    return 'Information found';
+  }).join('\n\n');
+  
+  return `Based on my search, here's what I found:\n\n${results}`;
 }
