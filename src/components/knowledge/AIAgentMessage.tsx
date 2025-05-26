@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Bot, User, Brain, ChevronDown, ChevronRight, CheckCircle, XCircle, Loader2, Lightbulb, ArrowRight } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
+import MarkdownRenderer from './MarkdownRenderer';
 
 interface AIAgentMessageProps {
   message: ConversationMessage;
@@ -54,6 +54,21 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     return message.aiReasoning && (message.messageType === 'planning' || message.messageType === 'step-executing' || message.messageType === 'step-completed');
   };
 
+  const renderToolResult = (result: any) => {
+    if (typeof result === 'string') {
+      // For strings longer than 1000 chars, truncate but still apply formatting
+      const content = result.length > 1000 ? `${result.substring(0, 1000)}...` : result;
+      return <MarkdownRenderer content={content} className="text-foreground" />;
+    } else {
+      // For objects, display as formatted JSON
+      return (
+        <pre className="text-sm text-foreground whitespace-pre-wrap max-h-48 overflow-y-auto bg-secondary/20 p-2 rounded">
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      );
+    }
+  };
+
   return (
     <div className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
       {message.role !== 'user' && (
@@ -65,8 +80,10 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
       )}
       
       <div className={`rounded-lg px-4 py-3 max-w-[80%] shadow-sm ${getMessageStyle()}`}>
-        {/* Main message content */}
-        <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+        {/* Main message content with markdown rendering */}
+        <div className="text-sm">
+          <MarkdownRenderer content={message.content} />
+        </div>
         
         {/* AI Reasoning (Lovable-style purple italic text) */}
         {shouldShowAIReasoning() && (
@@ -154,7 +171,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
           </div>
         )}
 
-        {/* Collapsible Step Details */}
+        {/* Collapsible Step Details with Enhanced Formatting */}
         {message.stepDetails?.result && (
           <Collapsible open={showDetails} onOpenChange={setShowDetails} className="mt-3">
             <CollapsibleTrigger asChild>
@@ -166,13 +183,8 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
             <CollapsibleContent className="mt-2">
               <div className="p-3 bg-secondary/30 rounded-lg border border-border">
                 <div className="text-xs font-medium text-muted-foreground mb-2">Tool Result:</div>
-                <div className="text-sm text-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
-                  {typeof message.stepDetails.result === 'string' 
-                    ? message.stepDetails.result.length > 1000 
-                      ? `${message.stepDetails.result.substring(0, 1000)}...` 
-                      : message.stepDetails.result
-                    : JSON.stringify(message.stepDetails.result, null, 2)
-                  }
+                <div className="max-h-48 overflow-y-auto">
+                  {renderToolResult(message.stepDetails.result)}
                 </div>
               </div>
             </CollapsibleContent>
