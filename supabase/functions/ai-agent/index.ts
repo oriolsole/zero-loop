@@ -10,7 +10,6 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -21,11 +20,7 @@ serve(async (req) => {
   }
 
   try {
-    if (!openAIApiKey) {
-      throw new Error('OpenAI API key not configured');
-    }
-
-    const { message, conversationHistory = [], userId, sessionId, streaming = false } = await req.json();
+    const { message, conversationHistory = [], userId, sessionId, streaming = false, modelSettings } = await req.json();
     
     if (!message) {
       throw new Error('Message is required');
@@ -36,7 +31,8 @@ serve(async (req) => {
       historyLength: conversationHistory.length, 
       userId, 
       sessionId,
-      streaming 
+      streaming,
+      modelSettings
     });
 
     // Store conversation in database if userId and sessionId provided
@@ -133,7 +129,7 @@ serve(async (req) => {
 
 Remember: You can use multiple tools in sequence and should reflect on their outputs to provide the best possible assistance.`;
 
-    // Prepare messages for OpenAI
+    // Prepare messages for AI model
     const messages = [
       {
         role: 'system',
@@ -146,52 +142,52 @@ Remember: You can use multiple tools in sequence and should reflect on their out
       }
     ];
 
-    // Make OpenAI API call with function calling
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages,
-        tools: tools.length > 0 ? tools : undefined,
-        tool_choice: 'auto',
-        temperature: 0.7,
-        max_tokens: 2000,
-        stream: streaming
-      }),
+    // Use the ai-model-proxy instead of calling OpenAI directly
+    const modelRequestBody = {
+      messages,
+      tools: tools.length > 0 ? tools : undefined,
+      tool_choice: 'auto',
+      temperature: 0.7,
+      max_tokens: 2000,
+      stream: streaming,
+      // Pass model settings if provided
+      ...(modelSettings && {
+        provider: modelSettings.provider,
+        model: modelSettings.selectedModel,
+        localModelUrl: modelSettings.localModelUrl
+      })
+    };
+
+    const response = await supabase.functions.invoke('ai-model-proxy', {
+      body: modelRequestBody
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API error:', errorText);
-      throw new Error(`OpenAI API error: ${response.status}`);
+    if (response.error) {
+      console.error('AI Model Proxy error:', response.error);
+      throw new Error(`AI Model Proxy error: ${response.error.message}`);
     }
+
+    const data = response.data;
+    console.log('AI Model response received');
 
     if (streaming) {
       // Handle streaming response
-      return new Response(response.body, {
+      return new Response(JSON.stringify(data), {
         headers: {
           ...corsHeaders,
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
+          'Content-Type': 'application/json',
         },
       });
     }
 
-    const data = await response.json();
     const assistantMessage = data.choices[0].message;
-
-    console.log('OpenAI response:', assistantMessage);
+    console.log('Assistant message:', assistantMessage);
 
     let finalResponse = assistantMessage.content;
     let toolsUsed: any[] = [];
     let selfReflection = '';
 
-    // Check if OpenAI wants to call any tools
+    // Check if AI wants to call any tools
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       const toolResults = [];
       
@@ -273,7 +269,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
         }
       }
       
-      // Make another OpenAI call with the tool results and self-reflection
+      // Make another AI call with the tool results and self-reflection
       const followUpMessages = [
         ...messages,
         assistantMessage,
@@ -290,25 +286,27 @@ Be transparent about any limitations or failures.`
         }
       ];
       
-      const followUpResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openAIApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: followUpMessages,
-          temperature: 0.7,
-          max_tokens: 2000
-        }),
+      const followUpRequestBody = {
+        messages: followUpMessages,
+        temperature: 0.7,
+        max_tokens: 2000,
+        // Pass model settings if provided
+        ...(modelSettings && {
+          provider: modelSettings.provider,
+          model: modelSettings.selectedModel,
+          localModelUrl: modelSettings.localModelUrl
+        })
+      };
+
+      const followUpResponse = await supabase.functions.invoke('ai-model-proxy', {
+        body: followUpRequestBody
       });
       
-      if (!followUpResponse.ok) {
-        throw new Error(`OpenAI follow-up API error: ${followUpResponse.status}`);
+      if (followUpResponse.error) {
+        throw new Error(`AI Model Proxy follow-up error: ${followUpResponse.error.message}`);
       }
       
-      const followUpData = await followUpResponse.json();
+      const followUpData = followUpResponse.data;
       finalResponse = followUpData.choices[0].message.content;
       
       // Generate self-reflection summary

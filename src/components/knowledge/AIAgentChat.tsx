@@ -16,13 +16,18 @@ import {
   Plus,
   Trash2,
   Clock,
-  Brain
+  Brain,
+  Settings,
+  Cloud,
+  HardDrive,
+  Zap
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
+import { getModelSettings, ModelProvider } from '@/services/modelProviderService';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
@@ -40,6 +45,7 @@ const AIAgentChat: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
+  const [modelSettings, setModelSettings] = useState(getModelSettings());
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -48,6 +54,53 @@ const AIAgentChat: React.FC = () => {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
   }, [conversations]);
+
+  // Load model settings on component mount and when they change
+  useEffect(() => {
+    const loadSettings = () => {
+      const settings = getModelSettings();
+      setModelSettings(settings);
+    };
+
+    // Load initially
+    loadSettings();
+
+    // Listen for storage changes (when settings are updated)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'modelSettings') {
+        loadSettings();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const getProviderIcon = (provider: ModelProvider) => {
+    switch (provider) {
+      case 'openai':
+        return <Cloud className="h-3 w-3" />;
+      case 'local':
+        return <HardDrive className="h-3 w-3" />;
+      case 'npaw':
+        return <Zap className="h-3 w-3" />;
+      default:
+        return <Bot className="h-3 w-3" />;
+    }
+  };
+
+  const getProviderColor = (provider: ModelProvider) => {
+    switch (provider) {
+      case 'openai':
+        return 'bg-blue-500';
+      case 'local':
+        return 'bg-green-500';
+      case 'npaw':
+        return 'bg-purple-500';
+      default:
+        return 'bg-gray-500';
+    }
+  };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !user || !currentSessionId) return;
@@ -72,7 +125,8 @@ const AIAgentChat: React.FC = () => {
           conversationHistory,
           userId: user.id,
           sessionId: currentSessionId,
-          streaming: false
+          streaming: false,
+          modelSettings: modelSettings
         }
       });
 
@@ -215,11 +269,34 @@ const AIAgentChat: React.FC = () => {
       <Card className="flex-1 flex flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="h-5 w-5" />
-              AI Agent Chat
-            </CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle className="flex items-center gap-2">
+                <Bot className="h-5 w-5" />
+                AI Agent Chat
+              </CardTitle>
+              
+              {/* Model Display */}
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="flex items-center gap-1">
+                  {getProviderIcon(modelSettings.provider)}
+                  <span className="text-xs">
+                    {modelSettings.provider.toUpperCase()}
+                    {modelSettings.selectedModel && ` - ${modelSettings.selectedModel}`}
+                  </span>
+                  <div className={`w-2 h-2 rounded-full ${getProviderColor(modelSettings.provider)}`} />
+                </Badge>
+              </div>
+            </div>
+            
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.location.href = '/settings'}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Model Settings
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -247,9 +324,17 @@ const AIAgentChat: React.FC = () => {
                 <div className="text-center py-12 text-muted-foreground">
                   <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <h3 className="text-lg font-medium mb-2">Start a conversation</h3>
-                  <p className="text-sm">
+                  <p className="text-sm mb-2">
                     I'm your AI agent. I can search the web, access your knowledge base, and use various tools to help you.
                   </p>
+                  <div className="flex items-center justify-center gap-2 text-xs">
+                    <span>Currently using:</span>
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      {getProviderIcon(modelSettings.provider)}
+                      {modelSettings.provider.toUpperCase()}
+                      {modelSettings.selectedModel && ` - ${modelSettings.selectedModel}`}
+                    </Badge>
+                  </div>
                 </div>
               )}
 
@@ -331,7 +416,9 @@ const AIAgentChat: React.FC = () => {
                   <div className="ml-3 bg-secondary rounded-lg px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">Thinking and planning...</span>
+                      <span className="text-sm">
+                        Thinking with {modelSettings.provider.toUpperCase()}...
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -343,7 +430,7 @@ const AIAgentChat: React.FC = () => {
         <CardFooter className="border-t p-4">
           <div className="flex w-full gap-2">
             <Input
-              placeholder="Ask me anything... I can search the web, access your knowledge base, and more!"
+              placeholder={`Ask me anything... I can search the web, access your knowledge base, and more! (Using ${modelSettings.provider.toUpperCase()})`}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyPress}
