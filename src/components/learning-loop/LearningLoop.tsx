@@ -39,6 +39,7 @@ const LearningLoop: React.FC = () => {
     domains, 
     activeDomainId,
     isRunningLoop,
+    currentStepIndex,
     startNewLoop,
     advanceToNextStep,
     isContinuousMode,
@@ -60,8 +61,16 @@ const LearningLoop: React.FC = () => {
   const isDomainWebKnowledge = activeDomain?.id === 'web-knowledge';
   const isAIReasoning = activeDomain?.name === 'AI Reasoning';
   
-  // Initialize currentLoop outside conditionals to prevent issues
+  // Initialize currentLoop from domain's currentLoop, not loopHistory
   const currentLoop: LearningStepType[] = activeDomain?.currentLoop || [];
+  
+  console.log('LearningLoop render state:', {
+    activeDomainId,
+    activeDomain: activeDomain ? { id: activeDomain.id, name: activeDomain.name } : null,
+    currentLoopLength: currentLoop.length,
+    isRunningLoop,
+    currentStepIndex
+  });
   
   // Add null checks to prevent "Cannot read properties of null" errors
   const completedSteps = currentLoop.filter(step => step && step.status === 'success');
@@ -128,8 +137,10 @@ const LearningLoop: React.FC = () => {
   }
 
   const handleStartLoop = async () => {
+    console.log('handleStartLoop called');
     try {
       await startNewLoop();
+      console.log('startNewLoop completed successfully');
     } catch (error) {
       console.error('Failed to start loop:', error);
       toast.error('Failed to start learning loop. Please try again.');
@@ -155,8 +166,9 @@ const LearningLoop: React.FC = () => {
     }
   };
 
-  // If active domain doesn't exist or has no steps yet, render the empty state
-  if (!activeDomain || !activeDomain.currentLoop || activeDomain.currentLoop.length === 0) {
+  // If active domain doesn't exist, render the empty state
+  if (!activeDomain) {
+    console.log('No active domain found, rendering empty state');
     return (
       <EmptyLoopState 
         handleStartLoop={handleStartLoop} 
@@ -168,6 +180,7 @@ const LearningLoop: React.FC = () => {
   
   // No loop steps means we need to show the empty state
   if (currentLoop.length === 0) {
+    console.log('No current loop steps, rendering empty state');
     return (
       <EmptyLoopState 
         handleStartLoop={handleStartLoop} 
@@ -176,6 +189,8 @@ const LearningLoop: React.FC = () => {
       />
     );
   }
+
+  console.log('Rendering learning loop with steps:', currentLoop.length);
 
   return (
     <div className="space-y-6">

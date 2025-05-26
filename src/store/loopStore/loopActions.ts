@@ -1,4 +1,3 @@
-
 import { StateCreator } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { LearningStep, LoopHistory } from '../../types/intelligence';
@@ -19,13 +18,32 @@ export interface LoopActions {
 
 export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, get) => ({
   startNewLoop: async () => {
+    console.log('=== START NEW LOOP ===');
     const { domains, activeDomainId, isContinuousMode } = get();
+    
+    console.log('Current state:', {
+      domainsCount: domains.length,
+      activeDomainId,
+      domains: domains.map(d => ({ id: d.id, name: d.name, engine: d.engine }))
+    });
+    
     const activeDomain = domains.find((d: any) => d.id === activeDomainId);
     
-    if (!activeDomain || !activeDomain.engine) {
-      console.error('No active domain or engine selected');
+    if (!activeDomain) {
+      console.error('No active domain found. Available domains:', domains);
       return;
     }
+    
+    if (!activeDomain.engine) {
+      console.error('Active domain has no engine specified:', activeDomain);
+      return;
+    }
+
+    console.log('Active domain:', {
+      id: activeDomain.id,
+      name: activeDomain.name,
+      engine: activeDomain.engine
+    });
 
     // Get current global model settings
     const modelSettings = getModelSettings();
@@ -34,15 +52,20 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
     const engine = domainEngines[activeDomain.engine];
     if (!engine) {
       console.error('Domain engine not found:', activeDomain.engine);
+      console.error('Available engines:', Object.keys(domainEngines));
       return;
     }
+
+    console.log('Found engine for domain:', activeDomain.engine);
 
     const loopId = uuidv4();
     const createdAt = new Date().toISOString();
     
     try {
+      console.log('Generating task with engine...');
       // Pass model settings to the task generation
       const taskResult = await engine.generateTask(activeDomain, { modelSettings });
+      console.log('Task generation result:', taskResult);
       
       if (typeof taskResult === 'string') {
         // Handle simple string response
@@ -51,36 +74,54 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
           type: 'task',
           title: 'Task Generation',
           content: taskResult,
+          status: 'success',
           isCompleted: true,
           result: { task: taskResult, success: true }
         };
 
+        // Update domain's currentLoop instead of loopHistory
+        const updatedDomains = domains.map((domain: any) => {
+          if (domain.id === activeDomainId) {
+            return {
+              ...domain,
+              currentLoop: [initialStep]
+            };
+          }
+          return domain;
+        });
+
+        // Also add to loop history for tracking
+        const newLoopHistory: LoopHistory = {
+          id: loopId,
+          domainId: activeDomainId,
+          domainName: activeDomain.name,
+          steps: [initialStep],
+          startTime: createdAt,
+          isCompleted: false,
+          status: 'active'
+        };
+
         set({
+          domains: updatedDomains,
           isRunningLoop: true,
           currentStepIndex: 0,
-          loopHistory: [{
-            id: loopId,
-            domainId: activeDomainId,
-            domainName: activeDomain.name,
-            steps: [initialStep],
-            startTime: createdAt,
-            isCompleted: false,
-            status: 'active'
-          }, ...get().loopHistory]
+          loopHistory: [newLoopHistory, ...get().loopHistory]
         });
-      } else {
-        console.error('Invalid task generation result');
-        return;
-      }
 
-      // Auto-advance if in continuous mode
-      if (isContinuousMode) {
-        setTimeout(() => {
-          const state = get();
-          if (state.isRunningLoop) {
-            state.advanceToNextStep();
-          }
-        }, get().loopDelay);
+        console.log('Loop started successfully with initial step');
+
+        // Auto-advance if in continuous mode
+        if (isContinuousMode) {
+          setTimeout(() => {
+            const state = get();
+            if (state.isRunningLoop) {
+              state.advanceToNextStep();
+            }
+          }, get().loopDelay);
+        }
+      } else {
+        console.error('Invalid task generation result:', taskResult);
+        return;
       }
 
     } catch (error) {
@@ -90,6 +131,7 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
   },
 
   advanceToNextStep: async () => {
+    console.log('=== ADVANCE TO NEXT STEP ===');
     const { 
       domains, 
       activeDomainId, 
@@ -100,10 +142,17 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
     } = get();
     
     const activeDomain = domains.find((d: any) => d.id === activeDomainId);
-    const currentLoop = loopHistory[0];
+    const currentLoop = activeDomain?.currentLoop || [];
     
-    if (!activeDomain || !currentLoop || currentStepIndex === null) {
-      console.error('Cannot advance step: missing domain or loop');
+    console.log('Current loop state:', {
+      activeDomainId,
+      currentStepIndex,
+      currentLoopLength: currentLoop.length,
+      steps: currentLoop.map(s => ({ type: s.type, status: s.status }))
+    });
+    
+    if (!activeDomain || currentLoop.length === 0) {
+      console.error('Cannot advance step: missing domain or current loop');
       return;
     }
 
@@ -113,36 +162,39 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
       return;
     }
 
-    const nextStepIndex = currentStepIndex + 1;
+    const nextStepIndex = (currentStepIndex || 0) + 1;
     const stepTypes: LearningStep['type'][] = ['task', 'solution', 'verification', 'reflection', 'mutation'];
     
     if (nextStepIndex >= stepTypes.length) {
+      console.log('All steps completed, finishing loop');
       get().completeLoop();
       return;
     }
 
     // Get current global model settings for each step
     const modelSettings = getModelSettings();
-
     const stepType = stepTypes[nextStepIndex];
+    
+    console.log(`Executing step: ${stepType} (index: ${nextStepIndex})`);
     
     try {
       let result;
       const context = { 
-        previousSteps: currentLoop.steps,
+        previousSteps: currentLoop,
         domain: activeDomain,
         modelSettings // Pass current model settings to each step
       };
 
+      const taskContent = currentLoop[0].result?.task || currentLoop[0].content;
+      
       switch (stepType) {
         case 'solution':
-          // Use solveTask method from DomainEngine interface
-          const taskContent = currentLoop.steps[0].result?.task || currentLoop.steps[0].content;
+          console.log('Solving task:', taskContent);
           result = await engine.solveTask(taskContent, context);
           break;
         case 'verification':
-          // Use verifyTask or verifySolution method
-          const solutionContent = currentLoop.steps[1].result?.solution || currentLoop.steps[1].content;
+          const solutionContent = currentLoop[1].result?.solution || currentLoop[1].content;
+          console.log('Verifying solution:', solutionContent);
           if (engine.verifyTask) {
             result = await engine.verifyTask(taskContent, solutionContent);
           } else if (engine.verifySolution) {
@@ -152,8 +204,8 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
           }
           break;
         case 'reflection':
-          // Use reflect or reflectOnTask method
-          const verificationResult = currentLoop.steps[2].result || { result: true };
+          const verificationResult = currentLoop[2].result || { result: true };
+          console.log('Reflecting on task with verification:', verificationResult);
           if (engine.reflectOnTask) {
             result = await engine.reflectOnTask(taskContent, solutionContent, verificationResult);
           } else if (engine.reflect) {
@@ -163,8 +215,8 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
           }
           break;
         case 'mutation':
-          // Use mutateTask method
-          const reflectionResult = currentLoop.steps[3].result || { insights: [] };
+          const reflectionResult = currentLoop[3].result || { insights: [] };
+          console.log('Mutating task with reflection:', reflectionResult);
           if (engine.mutateTask) {
             result = await engine.mutateTask(taskContent, solutionContent, verificationResult, reflectionResult);
           } else {
@@ -176,24 +228,47 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
           return;
       }
 
+      console.log(`Step ${stepType} result:`, result);
+
       const newStep: LearningStep = {
         id: uuidv4(),
         type: stepType,
         title: stepType.charAt(0).toUpperCase() + stepType.slice(1),
         content: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+        status: 'success',
         isCompleted: true,
         result
       };
 
-      const updatedLoop = {
-        ...currentLoop,
-        steps: [...currentLoop.steps, newStep]
-      };
+      // Update domain's currentLoop
+      const updatedDomains = domains.map((domain: any) => {
+        if (domain.id === activeDomainId) {
+          return {
+            ...domain,
+            currentLoop: [...currentLoop, newStep]
+          };
+        }
+        return domain;
+      });
+
+      // Update loop history
+      const updatedLoopHistory = loopHistory.map(loop => {
+        if (loop.domainId === activeDomainId && loop.status === 'active') {
+          return {
+            ...loop,
+            steps: [...currentLoop, newStep]
+          };
+        }
+        return loop;
+      });
 
       set({
+        domains: updatedDomains,
         currentStepIndex: nextStepIndex,
-        loopHistory: [updatedLoop, ...loopHistory.slice(1)]
+        loopHistory: updatedLoopHistory
       });
+
+      console.log(`Step ${stepType} completed successfully`);
 
       // Auto-advance if in continuous mode and not the last step
       if (isContinuousMode && nextStepIndex < stepTypes.length - 1) {
@@ -207,6 +282,33 @@ export const createLoopActions: StateCreator<any, [], [], LoopActions> = (set, g
 
     } catch (error) {
       console.error(`Error in ${stepType} step:`, error);
+      
+      // Create a failed step
+      const failedStep: LearningStep = {
+        id: uuidv4(),
+        type: stepType,
+        title: stepType.charAt(0).toUpperCase() + stepType.slice(1),
+        content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        status: 'failure',
+        isCompleted: true,
+        result: { error: error instanceof Error ? error.message : 'Unknown error' }
+      };
+
+      // Update domain with failed step
+      const updatedDomains = domains.map((domain: any) => {
+        if (domain.id === activeDomainId) {
+          return {
+            ...domain,
+            currentLoop: [...currentLoop, failedStep]
+          };
+        }
+        return domain;
+      });
+
+      set({
+        domains: updatedDomains,
+        currentStepIndex: nextStepIndex
+      });
     }
   },
 
