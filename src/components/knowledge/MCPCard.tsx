@@ -31,6 +31,11 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
   const requiresAuth = mcp.requiresAuth === true;
   const requiresToken = !!mcp.requirestoken; // Fixed: use requirestoken instead of requiresToken
 
+  // Defensive checks for arrays
+  const parameters = Array.isArray(mcp.parameters) ? mcp.parameters : [];
+  const tags = Array.isArray(mcp.tags) ? mcp.tags : [];
+  const sampleUseCases = Array.isArray(mcp.sampleUseCases) ? mcp.sampleUseCases : [];
+
   return (
     <>
       <Card className={`h-full flex flex-col ${isDefault ? 'border-primary/30 bg-primary/5' : ''}`}>
@@ -96,15 +101,15 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
                   {mcp.category}
                 </Badge>
               )}
-              <Badge variant="outline">{mcp.parameters.length} params</Badge>
+              <Badge variant="outline">{parameters.length} params</Badge>
             </div>
           </div>
           <CardDescription className="line-clamp-2">{mcp.description}</CardDescription>
           
           {/* Tags section */}
-          {mcp.tags && mcp.tags.length > 0 && (
+          {tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
-              {mcp.tags.map((tag, i) => (
+              {tags.map((tag, i) => (
                 <Badge key={i} variant="secondary" className="text-xs">
                   {tag}
                 </Badge>
@@ -116,10 +121,10 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
         <CardContent className="flex-grow">
           <div className="text-sm text-muted-foreground mb-2">Parameters:</div>
           <div className="space-y-1">
-            {mcp.parameters.length === 0 ? (
+            {parameters.length === 0 ? (
               <span className="text-sm italic text-muted-foreground">No parameters required</span>
             ) : (
-              mcp.parameters.slice(0, 3).map((param, index) => (
+              parameters.slice(0, 3).map((param, index) => (
                 <div key={index} className="flex items-center text-sm">
                   <Badge variant="outline" className="mr-2">
                     {param.type}
@@ -131,9 +136,9 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
                 </div>
               ))
             )}
-            {mcp.parameters.length > 3 && (
+            {parameters.length > 3 && (
               <div className="text-sm text-muted-foreground">
-                +{mcp.parameters.length - 3} more parameters
+                +{parameters.length - 3} more parameters
               </div>
             )}
           </div>
@@ -152,7 +157,7 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
           )}
           
           {/* Sample use cases section, toggled by a button */}
-          {mcp.sampleUseCases && mcp.sampleUseCases.length > 0 && (
+          {sampleUseCases.length > 0 && (
             <div className="mt-3">
               <Button 
                 variant="ghost" 
@@ -165,7 +170,7 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
               
               {showUseCases && (
                 <div className="mt-2 text-sm border-l-2 pl-2 border-primary/20 space-y-1">
-                  {mcp.sampleUseCases.slice(0, 2).map((useCase, idx) => (
+                  {sampleUseCases.slice(0, 2).map((useCase, idx) => (
                     <div key={idx} className="text-xs">&bull; {useCase}</div>
                   ))}
                 </div>

@@ -1,7 +1,39 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult } from '@/types/mcp';
+import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult, MCPParameter } from '@/types/mcp';
 import { defaultMCPs } from '@/constants/defaultMCPs';
+
+// Helper function to convert database JSON to typed arrays
+const convertDatabaseMCP = (dbMCP: any): MCP => {
+  return {
+    ...dbMCP,
+    parameters: Array.isArray(dbMCP.parameters) 
+      ? dbMCP.parameters 
+      : typeof dbMCP.parameters === 'string' 
+        ? JSON.parse(dbMCP.parameters) 
+        : [],
+    tags: Array.isArray(dbMCP.tags) 
+      ? dbMCP.tags 
+      : typeof dbMCP.tags === 'string' 
+        ? JSON.parse(dbMCP.tags) 
+        : [],
+    sampleUseCases: Array.isArray(dbMCP.sampleUseCases) 
+      ? dbMCP.sampleUseCases 
+      : typeof dbMCP.sampleUseCases === 'string' 
+        ? JSON.parse(dbMCP.sampleUseCases) 
+        : []
+  };
+};
+
+// Helper function to convert MCP to database format
+const convertMCPForDatabase = (mcp: Partial<MCP>) => {
+  return {
+    ...mcp,
+    parameters: JSON.stringify(mcp.parameters || []),
+    tags: JSON.stringify(mcp.tags || []),
+    sampleUseCases: JSON.stringify(mcp.sampleUseCases || [])
+  };
+};
 
 export const mcpService = {
   // Fetch all MCPs for the current user
@@ -12,32 +44,36 @@ export const mcpService = {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data || [];
+    return (data || []).map(convertDatabaseMCP);
   },
 
   // Create a new MCP
   async createMCP(mcp: Partial<MCP>): Promise<MCP> {
+    const dbMCP = convertMCPForDatabase(mcp);
+    
     const { data, error } = await supabase
       .from('mcps')
-      .insert([mcp])
+      .insert([dbMCP])
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+    return convertDatabaseMCP(data);
   },
 
   // Update an existing MCP
   async updateMCP(id: string, updates: Partial<MCP>): Promise<MCP> {
+    const dbUpdates = convertMCPForDatabase(updates);
+    
     const { data, error } = await supabase
       .from('mcps')
-      .update(updates)
+      .update(dbUpdates)
       .eq('id', id)
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+    return convertDatabaseMCP(data);
   },
 
   // Delete an MCP
@@ -60,10 +96,11 @@ export const mcpService = {
 
     if (fetchError) throw fetchError;
 
+    const convertedMCP = convertDatabaseMCP(originalMCP);
     const clonedMCP = {
-      ...originalMCP,
+      ...convertedMCP,
       id: undefined,
-      title: `${originalMCP.title} (Copy)`,
+      title: `${convertedMCP.title} (Copy)`,
       isDefault: false,
       created_at: undefined,
       updated_at: undefined
@@ -219,12 +256,12 @@ export const mcpService = {
             break;
         }
 
-        return {
+        return convertMCPForDatabase({
           ...mcp,
           endpoint: correctedEndpoint,
           user_id: userId,
           isDefault: true
-        };
+        });
       });
 
       // Insert the new MCPs
