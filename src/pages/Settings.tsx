@@ -1,5 +1,6 @@
 
 import React from 'react';
+import MainLayout from '@/components/layouts/MainLayout';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import SupabaseControl from '@/components/SupabaseControl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,8 +9,8 @@ import ModelSettings from '@/components/ModelSettings';
 
 const Settings = () => {
   return (
-    <div className="min-h-screen bg-background">
-      <main className="container mx-auto py-6 px-4 max-w-5xl">
+    <MainLayout>
+      <div className="container mx-auto py-6 px-4 max-w-5xl">
         <h1 className="text-2xl font-bold mb-6">Settings</h1>
         
         <Tabs defaultValue="database" className="space-y-4">
@@ -138,8 +139,8 @@ const Settings = () => {
             </Card>
           </TabsContent>
         </Tabs>
-      </main>
-    </div>
+      </div>
+    </MainLayout>
   );
 };
 

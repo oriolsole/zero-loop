@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -138,10 +139,19 @@ export const useAgentConversation = () => {
         content: row.content,
         timestamp: new Date(row.created_at),
         messageType: row.message_type as ConversationMessage['messageType'] || undefined,
-        toolsUsed: Array.isArray(row.tools_used) ? row.tools_used : [],
+        toolsUsed: Array.isArray(row.tools_used) ? row.tools_used as Array<{
+          name: string;
+          success: boolean;
+          result?: any;
+          error?: string;
+        }> : [],
         selfReflection: row.self_reflection || undefined,
         toolDecision: row.tool_decision || undefined,
-        toolProgress: Array.isArray(row.tool_progress) ? row.tool_progress : []
+        toolProgress: Array.isArray(row.tool_progress) ? row.tool_progress as Array<{
+          name: string;
+          status: 'pending' | 'executing' | 'completed' | 'failed';
+          displayName?: string;
+        }> : []
       }));
 
       setConversations(messages);

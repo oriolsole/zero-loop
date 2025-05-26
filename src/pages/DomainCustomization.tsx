@@ -1,8 +1,8 @@
-
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@/components/ui/sonner';
 import { useLoopStore } from '../store/useLoopStore';
+import MainLayout from '@/components/layouts/MainLayout';
 import DomainEditor from '../components/DomainEditor';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from 'lucide-react';
@@ -124,46 +124,48 @@ const DomainCustomization: React.FC = () => {
   };
   
   return (
-    <div className="container mx-auto py-8">
-      {!supabaseState.isRemoteEnabled && (
-        <Alert variant="warning" className="mb-4">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Remote Logging Disabled</AlertTitle>
-          <AlertDescription>
-            Enable Remote Logging in settings to save domains to the database.
-          </AlertDescription>
-        </Alert>
-      )}
-      
-      {storageWarning && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Storage Space Low</AlertTitle>
-          <AlertDescription>
-            Your browser storage is running low. Enable Remote Logging to avoid data loss.
-          </AlertDescription>
-        </Alert>
-      )}
-      
-      {saveError && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error Saving Domain</AlertTitle>
-          <AlertDescription>
-            {saveError}
-          </AlertDescription>
-        </Alert>
-      )}
-      
-      <DomainEditor 
-        domain={domain} 
-        onSave={handleSave} 
-        onCancel={handleCancel} 
-        onDelete={handleDelete}
-        isNew={isNew}
-        isSaving={isSaving}
-      />
-    </div>
+    <MainLayout>
+      <div className="container mx-auto py-8">
+        {!supabaseState.isRemoteEnabled && (
+          <Alert variant="warning" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Remote Logging Disabled</AlertTitle>
+            <AlertDescription>
+              Enable Remote Logging in settings to save domains to the database.
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        {storageWarning && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Storage Space Low</AlertTitle>
+            <AlertDescription>
+              Your browser storage is running low. Enable Remote Logging to avoid data loss.
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        {saveError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error Saving Domain</AlertTitle>
+            <AlertDescription>
+              {saveError}
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        <DomainEditor 
+          domain={domain} 
+          onSave={handleSave} 
+          onCancel={handleCancel} 
+          onDelete={handleDelete}
+          isNew={isNew}
+          isSaving={isSaving}
+        />
+      </div>
+    </MainLayout>
   );
 };
 

@@ -1,5 +1,6 @@
 
 import { useEffect } from "react";
+import MainLayout from "@/components/layouts/MainLayout";
 import Dashboard from "@/components/Dashboard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,8 +20,8 @@ const Index = () => {
   }, [domains, activeDomainId, setActiveDomain]);
   
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <main className="container mx-auto px-4 py-8 max-w-7xl">
+    <MainLayout>
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
         <section className="mb-12">
           <h1 className="text-4xl font-bold mb-4 fade-in">ZeroLoop</h1>
           <p className="text-xl text-muted-foreground mb-6 max-w-3xl fade-in-delay-1">
@@ -116,8 +117,8 @@ const Index = () => {
             <Dashboard />
           </section>
         )}
-      </main>
-    </div>
+      </div>
+    </MainLayout>
   );
 };
 
