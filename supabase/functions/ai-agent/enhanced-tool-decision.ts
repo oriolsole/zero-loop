@@ -1,6 +1,6 @@
 
 /**
- * Enhanced tool decision analysis with Lovable-style principles
+ * Enhanced tool decision analysis with Lovable-style principles and context awareness
  */
 
 export interface EnhancedToolDecision {
@@ -13,6 +13,11 @@ export interface EnhancedToolDecision {
   estimatedSteps: number;
   fallbackStrategy?: string;
   executionPlan: ExecutionStep[];
+  contextualInfo?: {
+    referencesGitHub?: boolean;
+    githubRepo?: { owner: string; repo: string };
+    referencePrevious?: boolean;
+  };
 }
 
 export interface ExecutionStep {
@@ -24,17 +29,24 @@ export interface ExecutionStep {
 }
 
 /**
- * Enhanced analysis that incorporates Lovable's systematic approach
+ * Enhanced analysis that incorporates conversation context and Lovable's systematic approach
  */
-export function enhancedAnalyzeToolRequirements(message: string): EnhancedToolDecision {
+export function enhancedAnalyzeToolRequirements(
+  message: string, 
+  conversationHistory: any[] = []
+): EnhancedToolDecision {
   const lowerMessage = message.toLowerCase();
+  
+  // Extract recent context from conversation history
+  const contextInfo = analyzeConversationContext(message, conversationHistory);
   
   // Enhanced pattern recognition with context awareness
   const githubPatterns = [
     { pattern: /github\.com\/[\w-]+\/[\w-]+/i, weight: 1.0, context: 'direct_url' },
     { pattern: /\b(pull request|pr|merge|commit|branch|fork|clone)\b/i, weight: 0.9, context: 'git_workflow' },
-    { pattern: /\b(analyze|examine|look at|check|review).*(repository|repo|github|code)/i, weight: 0.8, context: 'analysis_request' },
-    { pattern: /\b(issue|releases?|contributors?|readme|documentation)\b/i, weight: 0.7, context: 'repo_content' }
+    { pattern: /\b(analyze|examine|look at|check|review).*(repository|repo|github|code)\b/i, weight: 0.8, context: 'analysis_request' },
+    { pattern: /\b(issue|releases?|contributors?|readme|documentation)\b/i, weight: 0.7, context: 'repo_content' },
+    { pattern: /\b(file structure|directory structure|project structure|files|folders)\b/i, weight: 0.6, context: 'structure_query' }
   ];
   
   const searchPatterns = [
@@ -49,6 +61,13 @@ export function enhancedAnalyzeToolRequirements(message: string): EnhancedToolDe
     { pattern: /\b(search my|find in my|look in my)\b/i, weight: 0.9, context: 'personal_search' },
     { pattern: /\b(previous|earlier|before|conversation|history)\b/i, weight: 0.8, context: 'conversation_history' },
     { pattern: /\b(stored|saved|documented|recorded)\b/i, weight: 0.7, context: 'stored_data' }
+  ];
+
+  // Context-aware reference patterns
+  const contextReferencePatterns = [
+    /\b(its?|this|that|the)\s+(file structure|directory structure|structure|files|folders)\b/i,
+    /\b(what|how).*(its?|this|that)\b/i,
+    /\b(structure|files|folders|contents?)\s+(of\s+)?(it|this|that)\b/i
   ];
 
   // Complexity assessment with multiple factors
@@ -69,14 +88,25 @@ export function enhancedAnalyzeToolRequirements(message: string): EnhancedToolDe
     ]
   };
 
-  // Pattern matching with weighted scoring
+  // Check if message references previous context
+  const referencesContext = contextReferencePatterns.some(pattern => pattern.test(message));
+  
+  // Pattern matching with weighted scoring, enhanced by context
   let githubScore = 0;
   let searchScore = 0;
   let knowledgeScore = 0;
   
+  // Apply context boost for GitHub if we're referencing previous GitHub content
+  const contextBoost = referencesContext && contextInfo.referencesGitHub ? 0.8 : 0;
+  
   githubPatterns.forEach(({ pattern, weight }) => {
     if (pattern.test(message)) githubScore += weight;
   });
+  
+  // Add context boost to GitHub score if appropriate
+  if (contextBoost > 0) {
+    githubScore += contextBoost;
+  }
   
   searchPatterns.forEach(({ pattern, weight }) => {
     if (pattern.test(message)) searchScore += weight;
@@ -94,24 +124,34 @@ export function enhancedAnalyzeToolRequirements(message: string): EnhancedToolDe
     complexity = 'moderate';
   }
 
-  // Decision logic with confidence scoring
+  // Decision logic with context-aware confidence scoring
   let decision: EnhancedToolDecision;
 
-  if (githubScore >= 0.7) {
+  // GitHub decision with context awareness
+  if (githubScore >= 0.6 || (referencesContext && contextInfo.referencesGitHub)) {
     decision = {
       shouldUseTools: true,
       detectedType: 'github',
-      reasoning: `GitHub-related request detected (confidence: ${githubScore.toFixed(1)}) - requires repository analysis tools`,
+      reasoning: contextInfo.referencesGitHub 
+        ? `Context-aware GitHub request detected (score: ${githubScore.toFixed(1)}) - references previous GitHub repository discussion`
+        : `GitHub-related request detected (score: ${githubScore.toFixed(1)}) - requires repository analysis tools`,
       suggestedTools: ['execute_github-tools'],
       confidence: Math.min(0.95, 0.7 + githubScore * 0.2),
       complexity,
       estimatedSteps: complexity === 'complex' ? 4 : complexity === 'moderate' ? 3 : 2,
       fallbackStrategy: 'If GitHub access fails, provide general guidance about repository structure and best practices',
+      contextualInfo: {
+        referencesGitHub: contextInfo.referencesGitHub,
+        githubRepo: contextInfo.githubRepo,
+        referencePrevious: referencesContext
+      },
       executionPlan: [
         {
           step: 1,
           tool: 'analyze_request',
-          description: 'Parse GitHub URL and determine required information',
+          description: contextInfo.referencesGitHub 
+            ? 'Use context from previous GitHub discussion'
+            : 'Parse GitHub URL and determine required information',
           estimatedTime: 2
         },
         {
@@ -132,6 +172,9 @@ export function enhancedAnalyzeToolRequirements(message: string): EnhancedToolDe
       complexity,
       estimatedSteps: complexity === 'complex' ? 3 : 2,
       fallbackStrategy: 'If no relevant knowledge found, suggest alternative search approaches or ask for clarification',
+      contextualInfo: {
+        referencePrevious: referencesContext
+      },
       executionPlan: [
         {
           step: 1,
@@ -141,7 +184,7 @@ export function enhancedAnalyzeToolRequirements(message: string): EnhancedToolDe
         }
       ]
     };
-  } else if (searchScore >= 0.6) {
+  } else if (searchScore >= 0.5) {
     const needsMultipleTools = searchScore > 0.8 || complexity === 'complex';
     decision = {
       shouldUseTools: true,
@@ -154,6 +197,9 @@ export function enhancedAnalyzeToolRequirements(message: string): EnhancedToolDe
       complexity,
       estimatedSteps: needsMultipleTools ? 3 : 2,
       fallbackStrategy: 'If web search fails, try knowledge base search or provide general information',
+      contextualInfo: {
+        referencePrevious: referencesContext
+      },
       executionPlan: [
         {
           step: 1,
@@ -179,6 +225,9 @@ export function enhancedAnalyzeToolRequirements(message: string): EnhancedToolDe
       confidence: 0.8,
       complexity: 'simple',
       estimatedSteps: 1,
+      contextualInfo: {
+        referencePrevious: referencesContext
+      },
       executionPlan: [
         {
           step: 1,
@@ -194,7 +243,52 @@ export function enhancedAnalyzeToolRequirements(message: string): EnhancedToolDe
 }
 
 /**
- * Enhanced logging with structured output
+ * Analyze conversation context to understand references to previous topics
+ */
+function analyzeConversationContext(currentMessage: string, conversationHistory: any[]): {
+  referencesGitHub: boolean;
+  githubRepo?: { owner: string; repo: string };
+  referencePrevious: boolean;
+} {
+  const contextInfo = {
+    referencesGitHub: false,
+    githubRepo: undefined as { owner: string; repo: string } | undefined,
+    referencePrevious: false
+  };
+
+  // Check if current message uses reference words
+  const referenceWords = /\b(its?|this|that|the)\b/i;
+  contextInfo.referencePrevious = referenceWords.test(currentMessage);
+
+  // Look for GitHub context in recent conversation history (last 5 messages)
+  const recentHistory = conversationHistory.slice(-5);
+  
+  for (const historyItem of recentHistory) {
+    if (historyItem.content) {
+      // Check for GitHub URLs
+      const githubUrlMatch = historyItem.content.match(/github\.com\/([\w-]+)\/([\w-]+)/i);
+      if (githubUrlMatch) {
+        contextInfo.referencesGitHub = true;
+        contextInfo.githubRepo = {
+          owner: githubUrlMatch[1],
+          repo: githubUrlMatch[2]
+        };
+        break;
+      }
+      
+      // Check for GitHub-related discussion
+      const githubKeywords = /\b(repository|repo|github|git)\b/i;
+      if (githubKeywords.test(historyItem.content)) {
+        contextInfo.referencesGitHub = true;
+      }
+    }
+  }
+
+  return contextInfo;
+}
+
+/**
+ * Enhanced logging with structured output and context information
  */
 export function logEnhancedToolDecision(decision: EnhancedToolDecision, message: string): void {
   console.log('=== ENHANCED TOOL DECISION ANALYSIS ===');
@@ -206,6 +300,7 @@ export function logEnhancedToolDecision(decision: EnhancedToolDecision, message:
     complexity: decision.complexity,
     estimatedSteps: decision.estimatedSteps
   });
+  console.log('Context Info:', decision.contextualInfo);
   console.log('Reasoning:', decision.reasoning);
   console.log('Suggested Tools:', decision.suggestedTools);
   console.log('Execution Plan:', decision.executionPlan);

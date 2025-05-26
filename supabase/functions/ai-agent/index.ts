@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -74,8 +73,8 @@ serve(async (req) => {
     const tools = convertMCPsToTools(mcps);
     console.log('Generated tools:', tools.map(t => t.function.name));
 
-    // ENHANCED TOOL DECISION ANALYSIS with Lovable principles
-    const enhancedDecision = enhancedAnalyzeToolRequirements(message);
+    // ENHANCED TOOL DECISION ANALYSIS with conversation context
+    const enhancedDecision = enhancedAnalyzeToolRequirements(message, conversationHistory);
     logEnhancedToolDecision(enhancedDecision, message);
 
     // Legacy analysis for backward compatibility
@@ -88,7 +87,8 @@ serve(async (req) => {
       detectedType: enhancedDecision.detectedType,
       reasoning: enhancedDecision.reasoning,
       confidence: enhancedDecision.confidence,
-      suggestedTools: enhancedDecision.suggestedTools
+      suggestedTools: enhancedDecision.suggestedTools,
+      contextualInfo: enhancedDecision.contextualInfo
     };
 
     // Detect request types (legacy compatibility)
@@ -99,12 +99,27 @@ serve(async (req) => {
     console.log('Legacy detection - Is GitHub request:', isGitHubRequest, githubInfo);
     console.log('Enhanced detection - Tool decision:', enhancedDecision);
 
-    // Generate system prompt with enhanced tool usage instructions
-    let enhancedSystemPrompt = generateSystemPrompt(mcps, isSearchRequest, isGitHubRequest);
+    // Generate system prompt with context awareness
+    let enhancedSystemPrompt = `You are a helpful AI assistant. Provide direct, concise answers to user questions.
+
+**Available tools**: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}
+
+**Instructions**:
+- Use tools when you need current information or specific data
+- Work silently - don't announce what tools you're using
+- Provide direct answers based on tool results
+- Be concise and helpful
+- Answer the user's question directly`;
+
+    // Add context-aware instructions
+    if (enhancedDecision.contextualInfo?.referencesGitHub && enhancedDecision.contextualInfo?.githubRepo) {
+      const { owner, repo } = enhancedDecision.contextualInfo.githubRepo;
+      enhancedSystemPrompt += `\n\n**Context**: Previous discussion mentioned GitHub repository ${owner}/${repo}. Use this context when interpreting user questions.`;
+    }
     
     // Add enhanced directive based on complexity and confidence
     if (enhancedDecision.shouldUseTools) {
-      enhancedSystemPrompt += `\n\nThis request requires tools. Use them to get the information needed and provide a direct, helpful answer.`;
+      enhancedSystemPrompt += `\n\n**Important**: Use tools to get the required information and provide a direct answer.`;
     }
 
     // Prepare messages for AI model
@@ -176,14 +191,14 @@ serve(async (req) => {
     let selfReflection = '';
     let toolProgress: any[] = [];
 
-    // ENHANCED FORCED TOOL EXECUTION with fallback strategies
+    // ENHANCED FORCED TOOL EXECUTION with context awareness
     if (enhancedDecision.shouldUseTools && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
-      console.log('AI MODEL FAILED TO GENERATE REQUIRED TOOL CALLS - APPLYING ENHANCED FALLBACK STRATEGY');
+      console.log('AI MODEL FAILED TO GENERATE REQUIRED TOOL CALLS - APPLYING CONTEXT-AWARE FALLBACK STRATEGY');
       
       const forcedResult = await executeBasedOnDecision(
         toolDecision,
         message,
-        githubInfo,
+        githubInfo || enhancedDecision.contextualInfo?.githubRepo,
         mcps,
         userId,
         supabase
@@ -194,18 +209,19 @@ serve(async (req) => {
         toolProgress = forcedResult.toolProgress;
         
         // Make synthesis call to create a proper response
-        console.log('Making synthesis call with forced tool results');
+        console.log('Making context-aware synthesis call with forced tool results');
         const synthesizedResponse = await synthesizeToolResults(
           message,
           conversationHistory,
           toolsUsed,
           forcedResult.finalResponse,
           modelSettings,
-          supabase
+          supabase,
+          enhancedDecision.contextualInfo
         );
         
         finalResponse = synthesizedResponse || createFallbackResponse(message, toolsUsed);
-        selfReflection = `Enhanced Analysis: Used ${toolsUsed.length} tools with confidence ${enhancedDecision.confidence.toFixed(2)}.`;
+        selfReflection = `Context-aware analysis: Used ${toolsUsed.length} tools with ${enhancedDecision.confidence.toFixed(2)} confidence.`;
       }
     }
     // Enhanced tool execution with detailed progress tracking
@@ -312,7 +328,7 @@ serve(async (req) => {
 });
 
 /**
- * Synthesize tool results into a coherent response
+ * Synthesize tool results into a coherent response with context awareness
  */
 async function synthesizeToolResults(
   originalMessage: string,
@@ -320,10 +336,11 @@ async function synthesizeToolResults(
   toolsUsed: any[],
   originalResponse: string,
   modelSettings: any,
-  supabase: any
+  supabase: any,
+  contextInfo?: any
 ): Promise<string | null> {
   try {
-    // Create synthesis prompt with tool results
+    // Create synthesis prompt with tool results and context
     const toolResultsSummary = toolsUsed.map(tool => {
       if (tool.success && tool.result) {
         return `${tool.name}: ${typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result)}`;
@@ -331,10 +348,15 @@ async function synthesizeToolResults(
       return `${tool.name}: Failed`;
     }).join('\n');
 
+    let contextPrompt = '';
+    if (contextInfo?.referencesGitHub && contextInfo?.githubRepo) {
+      contextPrompt = `\n\nContext: This question relates to the GitHub repository ${contextInfo.githubRepo.owner}/${contextInfo.githubRepo.repo} mentioned in the conversation.`;
+    }
+
     const synthesisMessages = [
       {
         role: 'system',
-        content: `Provide a direct, helpful answer to the user's question using the tool results. Be concise and informative.
+        content: `Provide a direct, helpful answer to the user's question using the tool results. Be concise and informative.${contextPrompt}
 
 User asked: "${originalMessage}"
 
@@ -360,7 +382,7 @@ Give a clear answer based on this information.`
       })
     };
 
-    console.log('Making synthesis call to AI model');
+    console.log('Making context-aware synthesis call to AI model');
 
     const synthesisResponse = await supabase.functions.invoke('ai-model-proxy', {
       body: synthesisRequestBody
@@ -375,7 +397,7 @@ Give a clear answer based on this information.`
     const synthesisMessage = extractAssistantMessage(synthesisData);
     
     if (synthesisMessage && synthesisMessage.content) {
-      console.log('Synthesis successful, returning synthesized response');
+      console.log('Context-aware synthesis successful, returning synthesized response');
       return synthesisMessage.content;
     } else {
       console.error('Failed to extract synthesis response');
@@ -383,7 +405,7 @@ Give a clear answer based on this information.`
     }
     
   } catch (error) {
-    console.error('Error in synthesis:', error);
+    console.error('Error in context-aware synthesis:', error);
     return null;
   }
 }

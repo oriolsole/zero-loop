@@ -114,9 +114,9 @@ const AIAgentChat: React.FC = () => {
 
     addMessage(userMessage);
     
-    // Start analysis phase and add analysis message
+    // Start analysis phase with conversation history
     setPhase('analyzing', 'Understanding your request...', 15);
-    const decision = analyzeRequest(enhancedMessage);
+    const decision = analyzeRequest(enhancedMessage, getConversationHistory());
     
     const analysisMessage: ConversationMessage = {
       id: `analysis-${Date.now()}`,
