@@ -1,30 +1,64 @@
-
 import { useState, useCallback } from 'react';
 import { EnhancedToolDecision } from '@/components/knowledge/EnhancedToolDecision';
+import { usePlanDetector } from './usePlanDetector';
+import { usePlanOrchestrator } from './usePlanOrchestrator';
 
 export interface UseEnhancedToolDecisionReturn {
   toolDecision: EnhancedToolDecision | null;
   currentStep: number;
   isExecuting: boolean;
+  currentPlan: any;
+  planProgress: { current: number; total: number; percentage: number };
   analyzeRequest: (message: string, conversationHistory?: any[]) => EnhancedToolDecision;
   startExecution: () => void;
   nextStep: () => void;
   completeExecution: () => void;
   resetDecision: () => void;
+  onStepUpdate: (step: any) => void;
+  onPlanComplete: (result: string) => void;
 }
 
 export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
   const [toolDecision, setToolDecision] = useState<EnhancedToolDecision | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [isExecuting, setIsExecuting] = useState(false);
+  
+  const { detectPlan } = usePlanDetector();
+  const { 
+    currentPlan, 
+    isExecuting: isPlanExecuting, 
+    createPlan, 
+    executePlan, 
+    getProgress 
+  } = usePlanOrchestrator();
 
   const analyzeRequest = useCallback((message: string, conversationHistory: any[] = []): EnhancedToolDecision => {
     const lowerMessage = message.toLowerCase();
     
-    // Analyze conversation context
+    // First check if we should use multi-step planning
+    const planDetection = detectPlan(message, conversationHistory);
+    
+    if (planDetection.shouldUsePlan) {
+      const decision: EnhancedToolDecision = {
+        shouldUseTools: true,
+        detectedType: 'multi-step-plan',
+        reasoning: planDetection.reasoning,
+        confidence: planDetection.confidence,
+        suggestedTools: ['multi-step-execution'],
+        complexity: 'complex',
+        estimatedSteps: planDetection.planType === 'news-search' ? 4 : planDetection.planType === 'repo-analysis' ? 4 : 3,
+        fallbackStrategy: 'If plan execution fails, revert to single-step tool execution',
+        planType: planDetection.planType,
+        planContext: planDetection.context
+      };
+      
+      setToolDecision(decision);
+      return decision;
+    }
+    
+    // Fallback to original single-step analysis
     const contextInfo = analyzeConversationContext(message, conversationHistory);
     
-    // Enhanced pattern recognition with context awareness
     const githubPatterns = [
       { pattern: /github\.com\/[\w-]+\/[\w-]+/i, weight: 1.0, context: 'direct_url' },
       { pattern: /\b(pull request|pr|merge|commit|branch|fork|clone)\b/i, weight: 0.9, context: 'git_workflow' },
@@ -47,24 +81,19 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       { pattern: /\b(stored|saved|documented|recorded)\b/i, weight: 0.7, context: 'stored_data' }
     ];
 
-    // Context-aware reference patterns
     const contextReferencePatterns = [
       /\b(its?|this|that|the)\s+(file structure|directory structure|structure|files|folders)\b/i,
       /\b(what|how).*(its?|this|that)\b/i,
       /\b(structure|files|folders|contents?)\s+(of\s+)?(it|this|that)\b/i
     ];
 
-    // Complexity assessment
     const complexityIndicators = {
       simple: [/\b(what is|who is|simple|quick|brief)\b/i],
       moderate: [/\b(explain|describe|compare|analyze)\b/i],
       complex: [/\b(comprehensive|detailed|in-depth|thorough|complete)\b/i, /\band\b.*\band\b/i]
     };
 
-    // Check if message references previous context
     const referencesContext = contextReferencePatterns.some(pattern => pattern.test(message));
-    
-    // Apply context boost for GitHub if we're referencing previous GitHub content
     const contextBoost = referencesContext && contextInfo.referencesGitHub ? 0.8 : 0;
 
     let detectedType: EnhancedToolDecision['detectedType'] = 'general';
@@ -76,7 +105,6 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
     let estimatedSteps = 1;
     let fallbackStrategy: string | undefined;
 
-    // Determine complexity
     if (complexityIndicators.complex.some(pattern => pattern.test(message))) {
       complexity = 'complex';
       estimatedSteps = 4;
@@ -85,7 +113,6 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       estimatedSteps = 2;
     }
 
-    // Pattern matching with weighted scoring
     let githubScore = 0;
     let searchScore = 0;
     let knowledgeScore = 0;
@@ -94,7 +121,6 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       if (pattern.test(message)) githubScore += weight;
     });
     
-    // Add context boost to GitHub score if appropriate
     if (contextBoost > 0) {
       githubScore += contextBoost;
     }
@@ -107,7 +133,6 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       if (pattern.test(message)) knowledgeScore += weight;
     });
 
-    // GitHub detection with context awareness
     if (githubScore >= 0.6 || (referencesContext && contextInfo.referencesGitHub)) {
       detectedType = 'github';
       shouldUseTools = true;
@@ -118,7 +143,6 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       confidence = Math.min(0.95, 0.7 + githubScore * 0.2);
       fallbackStrategy = 'If GitHub access fails, provide general guidance about repository structure and best practices';
     }
-    // Knowledge base detection
     else if (knowledgeScore >= 0.7) {
       detectedType = 'knowledge';
       shouldUseTools = true;
@@ -127,7 +151,6 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       confidence = 0.85;
       fallbackStrategy = 'If no results found, suggest alternative search terms or approaches';
     }
-    // Web search detection
     else if (searchScore >= 0.6) {
       detectedType = 'search';
       shouldUseTools = true;
@@ -136,7 +159,6 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       confidence = 0.8;
       fallbackStrategy = 'If web search fails, try knowledge base search or provide general guidance';
     }
-    // General conversation
     else {
       detectedType = 'general';
       shouldUseTools = false;
@@ -146,9 +168,8 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       estimatedSteps = 1;
     }
 
-    // Adjust steps based on tools and context
     if (shouldUseTools) {
-      estimatedSteps = Math.max(estimatedSteps, suggestedTools.length + 1); // +1 for analysis
+      estimatedSteps = Math.max(estimatedSteps, suggestedTools.length + 1);
     }
 
     const decision: EnhancedToolDecision = {
@@ -164,9 +185,8 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
 
     setToolDecision(decision);
     return decision;
-  }, []);
+  }, [detectPlan]);
 
-  // Helper function to analyze conversation context
   const analyzeConversationContext = (currentMessage: string, conversationHistory: any[]) => {
     const contextInfo = {
       referencesGitHub: false,
@@ -174,16 +194,13 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
       referencePrevious: false
     };
 
-    // Check if current message uses reference words
     const referenceWords = /\b(its?|this|that|the)\b/i;
     contextInfo.referencePrevious = referenceWords.test(currentMessage);
 
-    // Look for GitHub context in recent conversation history (last 5 messages)
     const recentHistory = conversationHistory.slice(-5);
     
     for (const historyItem of recentHistory) {
       if (historyItem.content) {
-        // Check for GitHub URLs
         const githubUrlMatch = historyItem.content.match(/github\.com\/([\w-]+)\/([\w-]+)/i);
         if (githubUrlMatch) {
           contextInfo.referencesGitHub = true;
@@ -194,7 +211,6 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
           break;
         }
         
-        // Check for GitHub-related discussion
         const githubKeywords = /\b(repository|repo|github|git)\b/i;
         if (githubKeywords.test(historyItem.content)) {
           contextInfo.referencesGitHub = true;
@@ -227,14 +243,27 @@ export const useEnhancedToolDecision = (): UseEnhancedToolDecisionReturn => {
     setIsExecuting(false);
   }, []);
 
+  const onStepUpdate = useCallback((step: any) => {
+    console.log('Plan step updated:', step);
+  }, []);
+
+  const onPlanComplete = useCallback((result: string) => {
+    console.log('Plan completed with result:', result);
+    completeExecution();
+  }, [completeExecution]);
+
   return {
     toolDecision,
     currentStep,
-    isExecuting,
+    isExecuting: isExecuting || isPlanExecuting,
+    currentPlan,
+    planProgress: getProgress(),
     analyzeRequest,
     startExecution,
     nextStep,
     completeExecution,
-    resetDecision
+    resetDecision,
+    onStepUpdate,
+    onPlanComplete
   };
 };
