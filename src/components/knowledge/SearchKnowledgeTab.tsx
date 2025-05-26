@@ -16,14 +16,103 @@ import { Label } from "@/components/ui/label";
 import { Search, Info, Loader2, AlertCircle } from "lucide-react";
 
 /**
+ * Extracts quoted terms from a query string
+ */
+function extractQuotedTerms(query: string): string[] {
+  const quotedMatches = query.match(/"([^"]+)"/g);
+  return quotedMatches ? quotedMatches.map(match => match.replace(/"/g, '')) : [];
+}
+
+/**
+ * Enhanced search term extraction from conversational queries
+ */
+function extractSearchTerms(query: string): string {
+  if (!query || typeof query !== 'string') {
+    return '';
+  }
+  
+  // First, try to extract quoted terms - these are usually the most important
+  const quotedTerms = extractQuotedTerms(query);
+  if (quotedTerms.length > 0) {
+    return quotedTerms.join(' ');
+  }
+  
+  // Clean the query
+  let cleaned = query.toLowerCase().trim();
+  
+  // Remove common conversational prefixes and suffixes
+  const conversationalPrefixes = [
+    'can you search for',
+    'can you search',
+    'can you find',
+    'can you look for',
+    'search for',
+    'search',
+    'find',
+    'look for',
+    'lookup',
+    'get information about',
+    'information about',
+    'tell me about',
+    'what is',
+    'who is',
+    'about'
+  ];
+  
+  const conversationalSuffixes = [
+    'in our knowledge base',
+    'in the knowledge base',
+    'in our database',
+    'in the database',
+    'please',
+    'thanks',
+    'thank you'
+  ];
+  
+  // Remove prefixes
+  for (const prefix of conversationalPrefixes) {
+    const pattern = new RegExp(`^${prefix}\\s+`, 'i');
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  // Remove suffixes
+  for (const suffix of conversationalSuffixes) {
+    const pattern = new RegExp(`\\s+${suffix}$`, 'i');
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  // Remove question marks and extra punctuation at the end
+  cleaned = cleaned.replace(/[?!.]+$/, '').trim();
+  
+  // If we're left with nothing meaningful, try to extract the most important words
+  if (!cleaned || cleaned.length < 2) {
+    const stopWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'our', 'can', 'you'];
+    const words = query.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !stopWords.includes(word));
+    
+    return words.join(' ');
+  }
+  
+  return cleaned;
+}
+
+/**
  * Cleans and preprocesses search queries to improve matching
  */
 function cleanSearchQuery(query: string): string {
   if (!query) return '';
   
+  // First try to extract the actual search terms
+  const extractedTerms = extractSearchTerms(query);
+  if (extractedTerms && extractedTerms.trim()) {
+    return extractedTerms.trim();
+  }
+  
+  // Fallback to basic cleaning
   let cleaned = query.toLowerCase().trim();
   
-  // Remove common search prefixes that interfere with semantic matching
   const searchPrefixes = [
     'search for',
     'search',
@@ -62,6 +151,7 @@ const SearchKnowledgeTab: React.FC = () => {
   } = useExternalKnowledge();
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [extractedTerms, setExtractedTerms] = useState('');
   const [cleanedQuery, setCleanedQuery] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
   const [useEmbeddings, setUseEmbeddings] = useState<boolean>(true);
@@ -112,12 +202,16 @@ const SearchKnowledgeTab: React.FC = () => {
     
     if (!searchQuery.trim()) return;
     
-    // Pre-process the query
-    const processedQuery = cleanSearchQuery(searchQuery);
-    setCleanedQuery(processedQuery || searchQuery);
+    // Pre-process the query to extract search terms
+    const extracted = extractSearchTerms(searchQuery);
+    const processed = cleanSearchQuery(extracted || searchQuery);
+    
+    setExtractedTerms(extracted);
+    setCleanedQuery(processed);
     
     console.log(`Original search query: "${searchQuery}"`);
-    console.log(`Cleaned search query: "${processedQuery}"`);
+    console.log(`Extracted terms: "${extracted}"`);
+    console.log(`Cleaned search query: "${processed}"`);
     
     setIsLoading(true);
     setHasSearched(false);
@@ -146,10 +240,10 @@ const SearchKnowledgeTab: React.FC = () => {
       // Create an array of promises to run in parallel
       const searchPromises = [];
       
-      // Always query knowledge base (use processed query if available)
+      // Always query knowledge base (will handle extraction internally)
       searchPromises.push(
         queryKnowledgeBase({
-          query: searchQuery, // Use original query, the hook will clean it
+          query: searchQuery, // Use original query, the hook will process it
           limit: 10,
           useEmbeddings,
           matchThreshold,
@@ -160,7 +254,7 @@ const SearchKnowledgeTab: React.FC = () => {
       // Conditionally add web search if enabled
       if (includeWebResults) {
         searchPromises.push(
-          searchWeb(processedQuery || searchQuery, 5) // Use cleaned query for better web results
+          searchWeb(processed || extracted || searchQuery, 5) // Use best processed query for web
         );
       }
       
@@ -238,7 +332,7 @@ const SearchKnowledgeTab: React.FC = () => {
                   id="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Enter search terms"
+                  placeholder="Enter search terms or ask a question"
                   className="flex-1"
                 />
                 <Button type="submit" disabled={isLoading || !searchQuery.trim()}>
@@ -251,8 +345,16 @@ const SearchKnowledgeTab: React.FC = () => {
                 </Button>
               </div>
               
-              {/* Show cleaned query if different from original */}
-              {cleanedQuery && cleanedQuery !== searchQuery && hasSearched && (
+              {/* Show extracted terms if different from original */}
+              {extractedTerms && extractedTerms !== searchQuery && hasSearched && (
+                <div className="text-xs text-muted-foreground flex items-center mt-1">
+                  <Info className="h-3 w-3 mr-1" />
+                  Extracted terms: <span className="font-medium ml-1">{extractedTerms}</span>
+                </div>
+              )}
+              
+              {/* Show cleaned query if different from extracted terms */}
+              {cleanedQuery && cleanedQuery !== extractedTerms && hasSearched && (
                 <div className="text-xs text-muted-foreground flex items-center mt-1">
                   <Info className="h-3 w-3 mr-1" />
                   Searching for: <span className="font-medium ml-1">{cleanedQuery}</span>
@@ -307,7 +409,7 @@ const SearchKnowledgeTab: React.FC = () => {
           result={selectedResult}
           onClose={handleCloseSavePanel}
           isOpen={showSavePanel}
-          searchQuery={cleanedQuery || searchQuery}
+          searchQuery={cleanedQuery || extractedTerms || searchQuery}
         />
       )}
     </div>

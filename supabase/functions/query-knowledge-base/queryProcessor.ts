@@ -1,4 +1,3 @@
-
 import { createSupabaseClient } from "./supabaseClient.ts";
 import { generateQueryEmbedding } from "./embeddings.ts";
 
@@ -54,6 +53,89 @@ export interface FormattedResult {
 }
 
 /**
+ * Extracts quoted terms from a query string
+ */
+function extractQuotedTerms(query: string): string[] {
+  const quotedMatches = query.match(/"([^"]+)"/g);
+  return quotedMatches ? quotedMatches.map(match => match.replace(/"/g, '')) : [];
+}
+
+/**
+ * Enhanced search term extraction from conversational queries
+ */
+function extractSearchTerms(query: string): string {
+  if (!query || typeof query !== 'string') {
+    return '';
+  }
+  
+  // First, try to extract quoted terms - these are usually the most important
+  const quotedTerms = extractQuotedTerms(query);
+  if (quotedTerms.length > 0) {
+    return quotedTerms.join(' ');
+  }
+  
+  // Clean the query
+  let cleaned = query.toLowerCase().trim();
+  
+  // Remove common conversational prefixes and suffixes
+  const conversationalPrefixes = [
+    'can you search for',
+    'can you search',
+    'can you find',
+    'can you look for',
+    'search for',
+    'search',
+    'find',
+    'look for',
+    'lookup',
+    'get information about',
+    'information about',
+    'tell me about',
+    'what is',
+    'who is',
+    'about'
+  ];
+  
+  const conversationalSuffixes = [
+    'in our knowledge base',
+    'in the knowledge base',
+    'in our database',
+    'in the database',
+    'please',
+    'thanks',
+    'thank you'
+  ];
+  
+  // Remove prefixes
+  for (const prefix of conversationalPrefixes) {
+    const pattern = new RegExp(`^${prefix}\\s+`, 'i');
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  // Remove suffixes
+  for (const suffix of conversationalSuffixes) {
+    const pattern = new RegExp(`\\s+${suffix}$`, 'i');
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  // Remove question marks and extra punctuation at the end
+  cleaned = cleaned.replace(/[?!.]+$/, '').trim();
+  
+  // If we're left with nothing meaningful, try to extract the most important words
+  if (!cleaned || cleaned.length < 2) {
+    const stopWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'our', 'can', 'you'];
+    const words = query.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !stopWords.includes(word));
+    
+    return words.join(' ');
+  }
+  
+  return cleaned;
+}
+
+/**
  * Cleans and preprocesses search queries to improve matching
  */
 function cleanSearchQuery(query: string): string {
@@ -61,9 +143,15 @@ function cleanSearchQuery(query: string): string {
     return '';
   }
   
+  // First try to extract the actual search terms
+  const extractedTerms = extractSearchTerms(query);
+  if (extractedTerms && extractedTerms.trim()) {
+    return extractedTerms.trim();
+  }
+  
+  // Fallback to basic cleaning
   let cleaned = query.toLowerCase().trim();
   
-  // Remove common search prefixes that interfere with semantic matching
   const searchPrefixes = [
     'search for',
     'search',
@@ -232,14 +320,26 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
   let chunkResults: FormattedResult[] = [];
   let nodeResults: FormattedResult[] = [];
   
-  // Clean the query for better matching
-  const cleanedQuery = cleanSearchQuery(query);
+  // Extract search terms from conversational query
+  const extractedTerms = extractSearchTerms(query);
+  console.log(`Extracted search terms: "${extractedTerms}"`);
+  
+  // Clean the extracted terms for better matching
+  const cleanedQuery = cleanSearchQuery(extractedTerms || query);
   console.log(`Cleaned query: "${cleanedQuery}"`);
   
   if (!cleanedQuery) {
-    console.log("Query was cleaned to empty string, returning empty results");
-    return [];
+    console.log("Query was cleaned to empty string, trying original query");
+    // If cleaning removed everything, use the original query
+    const fallbackQuery = query.trim();
+    if (!fallbackQuery) {
+      return [];
+    }
   }
+  
+  // Use the best available query
+  const queryToUse = cleanedQuery || query;
+  console.log(`Using query: "${queryToUse}"`);
   
   // Get results from knowledge chunks
   try {
@@ -247,9 +347,9 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
     
     if (useEmbeddings) {
       try {
-        // Get embeddings for the cleaned query
-        const embedding = await generateQueryEmbedding(cleanedQuery);
-        console.log(`Generated embedding for: "${cleanedQuery}"`);
+        // Get embeddings for the processed query
+        const embedding = await generateQueryEmbedding(queryToUse);
+        console.log(`Generated embedding for: "${queryToUse}"`);
     
         // Query using vector similarity search with lower threshold
         const { data: vectorResults, error: vectorError } = await supabase.rpc(
@@ -269,11 +369,31 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
         chunksData = vectorResults || [];
         console.log(`Vector search found ${chunksData.length} results`);
         
-        // If no results with vector search, fall back to text search
-        if (chunksData.length === 0) {
-          console.log(`No vector results found, falling back to text search for: "${cleanedQuery}"`);
+        // If no results with processed query and it's different from original, try original
+        if (chunksData.length === 0 && queryToUse !== query) {
+          console.log(`No results with processed query, trying original: "${query}"`);
           
-          const sanitizedQuery = sanitizeTextQuery(cleanedQuery);
+          const originalEmbedding = await generateQueryEmbedding(query);
+          const { data: originalResults, error: originalError } = await supabase.rpc(
+            'match_knowledge_chunks',
+            {
+              query_embedding: originalEmbedding,
+              match_threshold: matchThreshold,
+              match_count: limit
+            }
+          );
+          
+          if (!originalError && originalResults?.length > 0) {
+            chunksData = originalResults;
+            console.log(`Vector search with original query found ${chunksData.length} results`);
+          }
+        }
+        
+        // If still no results with vector search, fall back to text search
+        if (chunksData.length === 0) {
+          console.log(`No vector results found, falling back to text search for: "${queryToUse}"`);
+          
+          const sanitizedQuery = sanitizeTextQuery(queryToUse);
           
           if (!sanitizedQuery) {
             console.log("Query was sanitized to empty string, skipping text search");
@@ -302,7 +422,7 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
         console.error("Error in vector search:", error);
         
         // Fallback to text search on error
-        const sanitizedQuery = sanitizeTextQuery(cleanedQuery);
+        const sanitizedQuery = sanitizeTextQuery(queryToUse);
         
         if (!sanitizedQuery) {
           console.log("Query was sanitized to empty string, skipping text search");
@@ -329,7 +449,7 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
       }
     } else {
       // Direct text search if embeddings aren't used
-      const sanitizedQuery = sanitizeTextQuery(cleanedQuery);
+      const sanitizedQuery = sanitizeTextQuery(queryToUse);
       
       if (!sanitizedQuery) {
         console.log("Query was sanitized to empty string, skipping text search");
@@ -391,7 +511,7 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
   // Optionally get results from knowledge nodes
   if (includeNodes) {
     try {
-      nodeResults = await searchKnowledgeNodes(supabase, cleanedQuery, limit);
+      nodeResults = await searchKnowledgeNodes(supabase, queryToUse, limit);
       console.log(`Node search found ${nodeResults.length} results`);
     } catch (error) {
       console.error("Error processing knowledge nodes search:", error);

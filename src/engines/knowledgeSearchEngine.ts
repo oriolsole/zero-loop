@@ -45,6 +45,89 @@ function ensureNumber(value: any): number {
 }
 
 /**
+ * Extracts quoted terms from a query string
+ */
+function extractQuotedTerms(query: string): string[] {
+  const quotedMatches = query.match(/"([^"]+)"/g);
+  return quotedMatches ? quotedMatches.map(match => match.replace(/"/g, '')) : [];
+}
+
+/**
+ * Enhanced search term extraction from conversational queries
+ */
+function extractSearchTerms(query: string): string {
+  if (!query || typeof query !== 'string') {
+    return '';
+  }
+  
+  // First, try to extract quoted terms - these are usually the most important
+  const quotedTerms = extractQuotedTerms(query);
+  if (quotedTerms.length > 0) {
+    return quotedTerms.join(' ');
+  }
+  
+  // Clean the query
+  let cleaned = query.toLowerCase().trim();
+  
+  // Remove common conversational prefixes and suffixes
+  const conversationalPrefixes = [
+    'can you search for',
+    'can you search',
+    'can you find',
+    'can you look for',
+    'search for',
+    'search',
+    'find',
+    'look for',
+    'lookup',
+    'get information about',
+    'information about',
+    'tell me about',
+    'what is',
+    'who is',
+    'about'
+  ];
+  
+  const conversationalSuffixes = [
+    'in our knowledge base',
+    'in the knowledge base',
+    'in our database',
+    'in the database',
+    'please',
+    'thanks',
+    'thank you'
+  ];
+  
+  // Remove prefixes
+  for (const prefix of conversationalPrefixes) {
+    const pattern = new RegExp(`^${prefix}\\s+`, 'i');
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  // Remove suffixes
+  for (const suffix of conversationalSuffixes) {
+    const pattern = new RegExp(`\\s+${suffix}$`, 'i');
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  // Remove question marks and extra punctuation at the end
+  cleaned = cleaned.replace(/[?!.]+$/, '').trim();
+  
+  // If we're left with nothing meaningful, try to extract the most important words
+  if (!cleaned || cleaned.length < 2) {
+    const stopWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'our', 'can', 'you'];
+    const words = query.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !stopWords.includes(word));
+    
+    return words.join(' ');
+  }
+  
+  return cleaned;
+}
+
+/**
  * Cleans and preprocesses search queries to improve matching
  */
 function cleanSearchQuery(query: string): string {
@@ -52,9 +135,15 @@ function cleanSearchQuery(query: string): string {
     return '';
   }
   
+  // First try to extract the actual search terms
+  const extractedTerms = extractSearchTerms(query);
+  if (extractedTerms && extractedTerms.trim()) {
+    return extractedTerms.trim();
+  }
+  
+  // Fallback to basic cleaning
   let cleaned = query.toLowerCase().trim();
   
-  // Remove common search prefixes that interfere with semantic matching
   const searchPrefixes = [
     'search for',
     'search',
@@ -97,10 +186,14 @@ export const knowledgeSearchEngine: DomainEngine = {
   // Solve a search query by searching across multiple knowledge sources
   solveTask: async (query, options = {}) => {
     try {
-      // Clean the query before processing
+      // Extract search terms from conversational query
       const originalQuery = query;
-      const cleanedQuery = cleanSearchQuery(query);
-      console.log(`Original query: "${originalQuery}" -> Cleaned query: "${cleanedQuery}"`);
+      const extractedTerms = extractSearchTerms(query);
+      const cleanedQuery = cleanSearchQuery(extractedTerms || query);
+      
+      console.log(`Original query: "${originalQuery}"`);
+      console.log(`Extracted terms: "${extractedTerms}"`);
+      console.log(`Cleaned query: "${cleanedQuery}"`);
       
       // Import hooks dynamically to avoid hooks-outside-component issues
       const { useKnowledgeBase } = await import('@/hooks/useKnowledgeBase');
@@ -121,11 +214,13 @@ export const knowledgeSearchEngine: DomainEngine = {
       // Initialize results array
       let allResults: ExternalSource[] = [];
       
-      // Search knowledge base (includes nodes if enabled) with both original and cleaned query
+      // Search knowledge base with extracted/cleaned query
       try {
-        // First try with cleaned query
+        const queryToUse = cleanedQuery || extractedTerms || originalQuery;
+        console.log(`Searching knowledge base with: "${queryToUse}"`);
+        
         const kbResults = await queryKnowledgeBase({
-          query: cleanedQuery || originalQuery, // If cleaning removed everything, use original
+          query: queryToUse,
           limit: searchOptions.limit,
           useEmbeddings: searchOptions.useEmbeddings,
           matchThreshold: searchOptions.matchThreshold,
@@ -134,13 +229,13 @@ export const knowledgeSearchEngine: DomainEngine = {
         
         if (isArrayWithLength<ExternalSource>(kbResults)) {
           allResults = [...allResults, ...kbResults];
-          console.log(`Knowledge base search returned ${kbResults.length} results with cleaned query`);
+          console.log(`Knowledge base search returned ${kbResults.length} results with processed query`);
         } else {
-          console.log('No results with cleaned query, will try original query');
+          console.log('No results with processed query, will try original query');
         }
         
-        // If no results and we have a cleaned query that's different from original, try original
-        if (allResults.length === 0 && cleanedQuery !== originalQuery && originalQuery.trim()) {
+        // If no results and we have a processed query that's different from original, try original
+        if (allResults.length === 0 && queryToUse !== originalQuery && originalQuery.trim()) {
           console.log(`Trying knowledge base search with original query: "${originalQuery}"`);
           const originalQueryResults = await queryKnowledgeBase({
             query: originalQuery,
@@ -166,7 +261,7 @@ export const knowledgeSearchEngine: DomainEngine = {
         try {
           const webLimit = Math.max(1, searchOptions.limit - allResults.length);
           // Use cleaned query for web search for better results
-          const webQuery = cleanedQuery || originalQuery; 
+          const webQuery = cleanedQuery || extractedTerms || originalQuery; 
           const webResults = await searchWeb(webQuery, webLimit);
           
           if (isArrayWithLength<ExternalSource>(webResults)) {
@@ -207,7 +302,7 @@ export const knowledgeSearchEngine: DomainEngine = {
         `[${index + 1}] ${source.title} - ${source.snippet}`
       ).join('\n\n');
       
-      const searchTerm = cleanedQuery || originalQuery;
+      const searchTerm = cleanedQuery || extractedTerms || originalQuery;
       const solution = `Search Results for: "${searchTerm}"\n\n${sourcesText}\n\n` +
         `Found ${limitedResults.length} results across all knowledge sources.`;
       
@@ -217,6 +312,7 @@ export const knowledgeSearchEngine: DomainEngine = {
           resultCount: limitedResults.length,
           sources: limitedResults,
           originalQuery: originalQuery,
+          extractedTerms: extractedTerms,
           cleanedQuery: cleanedQuery
         }
       };
