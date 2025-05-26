@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,8 @@ interface Model {
   id: string;
   name: string;
   provider: ModelProvider;
+  category?: string;
+  description?: string;
 }
 
 const ModelSettingsForm = () => {
@@ -146,7 +149,8 @@ const ModelSettingsForm = () => {
       toast.success(`Model settings updated: Using ${settings.provider} provider`);
       
       if (settings.selectedModel) {
-        toast.info(`Selected model: ${settings.selectedModel}`);
+        const selectedModel = availableModels.find(m => m.id === settings.selectedModel);
+        toast.info(`Selected model: ${selectedModel?.name || settings.selectedModel}`);
       }
     } catch (error) {
       console.error('Error saving model settings:', error);
@@ -155,6 +159,18 @@ const ModelSettingsForm = () => {
       setIsSaving(false);
     }
   };
+
+  // Group models by category for OpenAI
+  const groupedModels = availableModels.reduce((groups, model) => {
+    const category = model.category || 'Other';
+    if (!groups[category]) {
+      groups[category] = [];
+    }
+    groups[category].push(model);
+    return groups;
+  }, {} as Record<string, Model[]>);
+
+  const categoryOrder = ['Premium', 'Reasoning', 'Multimodal', 'Standard', 'Code', 'Instruct', 'Legacy', 'Other'];
   
   return (
     <div className="space-y-6">
@@ -265,11 +281,39 @@ const ModelSettingsForm = () => {
                   <SelectValue placeholder="Select a model" />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableModels.map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
-                      {model.name}
-                    </SelectItem>
-                  ))}
+                  {settings.provider === 'openai' && Object.keys(groupedModels).length > 0 ? (
+                    categoryOrder.map(category => {
+                      if (!groupedModels[category]) return null;
+                      return (
+                        <div key={category}>
+                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">
+                            {category}
+                          </div>
+                          {groupedModels[category].map((model) => (
+                            <SelectItem key={model.id} value={model.id}>
+                              <div className="flex flex-col">
+                                <span className="font-medium">{model.name}</span>
+                                {model.description && (
+                                  <span className="text-xs text-muted-foreground">{model.description}</span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    availableModels.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{model.name}</span>
+                          {model.description && (
+                            <span className="text-xs text-muted-foreground">{model.description}</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             ) : (

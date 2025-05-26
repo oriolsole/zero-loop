@@ -15,6 +15,8 @@ export interface ProviderModel {
   id: string;
   name: string;
   provider: ModelProvider;
+  category?: string;
+  description?: string;
 }
 
 /**
@@ -55,12 +57,133 @@ export function getNpawModels(): ProviderModel[] {
 }
 
 /**
- * Get available OpenAI models
+ * Get available OpenAI models with categories and descriptions
  */
 export function getOpenAIModels(): ProviderModel[] {
   return [
-    { id: 'gpt-4o', name: 'GPT-4O', provider: 'openai' },
-    { id: 'gpt-4o-mini', name: 'GPT-4O Mini', provider: 'openai' }
+    // GPT-4 Series - Highest Quality
+    { 
+      id: 'gpt-4.5', 
+      name: 'GPT-4.5', 
+      provider: 'openai', 
+      category: 'Premium',
+      description: 'Highest accuracy and reasoning - ideal for complex analysis'
+    },
+    { 
+      id: 'gpt-4.1', 
+      name: 'GPT-4.1', 
+      provider: 'openai', 
+      category: 'Premium',
+      description: 'Improved coding performance with 1M token context window'
+    },
+    { 
+      id: 'gpt-4.1-mini', 
+      name: 'GPT-4.1 Mini', 
+      provider: 'openai', 
+      category: 'Premium',
+      description: '40% cost reduction while maintaining strong capability'
+    },
+    { 
+      id: 'gpt-4.1-nano', 
+      name: 'GPT-4.1 Nano', 
+      provider: 'openai', 
+      category: 'Premium',
+      description: 'Fastest and cheapest for high-volume calls'
+    },
+    { 
+      id: 'gpt-4o', 
+      name: 'GPT-4O', 
+      provider: 'openai', 
+      category: 'Multimodal',
+      description: 'True multimodal support - handles text, images, and audio'
+    },
+
+    // O-Series Reasoning Models
+    { 
+      id: 'o1', 
+      name: 'O1', 
+      provider: 'openai', 
+      category: 'Reasoning',
+      description: 'Advanced chain-of-thought reasoning for complex problems'
+    },
+    { 
+      id: 'o1-mini', 
+      name: 'O1 Mini', 
+      provider: 'openai', 
+      category: 'Reasoning',
+      description: 'Compact reasoning model with faster response times'
+    },
+    { 
+      id: 'o1-pro', 
+      name: 'O1 Pro', 
+      provider: 'openai', 
+      category: 'Reasoning',
+      description: 'Most advanced reasoning capabilities for expert-level tasks'
+    },
+    { 
+      id: 'o3', 
+      name: 'O3', 
+      provider: 'openai', 
+      category: 'Reasoning',
+      description: 'Enhanced reflection for multi-step problem solving'
+    },
+    { 
+      id: 'o3-mini', 
+      name: 'O3 Mini', 
+      provider: 'openai', 
+      category: 'Reasoning',
+      description: 'Compact version of O3 with efficient reasoning'
+    },
+    { 
+      id: 'o4-mini', 
+      name: 'O4 Mini', 
+      provider: 'openai', 
+      category: 'Reasoning',
+      description: 'O3 reasoning plus image analysis capabilities'
+    },
+
+    // GPT-3.5 Series - Fast & Economical
+    { 
+      id: 'gpt-3.5-turbo', 
+      name: 'GPT-3.5 Turbo', 
+      provider: 'openai', 
+      category: 'Standard',
+      description: 'Fast and economical for conversational tasks'
+    },
+    { 
+      id: 'gpt-3.5-turbo-16k', 
+      name: 'GPT-3.5 Turbo 16K', 
+      provider: 'openai', 
+      category: 'Standard',
+      description: 'Extended context window for longer documents'
+    },
+
+    // GPT-3 Instruct Models
+    { 
+      id: 'text-davinci-003', 
+      name: 'Text Davinci 003', 
+      provider: 'openai', 
+      category: 'Instruct',
+      description: 'Best for instruction following and creative writing'
+    },
+
+    // Specialized Models
+    { 
+      id: 'code-davinci-002', 
+      name: 'Code Davinci 002', 
+      provider: 'openai', 
+      category: 'Code',
+      description: 'Specialized for code generation and programming tasks'
+    },
+
+    // Legacy models for backward compatibility
+    { 
+      id: 'gpt-4o-mini', 
+      name: 'GPT-4O Mini (Legacy)', 
+      provider: 'openai', 
+      category: 'Legacy',
+      description: 'Previous generation fast model'
+    }
   ];
 }
 
