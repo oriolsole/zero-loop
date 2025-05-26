@@ -169,6 +169,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
 
     const data = response.data;
     console.log('AI Model response received');
+    console.log('Response structure:', JSON.stringify(data, null, 2));
 
     if (streaming) {
       // Handle streaming response
@@ -180,16 +181,46 @@ Remember: You can use multiple tools in sequence and should reflect on their out
       });
     }
 
-    const assistantMessage = data.choices[0].message;
-    console.log('Assistant message:', assistantMessage);
+    // Defensive null checking and different response format handling
+    let assistantMessage;
+    let fallbackUsed = data.fallback_used || false;
+    let fallbackReason = data.fallback_reason || '';
+
+    // Check for OpenAI-style response format
+    if (data.choices && Array.isArray(data.choices) && data.choices.length > 0) {
+      assistantMessage = data.choices[0].message;
+      console.log('Using OpenAI format - Assistant message:', assistantMessage);
+    }
+    // Check for NPAW or other direct response formats
+    else if (data.content || data.message) {
+      assistantMessage = {
+        content: data.content || data.message,
+        role: 'assistant'
+      };
+      console.log('Using direct format - Assistant message:', assistantMessage);
+    }
+    // Check if data itself is the message
+    else if (typeof data === 'string') {
+      assistantMessage = {
+        content: data,
+        role: 'assistant'
+      };
+      console.log('Using string format - Assistant message:', assistantMessage);
+    }
+    else {
+      console.error('Unexpected response format:', data);
+      throw new Error('Invalid response format from AI model');
+    }
+
+    if (!assistantMessage || !assistantMessage.content) {
+      throw new Error('No valid message content received from AI model');
+    }
 
     let finalResponse = assistantMessage.content;
     let toolsUsed: any[] = [];
     let selfReflection = '';
-    let fallbackUsed = data.fallback_used || false;
-    let fallbackReason = data.fallback_reason || '';
 
-    // Check if AI wants to call any tools
+    // Check if AI wants to call any tools (only for OpenAI format)
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       const toolResults = [];
       
@@ -309,7 +340,18 @@ Be transparent about any limitations or failures.`
       }
       
       const followUpData = followUpResponse.data;
-      finalResponse = followUpData.choices[0].message.content;
+      
+      // Handle follow-up response with same defensive checking
+      if (followUpData.choices && Array.isArray(followUpData.choices) && followUpData.choices.length > 0) {
+        finalResponse = followUpData.choices[0].message.content;
+      } else if (followUpData.content || followUpData.message) {
+        finalResponse = followUpData.content || followUpData.message;
+      } else if (typeof followUpData === 'string') {
+        finalResponse = followUpData;
+      } else {
+        console.error('Unexpected follow-up response format:', followUpData);
+        finalResponse = assistantMessage.content; // Fall back to original response
+      }
       
       // Check if fallback was used in follow-up
       if (followUpData.fallback_used) {
