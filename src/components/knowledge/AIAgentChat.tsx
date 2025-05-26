@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -176,6 +177,25 @@ const AIAgentChat: React.FC = () => {
     clearTools(); // Clear previous tool progress
     setDebugInfo('Starting AI agent request...');
 
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      if (isLoading) {
+        setIsLoading(false);
+        setDebugInfo('Request timed out');
+        toast.error('Request timed out', {
+          description: 'The AI agent took too long to respond. Please try again.'
+        });
+        
+        const timeoutMessage: ConversationMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: 'I apologize, but my response timed out. Please try your request again. If this continues to happen, there might be an issue with the AI service.',
+          timestamp: new Date()
+        };
+        addMessage(timeoutMessage);
+      }
+    }, 60000); // 60 second timeout
+
     try {
       const conversationHistory = getConversationHistory();
 
@@ -200,6 +220,9 @@ const AIAgentChat: React.FC = () => {
         }
       });
 
+      // Clear timeout since we got a response
+      clearTimeout(timeoutId);
+
       console.log('AI agent response:', { data, error });
       setDebugInfo(`AI agent response received: ${data ? 'success' : 'error'}`);
 
@@ -208,9 +231,9 @@ const AIAgentChat: React.FC = () => {
         throw new Error(error.message);
       }
 
-      if (!data.success) {
-        console.error('AI agent returned error:', data.error);
-        throw new Error(data.error || 'Failed to get response from AI agent');
+      if (!data || !data.success) {
+        console.error('AI agent returned error:', data?.error);
+        throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
       // Process tool progress if available
@@ -224,29 +247,14 @@ const AIAgentChat: React.FC = () => {
             toolItem.parameters
           );
 
-          // Simulate real-time progress updates
-          if (toolItem.status === 'executing') {
-            const progressInterval = setInterval(() => {
-              setToolProgress(toolId, Math.min(90, Math.random() * 80 + 10));
-            }, 200);
-
-            setTimeout(() => {
-              clearInterval(progressInterval);
-              if (toolItem.status === 'completed') {
-                completeTool(toolId, toolItem.result);
-              } else if (toolItem.status === 'failed') {
-                failTool(toolId, toolItem.error || 'Tool execution failed');
-              }
-            }, 1500);
-          } else {
-            // Update tool status immediately
-            updateTool(toolId, {
-              status: toolItem.status,
-              endTime: toolItem.endTime,
-              result: toolItem.result,
-              error: toolItem.error
-            });
-          }
+          // Update tool status based on actual status
+          updateTool(toolId, {
+            status: toolItem.status,
+            endTime: toolItem.endTime,
+            result: toolItem.result,
+            error: toolItem.error,
+            progress: toolItem.status === 'completed' ? 100 : toolItem.status === 'failed' ? 0 : 50
+          });
         });
       }
 
@@ -261,14 +269,14 @@ const AIAgentChat: React.FC = () => {
             tool.parameters
           );
 
-          // Simulate execution time
+          // Update tool status immediately
           setTimeout(() => {
             if (tool.success) {
               completeTool(toolId, tool.result);
             } else {
               failTool(toolId, tool.result?.error || 'Tool execution failed');
             }
-          }, (index + 1) * 800);
+          }, (index + 1) * 200);
         });
       }
 
@@ -314,7 +322,7 @@ const AIAgentChat: React.FC = () => {
           
           toast.error(`${failCount} tool(s) failed`, {
             description: failedTools,
-            duration: 7000
+            duration: 10000
           });
         }
       } else {
@@ -331,16 +339,25 @@ const AIAgentChat: React.FC = () => {
 
     } catch (error) {
       console.error('Error sending message:', error);
+      clearTimeout(timeoutId);
       setDebugInfo(`Error: ${error.message}`);
       
       toast.error('Failed to send message', {
-        description: error.message || 'Please try again'
+        description: error.message || 'Please try again. Check edge function logs if the issue persists.',
+        duration: 10000
       });
 
       const errorMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `I apologize, but I encountered an error processing your request: ${error.message}. Please try again, or check if any required API tokens are configured in the settings.`,
+        content: `I apologize, but I encountered an error processing your request: ${error.message}. 
+
+This could be due to:
+- Network connectivity issues
+- AI service temporarily unavailable
+- Configuration problems with API keys
+
+Please try again, or check the edge function logs in the Supabase dashboard if you're the administrator.`,
         timestamp: new Date()
       };
 

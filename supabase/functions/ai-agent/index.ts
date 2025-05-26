@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -50,7 +51,7 @@ serve(async (req) => {
       .from('mcps')
       .select('*')
       .eq('isDefault', true)
-      .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2']); // Only include working tools
+      .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2']);
 
     if (mcpError) {
       console.error('Error fetching MCPs:', mcpError);
@@ -167,7 +168,7 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: 'auto', // Changed from 'required' to 'auto' for better compatibility
+      tool_choice: 'auto',
       temperature: 0.7,
       max_tokens: 2000,
       stream: streaming,
@@ -272,26 +273,37 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
         toolProgress.push(toolProgressItem);
         
         try {
+          console.log('Calling knowledge-proxy with direct parameters...');
+          
+          // Fixed: Call knowledge-proxy with direct parameters, not nested
           const { data: edgeResult, error: edgeError } = await supabase.functions.invoke('knowledge-proxy', {
             body: {
-              action: 'search',
-              parameters: {
-                query: message,
-                limit: 5,
-                includeNodes: true,
-                matchThreshold: 0.5
-              }
+              query: message,
+              limit: 5,
+              includeNodes: true,
+              matchThreshold: 0.5,
+              useEmbeddings: true
             }
           });
           
+          console.log('Knowledge proxy response:', { success: !!edgeResult, error: edgeError, resultCount: edgeResult?.data?.length || edgeResult?.results?.length || 0 });
+          
           if (edgeError) {
+            console.error('Knowledge proxy error details:', edgeError);
             throw new Error(`Knowledge search error: ${edgeError.message}`);
           }
           
-          let searchResults = edgeResult;
-          if (edgeResult && edgeResult.results) {
+          // Handle different response formats from knowledge proxy
+          let searchResults = [];
+          if (edgeResult && edgeResult.success) {
+            searchResults = edgeResult.data || edgeResult.results || [];
+          } else if (edgeResult && edgeResult.results) {
             searchResults = edgeResult.results;
+          } else if (Array.isArray(edgeResult)) {
+            searchResults = edgeResult;
           }
+          
+          console.log('Processed search results:', searchResults.length, 'items');
           
           toolProgress[0].status = 'completed';
           toolProgress[0].endTime = new Date().toISOString();
@@ -310,9 +322,10 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
             finalResponse = `I searched your knowledge base for "${message}" and found ${searchResults.length} relevant results:\n\n`;
             
             searchResults.slice(0, 3).forEach((result: any, index: number) => {
-              finalResponse += `${index + 1}. **${result.title}**\n`;
-              if (result.content) {
-                finalResponse += `   ${result.content.substring(0, 200)}${result.content.length > 200 ? '...' : ''}\n\n`;
+              finalResponse += `${index + 1}. **${result.title || 'Untitled'}**\n`;
+              if (result.snippet || result.content) {
+                const content = result.snippet || result.content;
+                finalResponse += `   ${content.substring(0, 200)}${content.length > 200 ? '...' : ''}\n\n`;
               }
             });
             
@@ -323,11 +336,18 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
             finalResponse = `I searched your knowledge base for "${message}" but didn't find any relevant results. You might want to add more information to your knowledge base or try rephrasing your search query.`;
           }
           
-          selfReflection = `Forced knowledge base search due to AI not using tools. Found ${searchResults?.length || 0} results.`;
+          selfReflection = `Forced knowledge base search completed successfully. Found ${searchResults?.length || 0} results.`;
           
         } catch (error) {
           console.error('Forced tool execution failed:', error);
+          console.error('Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+          });
+          
           toolProgress[0].status = 'failed';
+          toolProgress[0].endTime = new Date().toISOString();
           toolProgress[0].error = error.message;
           
           toolsUsed.push({
@@ -337,11 +357,12 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
             success: false
           });
           
-          finalResponse = `I tried to search your knowledge base for "${message}" but encountered an error. The search functionality might need to be configured properly.`;
+          finalResponse = `I tried to search your knowledge base for "${message}" but encountered an error: ${error.message}. Please check your knowledge base configuration or try a different search query.`;
           selfReflection = `Forced tool execution failed: ${error.message}`;
         }
       } else {
-        finalResponse = `I understand you're looking for information about "${message}". However, the search tools are not properly configured. Please ensure your knowledge base and search tools are set up correctly.`;
+        console.error('No knowledge search MCP found');
+        finalResponse = `I understand you're looking for information about "${message}". However, the knowledge search tool is not properly configured. Please ensure your knowledge base and search tools are set up correctly.`;
         selfReflection = 'Search request detected but no working search tools available';
       }
     }
@@ -349,8 +370,6 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
     else if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       console.log('Processing', assistantMessage.tool_calls.length, 'tool calls');
       const toolResults = [];
-      
-      // ... keep existing code (tool execution logic)
       
       for (const toolCall of assistantMessage.tool_calls) {
         const functionName = toolCall.function.name;
@@ -424,11 +443,23 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
             };
           }
           
-          // Add userId to parameters for tools that need it
-          const toolParameters = {
-            ...parameters,
-            userId: userId
-          };
+          // Prepare parameters based on the tool type
+          let toolParameters = { ...parameters };
+          
+          // Special handling for knowledge-search-v2
+          if (mcpKey === 'knowledge-search-v2') {
+            // For knowledge proxy, send parameters directly
+            toolParameters = {
+              query: parameters.query || message,
+              limit: parameters.limit || 5,
+              includeNodes: parameters.includeNodes !== false,
+              matchThreshold: parameters.matchThreshold || 0.5,
+              useEmbeddings: parameters.useEmbeddings !== false
+            };
+          } else {
+            // For other tools, add userId if available
+            toolParameters.userId = userId;
+          }
           
           console.log('Calling edge function:', targetMcp.endpoint, 'with parameters:', toolParameters);
           
@@ -441,7 +472,13 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
             body: toolParameters
           });
           
-          console.log('Edge function response:', { success: edgeResult?.success, error: edgeError, dataKeys: edgeResult ? Object.keys(edgeResult) : [] });
+          console.log('Edge function response:', { 
+            endpoint: targetMcp.endpoint,
+            success: edgeResult?.success, 
+            error: edgeError, 
+            dataKeys: edgeResult ? Object.keys(edgeResult) : [],
+            resultCount: edgeResult?.data?.length || edgeResult?.results?.length || 0
+          });
           
           if (edgeError) {
             console.error('Edge function error:', edgeError);
@@ -458,6 +495,8 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
           
           if (mcpResult && mcpResult.data) {
             processedResult = mcpResult.data;
+          } else if (mcpResult && mcpResult.results) {
+            processedResult = mcpResult.results;
           }
           
           toolResults.push({
@@ -488,6 +527,12 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
           
         } catch (error) {
           console.error('Tool execution error:', functionName, error);
+          console.error('Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+          });
+          
           const errorResult = { 
             error: error.message,
             toolName: functionName,
@@ -637,7 +682,7 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
           success: t.success,
           result: t.result
         })),
-        toolProgress, // Enhanced tool progress information
+        toolProgress,
         selfReflection,
         sessionId,
         fallbackUsed,
@@ -648,10 +693,17 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
 
   } catch (error) {
     console.error('AI Agent error:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'An unexpected error occurred'
+        error: error.message || 'An unexpected error occurred',
+        details: 'Check the edge function logs for more information'
       }),
       { 
         status: 500,
