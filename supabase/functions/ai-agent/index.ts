@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -12,6 +11,50 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+/**
+ * Extracts GitHub repository information from a URL
+ */
+function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
+  const githubUrlRegex = /(?:https?:\/\/)?(?:www\.)?github\.com\/([^\/]+)\/([^\/]+)(?:\/.*)?/i;
+  const match = url.match(githubUrlRegex);
+  
+  if (match) {
+    const owner = match[1];
+    const repo = match[2].replace(/\.git$/, ''); // Remove .git suffix if present
+    return { owner, repo };
+  }
+  
+  return null;
+}
+
+/**
+ * Detects if the message contains GitHub URLs or GitHub-related requests
+ */
+function detectGitHubRequest(message: string): { isGitHubRequest: boolean; githubInfo?: { owner: string; repo: string } } {
+  const lowerMessage = message.toLowerCase();
+  
+  // Check for GitHub URLs
+  const githubInfo = parseGitHubUrl(message);
+  if (githubInfo) {
+    return { isGitHubRequest: true, githubInfo };
+  }
+  
+  // Check for GitHub-related keywords
+  const githubKeywords = [
+    'github',
+    'repository',
+    'repo',
+    'read this repository',
+    'examine repository',
+    'analyze repository',
+    'github.com'
+  ];
+  
+  const isGitHubRequest = githubKeywords.some(keyword => lowerMessage.includes(keyword));
+  
+  return { isGitHubRequest };
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -115,10 +158,14 @@ serve(async (req) => {
                            lowerMessage.includes('tell me about') ||
                            lowerMessage.includes('knowledge base');
 
-    console.log('Is search request:', isSearchRequest);
+    // Detect GitHub requests
+    const { isGitHubRequest, githubInfo } = detectGitHubRequest(message);
 
-    // Enhanced system prompt with mandatory tool usage for searches
-    const systemPrompt = `You are an advanced AI agent with access to various tools and self-reflection capabilities. You can help users by:
+    console.log('Is search request:', isSearchRequest);
+    console.log('Is GitHub request:', isGitHubRequest, githubInfo);
+
+    // Enhanced system prompt with mandatory tool usage for searches and GitHub requests
+    let systemPrompt = `You are an advanced AI agent with access to various tools and self-reflection capabilities. You can help users by:
 
 1. **Mandatory Tool Usage**: When users ask for searches, information lookup, or current data, you MUST use the appropriate tools
 2. **Self-Reflection**: After using tools, analyze the results and determine if they meet the user's needs
@@ -147,9 +194,15 @@ serve(async (req) => {
 - Provide context for your decisions
 - Ask clarifying questions when needed
 
-Remember: You can use multiple tools in sequence and should reflect on their outputs to provide the best possible assistance.
+Remember: You can use multiple tools in sequence and should reflect on their outputs to provide the best possible assistance.`;
 
-${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information. You MUST use the appropriate search tools (web-search or knowledge-search-v2) to fulfill this request. Do not provide generic responses without using tools.' : ''}`;
+    if (isSearchRequest) {
+      systemPrompt += '\n\n**IMPORTANT**: The user is asking for search/information. You MUST use the appropriate search tools (web-search or knowledge-search-v2) to fulfill this request. Do not provide generic responses without using tools.';
+    }
+
+    if (isGitHubRequest) {
+      systemPrompt += '\n\n**IMPORTANT**: The user is asking about GitHub repositories. You MUST use the github-tools to fetch repository information, files, or other GitHub data. Do not provide generic responses without using tools.';
+    }
 
     // Prepare messages for AI model
     const messages = [
@@ -252,8 +305,142 @@ ${isSearchRequest ? '\n**IMPORTANT**: The user is asking for search/information.
     let selfReflection = '';
     let toolProgress: any[] = [];
 
+    // Check if this was a GitHub request but no tools were called - FORCE tool execution
+    if (isGitHubRequest && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
+      console.log('GitHub request detected but no tools called - forcing GitHub tools execution');
+      
+      const githubMcp = mcps?.find(m => m.default_key === 'github-tools');
+      if (githubMcp && githubInfo) {
+        console.log('Forcing GitHub tools execution with repository:', githubInfo);
+        
+        const toolProgressItem = {
+          id: `tool-${Date.now()}-forced-github`,
+          name: 'execute_github-tools',
+          displayName: 'GitHub Repository Analysis (Forced)',
+          status: 'executing',
+          startTime: new Date().toISOString(),
+          parameters: { action: 'get_repository', owner: githubInfo.owner, repository: githubInfo.repo },
+          progress: 50
+        };
+        toolProgress.push(toolProgressItem);
+        
+        try {
+          console.log('Calling github-tools with repository parameters...');
+          
+          const { data: edgeResult, error: edgeError } = await supabase.functions.invoke('github-tools', {
+            body: {
+              action: 'get_repository',
+              owner: githubInfo.owner,
+              repository: githubInfo.repo,
+              userId: userId
+            }
+          });
+          
+          console.log('GitHub tools response:', { success: !!edgeResult, error: edgeError });
+          
+          if (edgeError) {
+            console.error('GitHub tools error details:', edgeError);
+            throw new Error(`GitHub tools error: ${edgeError.message}`);
+          }
+          
+          let repoData = null;
+          if (edgeResult && edgeResult.success) {
+            repoData = edgeResult.data;
+          } else if (edgeResult && edgeResult.data) {
+            repoData = edgeResult.data;
+          }
+          
+          console.log('Processed GitHub repository data:', !!repoData);
+          
+          toolProgress[0].status = 'completed';
+          toolProgress[0].endTime = new Date().toISOString();
+          toolProgress[0].progress = 100;
+          toolProgress[0].result = repoData;
+          
+          toolsUsed.push({
+            name: 'execute_github-tools',
+            parameters: { action: 'get_repository', owner: githubInfo.owner, repository: githubInfo.repo },
+            result: repoData,
+            success: true
+          });
+          
+          // Generate response based on repository data
+          if (repoData) {
+            finalResponse = `I've analyzed the GitHub repository **${githubInfo.owner}/${githubInfo.repo}**:\n\n`;
+            
+            if (repoData.description) {
+              finalResponse += `**Description**: ${repoData.description}\n\n`;
+            }
+            
+            if (repoData.language) {
+              finalResponse += `**Primary Language**: ${repoData.language}\n`;
+            }
+            
+            if (repoData.stargazers_count !== undefined) {
+              finalResponse += `**Stars**: ${repoData.stargazers_count}\n`;
+            }
+            
+            if (repoData.forks_count !== undefined) {
+              finalResponse += `**Forks**: ${repoData.forks_count}\n`;
+            }
+            
+            if (repoData.created_at) {
+              finalResponse += `**Created**: ${new Date(repoData.created_at).toLocaleDateString()}\n`;
+            }
+            
+            if (repoData.updated_at) {
+              finalResponse += `**Last Updated**: ${new Date(repoData.updated_at).toLocaleDateString()}\n`;
+            }
+            
+            if (repoData.topics && repoData.topics.length > 0) {
+              finalResponse += `**Topics**: ${repoData.topics.join(', ')}\n`;
+            }
+            
+            if (repoData.license && repoData.license.name) {
+              finalResponse += `**License**: ${repoData.license.name}\n`;
+            }
+            
+            finalResponse += `\nWould you like me to examine specific files, the README, or other aspects of this repository?`;
+          } else {
+            finalResponse = `I was able to access the GitHub repository **${githubInfo.owner}/${githubInfo.repo}**, but couldn't retrieve detailed information. The repository might be private or there might be an issue with the GitHub API. Please check if the repository exists and is publicly accessible.`;
+          }
+          
+          selfReflection = `Successfully executed GitHub tools for repository analysis. Retrieved repository data: ${!!repoData}`;
+          
+        } catch (error) {
+          console.error('Forced GitHub tool execution failed:', error);
+          console.error('Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+          });
+          
+          toolProgress[0].status = 'failed';
+          toolProgress[0].endTime = new Date().toISOString();
+          toolProgress[0].error = error.message;
+          
+          toolsUsed.push({
+            name: 'execute_github-tools',
+            parameters: { action: 'get_repository', owner: githubInfo.owner, repository: githubInfo.repo },
+            result: { error: error.message },
+            success: false
+          });
+          
+          finalResponse = `I tried to analyze the GitHub repository **${githubInfo.owner}/${githubInfo.repo}** but encountered an error: ${error.message}. This could be because:\n\n1. The repository is private or doesn't exist\n2. GitHub API access is not properly configured\n3. Rate limits have been exceeded\n\nPlease check that the repository URL is correct and publicly accessible.`;
+          selfReflection = `Forced GitHub tool execution failed: ${error.message}`;
+        }
+      } else if (!githubMcp) {
+        console.error('No GitHub tools MCP found');
+        finalResponse = `I understand you want me to examine the GitHub repository, but the GitHub tools are not properly configured. Please ensure your GitHub integration is set up correctly.`;
+        selfReflection = 'GitHub request detected but no GitHub tools available';
+      } else {
+        console.error('GitHub request detected but could not parse repository information');
+        finalResponse = `I detected a GitHub repository request, but I couldn't parse the repository information from your message. Please provide a clear GitHub repository URL like "https://github.com/owner/repository".`;
+        selfReflection = 'GitHub request detected but repository information could not be parsed';
+      }
+    }
     // Check if this was a search request but no tools were called - FORCE tool execution
-    if (isSearchRequest && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
+    else if (isSearchRequest && (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)) {
       console.log('Search request detected but no tools called - forcing knowledge search');
       
       // Force a knowledge base search as fallback
