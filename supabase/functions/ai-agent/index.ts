@@ -46,18 +46,19 @@ serve(async (req) => {
       });
     }
 
-    // Fetch available MCPs from the database
+    // Fetch available MCPs from the database - only include working ones
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
       .select('*')
-      .eq('isDefault', true);
+      .eq('isDefault', true)
+      .in('default_key', ['web-search', 'github-tools', 'knowledge-search-v2']); // Only include working tools
 
     if (mcpError) {
       console.error('Error fetching MCPs:', mcpError);
       throw new Error('Failed to fetch available tools');
     }
 
-    console.log('Available MCPs:', mcps?.length);
+    console.log('Available MCPs:', mcps?.map(m => ({ title: m.title, endpoint: m.endpoint, key: m.default_key })));
 
     // Convert MCPs to OpenAI function definitions
     const tools = mcps?.map(mcp => {
@@ -103,7 +104,7 @@ serve(async (req) => {
       };
     }) || [];
 
-    console.log('Generated tools:', tools.length);
+    console.log('Generated tools:', tools.map(t => t.function.name));
 
     // Enhanced system prompt with self-reflection capabilities
     const systemPrompt = `You are an advanced AI agent with access to various tools and self-reflection capabilities. You can help users by:
@@ -114,6 +115,13 @@ serve(async (req) => {
 4. **Error Recovery**: If a tool fails, try alternative approaches or explain limitations
 
 **Available tools**: ${mcps?.map(m => `${m.title} - ${m.description}`).join(', ')}
+
+**Tool Execution Guidelines**:
+- Always use tools when you can provide better information through them
+- For GitHub queries, use the github-tools with appropriate action (get_repository, get_file_content, list_files, etc.)
+- For current information, use web-search
+- For knowledge base queries, use knowledge-search-v2
+- Be specific with tool parameters to get the best results
 
 **Self-Reflection Protocol**:
 - After using tools, assess if the results answer the user's question
@@ -158,6 +166,8 @@ Remember: You can use multiple tools in sequence and should reflect on their out
       })
     };
 
+    console.log('Calling AI model proxy with tools:', tools.length);
+
     const response = await supabase.functions.invoke('ai-model-proxy', {
       body: modelRequestBody
     });
@@ -168,7 +178,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
     }
 
     const data = response.data;
-    console.log('AI Model response received');
+    console.log('AI Model response received, checking for tool calls...');
 
     if (streaming) {
       // Handle streaming response
@@ -188,7 +198,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
     // Check for OpenAI-style response format
     if (data.choices && Array.isArray(data.choices) && data.choices.length > 0) {
       assistantMessage = data.choices[0].message;
-      console.log('Using OpenAI format - Assistant message:', assistantMessage);
+      console.log('Using OpenAI format - Assistant message tool calls:', assistantMessage.tool_calls?.length || 0);
     }
     // Check for NPAW response format with 'result' field
     else if (data.result) {
@@ -196,7 +206,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
         content: data.result,
         role: 'assistant'
       };
-      console.log('Using NPAW format - Assistant message:', assistantMessage);
+      console.log('Using NPAW format - Assistant message (no tool calls available)');
     }
     // Check for other direct response formats
     else if (data.content || data.message) {
@@ -204,7 +214,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
         content: data.content || data.message,
         role: 'assistant'
       };
-      console.log('Using direct format - Assistant message:', assistantMessage);
+      console.log('Using direct format - Assistant message (no tool calls available)');
     }
     // Check if data itself is the message
     else if (typeof data === 'string') {
@@ -212,7 +222,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
         content: data,
         role: 'assistant'
       };
-      console.log('Using string format - Assistant message:', assistantMessage);
+      console.log('Using string format - Assistant message (no tool calls available)');
     }
     else {
       console.error('Unexpected response format:', data);
@@ -230,11 +240,19 @@ Remember: You can use multiple tools in sequence and should reflect on their out
 
     // Check if AI wants to call any tools (only for OpenAI format)
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      console.log('Processing', assistantMessage.tool_calls.length, 'tool calls');
       const toolResults = [];
       
       for (const toolCall of assistantMessage.tool_calls) {
         const functionName = toolCall.function.name;
-        const parameters = JSON.parse(toolCall.function.arguments);
+        let parameters;
+        
+        try {
+          parameters = JSON.parse(toolCall.function.arguments);
+        } catch (e) {
+          console.error('Failed to parse tool parameters:', toolCall.function.arguments);
+          parameters = {};
+        }
         
         console.log('Executing tool:', functionName, 'with parameters:', parameters);
         
@@ -252,8 +270,8 @@ Remember: You can use multiple tools in sequence and should reflect on their out
         const targetMcp = mcps?.find(m => m.default_key === mcpKey || m.id === mcpKey);
         
         if (!targetMcp) {
-          console.error('Tool not found:', mcpKey);
-          const errorResult = { error: 'Tool not found', toolName: functionName };
+          console.error('Tool not found:', mcpKey, 'Available tools:', mcps?.map(m => m.default_key));
+          const errorResult = { error: `Tool '${mcpKey}' not found or not available`, toolName: functionName };
           
           toolResults.push({
             tool_call_id: toolCall.id,
@@ -274,7 +292,7 @@ Remember: You can use multiple tools in sequence and should reflect on their out
         }
 
         try {
-          console.log('Using MCP endpoint:', targetMcp.endpoint);
+          console.log('Using MCP endpoint:', targetMcp.endpoint, 'for tool:', targetMcp.title);
           let mcpResult;
           
           // Add userId to parameters for tools that need it
@@ -283,35 +301,19 @@ Remember: You can use multiple tools in sequence and should reflect on their out
             userId: userId
           };
           
-          // Check if endpoint looks like an Edge Function name (no protocol)
-          if (targetMcp.endpoint.indexOf('http') !== 0) {
-            console.log('Calling Edge Function:', targetMcp.endpoint);
-            const { data: edgeResult, error: edgeError } = await supabase.functions.invoke(targetMcp.endpoint, {
-              body: toolParameters
-            });
-            
-            if (edgeError) {
-              console.error('Edge function error:', edgeError);
-              throw new Error(`Edge function error: ${edgeError.message}`);
-            }
-            
-            mcpResult = edgeResult;
-            console.log('Edge function result:', mcpResult);
-          } else {
-            console.log('Calling external API:', targetMcp.endpoint);
-            const apiResponse = await fetch(targetMcp.endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(toolParameters),
-            });
-            
-            if (!apiResponse.ok) {
-              const errorText = await apiResponse.text();
-              throw new Error(`API error: ${apiResponse.status} - ${errorText}`);
-            }
-            
-            mcpResult = await apiResponse.json();
+          console.log('Calling edge function:', targetMcp.endpoint, 'with parameters:', toolParameters);
+          const { data: edgeResult, error: edgeError } = await supabase.functions.invoke(targetMcp.endpoint, {
+            body: toolParameters
+          });
+          
+          console.log('Edge function response:', { success: edgeResult?.success, error: edgeError, dataKeys: edgeResult ? Object.keys(edgeResult) : [] });
+          
+          if (edgeError) {
+            console.error('Edge function error:', edgeError);
+            throw new Error(`Edge function error: ${edgeError.message}`);
           }
+          
+          mcpResult = edgeResult;
           
           // Handle different response formats
           let processedResult = mcpResult;
@@ -339,9 +341,11 @@ Remember: You can use multiple tools in sequence and should reflect on their out
             result: processedResult,
             success: true
           });
+
+          console.log('Tool execution successful:', functionName);
           
         } catch (error) {
-          console.error('Tool execution error:', error);
+          console.error('Tool execution error:', functionName, error);
           const errorResult = { 
             error: error.message,
             toolName: functionName,
@@ -366,6 +370,12 @@ Remember: You can use multiple tools in sequence and should reflect on their out
           });
         }
       }
+      
+      console.log('Tool execution summary:', {
+        total: toolsUsed.length,
+        successful: toolsUsed.filter(t => t.success).length,
+        failed: toolsUsed.filter(t => !t.success).length
+      });
       
       // Make another AI call with the tool results and self-reflection
       const followUpMessages = [
@@ -396,6 +406,8 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
           localModelUrl: modelSettings.localModelUrl
         })
       };
+
+      console.log('Making follow-up call with tool results');
 
       const followUpResponse = await supabase.functions.invoke('ai-model-proxy', {
         body: followUpRequestBody
@@ -436,6 +448,10 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
         const failedToolNames = toolsUsed.filter(t => !t.success).map(t => t.name).join(', ');
         selfReflection += ` Failed tools: ${failedToolNames}`;
       }
+
+      console.log('Follow-up response completed successfully');
+    } else {
+      console.log('No tool calls were made by the AI model');
     }
 
     // Store assistant response in database
@@ -450,6 +466,8 @@ Be transparent about any limitations or failures. If GitHub tools failed, mentio
         created_at: new Date().toISOString()
       });
     }
+
+    console.log('Returning response with', toolsUsed.length, 'tools used');
 
     return new Response(
       JSON.stringify({

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -23,7 +24,8 @@ import {
   Zap,
   CheckCircle,
   XCircle,
-  PlayCircle
+  PlayCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,7 +34,7 @@ import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConve
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings, ModelProvider } from '@/services/modelProviderService';
 
-// Tool Progress Component
+// Tool Progress Component with enhanced feedback
 const ToolProgress: React.FC<{ toolProgress: any[] }> = ({ toolProgress }) => {
   if (!toolProgress || toolProgress.length === 0) return null;
 
@@ -50,6 +52,11 @@ const ToolProgress: React.FC<{ toolProgress: any[] }> = ({ toolProgress }) => {
               {tool.status === 'completed' && <CheckCircle className="h-4 w-4 text-green-500" />}
               {tool.status === 'failed' && <XCircle className="h-4 w-4 text-red-500" />}
               <span className="text-sm">{tool.name.replace('execute_', '')}</span>
+              {tool.parameters && (
+                <span className="text-xs text-muted-foreground">
+                  ({Object.keys(tool.parameters).join(', ')})
+                </span>
+              )}
             </div>
             <Badge 
               variant={tool.status === 'completed' ? 'default' : tool.status === 'failed' ? 'destructive' : 'secondary'}
@@ -82,6 +89,7 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
   const [currentToolProgress, setCurrentToolProgress] = useState<any[]>([]);
+  const [debugInfo, setDebugInfo] = useState<string>('');
   
   // Create the missing scrollAreaRef
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -154,9 +162,20 @@ const AIAgentChat: React.FC = () => {
     setInput('');
     setIsLoading(true);
     setCurrentToolProgress([]);
+    setDebugInfo('Starting AI agent request...');
 
     try {
       const conversationHistory = getConversationHistory();
+
+      console.log('Sending message to AI agent:', {
+        message: input,
+        conversationHistory: conversationHistory.length,
+        userId: user.id,
+        sessionId: currentSessionId,
+        modelSettings
+      });
+
+      setDebugInfo('Calling AI agent function...');
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
@@ -169,11 +188,16 @@ const AIAgentChat: React.FC = () => {
         }
       });
 
+      console.log('AI agent response:', { data, error });
+      setDebugInfo(`AI agent response received: ${data ? 'success' : 'error'}`);
+
       if (error) {
+        console.error('AI agent error:', error);
         throw new Error(error.message);
       }
 
       if (!data.success) {
+        console.error('AI agent returned error:', data.error);
         throw new Error(data.error || 'Failed to get response from AI agent');
       }
 
@@ -198,38 +222,56 @@ const AIAgentChat: React.FC = () => {
         }, 5000);
       }
 
-      // Check if fallback was used and show appropriate notification
-      if (data.fallbackUsed) {
-        toast.warning(`Using OpenAI fallback`, {
-          description: `${modelSettings.provider.toUpperCase()} failed: ${data.fallbackReason}`
-        });
-      } else if (data.toolsUsed && data.toolsUsed.length > 0) {
+      // Enhanced tool feedback
+      if (data.toolsUsed && data.toolsUsed.length > 0) {
         const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
         const failCount = data.toolsUsed.length - successCount;
         
+        console.log('Tool execution summary:', { 
+          total: data.toolsUsed.length, 
+          success: successCount, 
+          failed: failCount,
+          tools: data.toolsUsed 
+        });
+        
         if (successCount > 0) {
-          toast.success(`Used ${successCount} tool(s) successfully`, {
-            description: data.toolsUsed
-              .filter((tool: any) => tool.success)
-              .map((tool: any) => tool.name.replace('execute_', ''))
-              .join(', ')
+          const successfulTools = data.toolsUsed
+            .filter((tool: any) => tool.success)
+            .map((tool: any) => tool.name.replace('execute_', ''))
+            .join(', ');
+          
+          toast.success(`Successfully used ${successCount} tool(s)`, {
+            description: `Tools: ${successfulTools}`
           });
         }
         
         if (failCount > 0) {
           const failedTools = data.toolsUsed
             .filter((tool: any) => !tool.success)
-            .map((tool: any) => tool.name.replace('execute_', ''))
+            .map((tool: any) => `${tool.name.replace('execute_', '')}: ${tool.result?.error || 'Unknown error'}`)
             .join(', ');
           
-          toast.error(`${failCount} tool(s) failed: ${failedTools}`, {
-            description: 'Check your API tokens in settings or see the conversation for details'
+          toast.error(`${failCount} tool(s) failed`, {
+            description: failedTools,
+            duration: 7000
           });
         }
+      } else {
+        console.log('No tools were used in this response');
+        setDebugInfo('Response completed without tool usage');
+      }
+
+      // Check if fallback was used and show appropriate notification
+      if (data.fallbackUsed) {
+        toast.warning(`Using OpenAI fallback`, {
+          description: `${modelSettings.provider.toUpperCase()} failed: ${data.fallbackReason}`
+        });
       }
 
     } catch (error) {
       console.error('Error sending message:', error);
+      setDebugInfo(`Error: ${error.message}`);
+      
       toast.error('Failed to send message', {
         description: error.message || 'Please try again'
       });
@@ -237,13 +279,14 @@ const AIAgentChat: React.FC = () => {
       const errorMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'I apologize, but I encountered an error processing your request. Please try again, or check if any required API tokens are configured in the settings.',
+        content: `I apologize, but I encountered an error processing your request: ${error.message}. Please try again, or check if any required API tokens are configured in the settings.`,
         timestamp: new Date()
       };
 
       addMessage(errorMessage);
     } finally {
       setIsLoading(false);
+      setDebugInfo('');
     }
   };
 
@@ -374,6 +417,14 @@ const AIAgentChat: React.FC = () => {
               </Button>
             </div>
           </div>
+
+          {/* Debug Info */}
+          {debugInfo && (
+            <div className="mt-2 p-2 bg-muted/50 rounded text-xs text-muted-foreground flex items-center gap-2">
+              <AlertTriangle className="h-3 w-3" />
+              {debugInfo}
+            </div>
+          )}
         </CardHeader>
         
         <CardContent className="flex-1 overflow-hidden">
@@ -396,9 +447,11 @@ const AIAgentChat: React.FC = () => {
                       </span>
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    💡 Tip: For GitHub access, make sure to configure your GitHub token in Settings
-                  </p>
+                  <div className="space-y-2 text-xs text-muted-foreground">
+                    <p>💡 Tip: For GitHub access, make sure to configure your GitHub token in Settings</p>
+                    <p>🔧 Available tools: Web Search, GitHub Tools, Knowledge Base Search</p>
+                    <p>🎯 Try: "Search GitHub for React hooks examples" or "Find recent AI news"</p>
+                  </div>
                 </div>
               )}
 
@@ -497,7 +550,7 @@ const AIAgentChat: React.FC = () => {
         <CardFooter className="border-t p-4">
           <div className="flex w-full gap-2">
             <Input
-              placeholder={`Ask me anything... I can search GitHub, the web, and access your knowledge base! (Using ${modelSettings.provider.toUpperCase()})`}
+              placeholder={`Ask me anything! I can search GitHub, the web, and access your knowledge base! (Using ${modelSettings.provider.toUpperCase()})`}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyPress}

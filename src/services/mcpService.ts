@@ -120,8 +120,10 @@ export const mcpService = {
     return this.createMCP(clonedMCP);
   },
 
-  // Execute an MCP
+  // Execute an MCP with improved error handling and logging
   async executeMCP({ mcpId, parameters }: ExecuteMCPParams): Promise<MCPExecutionResult> {
+    console.log('Executing MCP:', mcpId, 'with parameters:', parameters);
+    
     try {
       // First, get the MCP details
       const { data: mcp, error: mcpError } = await supabase
@@ -131,8 +133,11 @@ export const mcpService = {
         .single();
 
       if (mcpError || !mcp) {
+        console.error('MCP not found:', mcpId, mcpError);
         throw new Error('MCP not found');
       }
+
+      console.log('Found MCP:', mcp.title, 'endpoint:', mcp.endpoint);
 
       // Get current user for token-based MCPs
       const { data: { user } } = await supabase.auth.getUser();
@@ -166,8 +171,11 @@ export const mcpService = {
         userId: user.id
       };
 
-      // Execute based on endpoint type
+      console.log('Calling endpoint:', mcp.endpoint, 'with parameters:', enhancedParameters);
+
+      // Execute based on endpoint type - prioritize edge functions
       if (mcp.endpoint.startsWith('http')) {
+        console.log('Making external API call to:', mcp.endpoint);
         // External API call
         const response = await fetch(mcp.endpoint, {
           method: 'POST',
@@ -177,31 +185,39 @@ export const mcpService = {
 
         if (!response.ok) {
           const errorText = await response.text();
+          console.error('External API error:', response.status, errorText);
           throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
 
         result = await response.json();
         success = true;
       } else {
+        console.log('Calling edge function:', mcp.endpoint);
         // Edge function call
         const { data, error } = await supabase.functions.invoke(mcp.endpoint, {
           body: enhancedParameters
         });
 
+        console.log('Edge function response:', { data, error });
+
         if (error) {
+          console.error('Edge function error:', error);
           throw new Error(error.message || 'Edge function execution failed');
         }
 
         // Handle different response formats
         if (data && data.success === false) {
+          console.error('Edge function returned error:', data.error);
           throw new Error(data.error || 'Tool execution failed');
         }
 
         result = data && data.data ? data.data : data;
         success = true;
+        console.log('Edge function execution successful:', result);
       }
 
       const executionTime = Date.now() - startTime;
+      console.log('MCP execution completed in', executionTime, 'ms');
 
       // Update execution record if it was created
       if (execution) {
@@ -286,6 +302,40 @@ export const mcpService = {
       console.log('Successfully seeded', mcpsToCreate.length, 'default MCPs');
     } catch (error) {
       console.error('Error in seedDefaultMCPs:', error);
+      throw error;
+    }
+  },
+
+  // Clean up invalid MCPs that point to non-existent endpoints
+  async cleanupInvalidMCPs(userId: string): Promise<void> {
+    console.log('Cleaning up invalid MCPs for user:', userId);
+    
+    try {
+      // Get all MCPs for the user
+      const { data: mcps, error } = await supabase
+        .from('mcps')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      const invalidMCPs = mcps?.filter(mcp => {
+        // Mark MCPs with external HTTP endpoints as potentially invalid
+        // Keep only edge functions and known working endpoints
+        return mcp.endpoint?.startsWith('http') && 
+               !['google-search', 'github-tools', 'knowledge-proxy'].includes(mcp.endpoint.split('/').pop() || '');
+      }) || [];
+
+      console.log('Found', invalidMCPs.length, 'potentially invalid MCPs');
+
+      // Delete invalid MCPs
+      for (const mcp of invalidMCPs) {
+        console.log('Deleting invalid MCP:', mcp.title);
+        await this.deleteMCP(mcp.id);
+      }
+
+    } catch (error) {
+      console.error('Error cleaning up invalid MCPs:', error);
       throw error;
     }
   }
