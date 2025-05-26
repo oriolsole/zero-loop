@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardHeader } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
@@ -183,7 +182,7 @@ const AIAgentChat: React.FC = () => {
         
       } else {
         // Single-step execution for simple requests
-        setPhase('processing', 'Processing your request...', 15);
+        setPhase('executing', 'Processing your request...', 15);
         
         const conversationHistory = getConversationHistory();
 

@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { getModelSettings } from '@/services/modelProviderService';
@@ -24,6 +23,7 @@ export interface DynamicExecutionPlan {
   status: 'pending' | 'executing' | 'completed' | 'failed';
   currentStepIndex: number;
   isAdaptive: boolean;
+  totalEstimatedTime: number;
   startTime?: string;
   endTime?: string;
   finalResult?: string;
@@ -40,14 +40,18 @@ export const useDynamicPlanOrchestrator = () => {
   ): Promise<DynamicExecutionPlan> => {
     const planId = `dynamic-plan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
+    const steps = await convertStepsToExecutable(suggestedSteps, planId);
+    const totalEstimatedTime = steps.length * 5; // Estimate 5 seconds per step
+    
     const plan: DynamicExecutionPlan = {
       id: planId,
       title: `AI-Generated Plan: ${planType}`,
       description: `Dynamic execution plan for: ${userRequest}`,
-      steps: await convertStepsToExecutable(suggestedSteps, planId),
+      steps,
       status: 'pending',
       currentStepIndex: 0,
       isAdaptive: true,
+      totalEstimatedTime,
       startTime: new Date().toISOString()
     };
 

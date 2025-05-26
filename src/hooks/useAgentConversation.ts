@@ -1,20 +1,20 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ExecutionPlan } from './usePlanOrchestrator';
+import { DynamicExecutionPlan } from './useDynamicPlanOrchestrator';
 
 export interface ConversationMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  messageType?: 'response' | 'analysis' | 'planning' | 'execution';
+  messageType?: 'response' | 'analysis' | 'planning' | 'execution' | 'tool-update';
   toolsUsed?: any[];
   selfReflection?: string;
   toolDecision?: any;
   toolProgress?: any[];
   isStreaming?: boolean;
-  executionPlan?: ExecutionPlan;
+  executionPlan?: DynamicExecutionPlan;
 }
 
 export interface ConversationSession {
