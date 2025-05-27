@@ -206,6 +206,12 @@ export const useAgentConversation = () => {
     }
 
     try {
+      // Convert streamSteps to a JSON-serializable format
+      const streamStepsForDb = message.streamSteps?.map(step => ({
+        ...step,
+        timestamp: step.timestamp.toISOString() // Convert Date to string
+      })) || null;
+
       await supabase
         .from('agent_conversations')
         .insert({
@@ -221,7 +227,7 @@ export const useAgentConversation = () => {
           tool_decision: message.toolDecision || null,
           tool_progress: message.toolProgress || null,
           ai_reasoning: message.aiReasoning || null,
-          stream_steps: message.streamSteps || null,
+          stream_steps: streamStepsForDb,
           created_at: message.timestamp.toISOString()
         });
     } catch (error) {
@@ -284,7 +290,10 @@ export const useAgentConversation = () => {
           displayName?: string;
         }> : undefined,
         aiReasoning: row.ai_reasoning || undefined,
-        streamSteps: Array.isArray(row.stream_steps) ? row.stream_steps as Array<{
+        streamSteps: Array.isArray(row.stream_steps) ? (row.stream_steps as any[]).map(step => ({
+          ...step,
+          timestamp: new Date(step.timestamp) // Convert string back to Date
+        })) as Array<{
           id: string;
           type: 'step-announcement' | 'partial-result' | 'tool-announcement' | 'tool-status' | 'thinking';
           content: string;
