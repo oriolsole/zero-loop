@@ -377,8 +377,17 @@ const LearningLoop: React.FC = () => {
             console.warn(`Null step found at index ${index}`);
             return null;
           }
+          
+          // Convert the step object to the expected LearningStepProps format
           return (
-            <LearningStep key={index} step={step} index={index} />
+            <LearningStep 
+              key={index}
+              title={step.title || `Step ${index + 1}`}
+              content={step.content || ''}
+              status={step.status === 'success' ? 'completed' : step.status === 'failure' ? 'error' : step.status === 'pending' ? 'processing' : 'pending'}
+              stepNumber={index + 1}
+              isActive={step.status === 'pending'}
+            />
           );
         })}
       </div>

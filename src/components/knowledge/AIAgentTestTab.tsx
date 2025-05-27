@@ -1,9 +1,38 @@
-import React from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LearningLoopTester } from './LearningLoopTester';
 import { DebugConsole } from './DebugConsole';
 
+interface DebugLogEntry {
+  timestamp: string;
+  level: 'info' | 'warning' | 'error' | 'success';
+  message: string;
+  details?: any;
+}
+
 const AIAgentTestTab: React.FC = () => {
+  const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
+
+  useEffect(() => {
+    const handleDebugLog = (event: CustomEvent) => {
+      const logEntry: DebugLogEntry = {
+        timestamp: new Date().toLocaleTimeString(),
+        level: event.detail.type || 'info',
+        message: event.detail.message,
+        details: event.detail.data
+      };
+      
+      setDebugLogs(prev => [logEntry, ...prev].slice(0, 100)); // Keep last 100 logs
+    };
+
+    window.addEventListener('debugLog', handleDebugLog as EventListener);
+    
+    return () => {
+      window.removeEventListener('debugLog', handleDebugLog as EventListener);
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
       <Tabs defaultValue="tester" className="w-full">
@@ -50,7 +79,7 @@ const AIAgentTestTab: React.FC = () => {
         </TabsContent>
       </Tabs>
       
-      <DebugConsole />
+      <DebugConsole logs={debugLogs} isVisible={true} />
     </div>
   );
 };
