@@ -32,11 +32,6 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
   const [isStreaming, setIsStreaming] = useState(false);
-  const [workingMessage, setWorkingMessage] = useState<{
-    step: string;
-    tools: string[];
-    progress: number;
-  } | null>(null);
 
   const {
     tools,
@@ -63,7 +58,7 @@ const AIAgentChat: React.FC = () => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [conversations, workingMessage]);
+  }, [conversations, tools]);
 
   // Load model settings on component mount and when they change
   useEffect(() => {
@@ -83,6 +78,20 @@ const AIAgentChat: React.FC = () => {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  const addStreamingStepAsMessage = (step: any) => {
+    const stepMessage: ConversationMessage = {
+      id: step.id,
+      role: 'assistant',
+      content: step.content,
+      timestamp: new Date(step.timestamp),
+      messageType: step.type === 'step-announcement' ? 'step-executing' : 
+                   step.type === 'partial-result' ? 'step-completed' :
+                   step.type === 'tool-announcement' ? 'tool-update' : 'analysis'
+    };
+    
+    addMessage(stepMessage);
+  };
 
   const handleFollowUpAction = async (action: string) => {
     if (!user || !currentSessionId) return;
@@ -109,13 +118,6 @@ const AIAgentChat: React.FC = () => {
     setIsLoading(true);
     setIsStreaming(true);
     clearTools();
-    
-    // Start with initial working message
-    setWorkingMessage({
-      step: "Processing your request...",
-      tools: [],
-      progress: 10
-    });
 
     try {
       const conversationHistory = getConversationHistory();
@@ -140,8 +142,7 @@ const AIAgentChat: React.FC = () => {
       if (data && typeof data === 'string') {
         const lines = data.split('\n').filter(line => line.trim());
         let finalResult: any = null;
-        const usedTools: string[] = [];
-        let currentProgress = 20;
+        const allStreamSteps: any[] = [];
 
         for (const line of lines) {
           try {
@@ -150,35 +151,19 @@ const AIAgentChat: React.FC = () => {
             if (parsed.type === 'final-result') {
               finalResult = parsed;
             } else {
-              // Update working message based on stream type
-              if (parsed.type === 'tool-announcement') {
-                const toolName = parsed.toolName || 'unknown-tool';
-                if (!usedTools.includes(toolName)) {
-                  usedTools.push(toolName);
-                }
-                setWorkingMessage({
-                  step: `Using ${toolName.replace(/-/g, ' ')}...`,
-                  tools: usedTools,
-                  progress: Math.min(currentProgress + 15, 80)
-                });
-                currentProgress = Math.min(currentProgress + 15, 80);
-              } else if (parsed.type === 'step-announcement') {
-                setWorkingMessage(prev => ({
-                  step: parsed.content,
-                  tools: prev?.tools || usedTools,
-                  progress: Math.min(currentProgress + 10, 90)
-                }));
-                currentProgress = Math.min(currentProgress + 10, 90);
-              }
+              // Add each streaming step as a permanent message
+              allStreamSteps.push(parsed);
+              addStreamingStepAsMessage(parsed);
+              
+              // Small delay between steps for natural flow
+              await new Promise(resolve => setTimeout(resolve, 300));
             }
           } catch (parseError) {
             console.warn('Failed to parse streaming chunk:', line);
           }
         }
 
-        // Clear working message and add final response
-        setWorkingMessage(null);
-
+        // Add final assistant message
         if (finalResult && finalResult.success) {
           const assistantMessage: ConversationMessage = {
             id: (Date.now() + 1).toString(),
@@ -187,6 +172,7 @@ const AIAgentChat: React.FC = () => {
             timestamp: new Date(),
             messageType: 'response',
             toolsUsed: finalResult.toolsUsed || [],
+            streamSteps: allStreamSteps
           };
 
           addMessage(assistantMessage);
@@ -200,8 +186,6 @@ const AIAgentChat: React.FC = () => {
         }
       } else {
         // Fallback to non-streaming response
-        setWorkingMessage(null);
-        
         if (!data || !data.success) {
           throw new Error(data?.error || 'Failed to get response from AI agent');
         }
@@ -228,7 +212,6 @@ const AIAgentChat: React.FC = () => {
 
     } catch (error) {
       console.error('Error sending message:', error);
-      setWorkingMessage(null);
       
       toast.error('Failed to send message', {
         description: error.message || 'Please try again.',
@@ -296,7 +279,7 @@ const AIAgentChat: React.FC = () => {
           toolsActive={toolsActive}
           scrollAreaRef={scrollAreaRef}
           onFollowUpAction={handleFollowUpAction}
-          workingMessage={workingMessage}
+          streamingSteps={[]}
           isStreaming={isStreaming}
         />
         
