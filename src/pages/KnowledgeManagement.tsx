@@ -18,8 +18,8 @@ const KnowledgeManagement: React.FC = () => {
   useEffect(() => {
     checkStorageBucketsExist()
       .then(exists => {
-        if (!exists) {
-          console.warn('Storage buckets may not be properly configured');
+        if (exists) {
+          console.log('Storage buckets are properly configured');
         }
       })
       .catch(err => console.error('Failed to check storage buckets:', err));

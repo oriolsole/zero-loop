@@ -21,10 +21,11 @@ export const checkStorageBucketsExist = async (): Promise<boolean> => {
     const knowledgeBucketExists = buckets.some(bucket => bucket.name === 'knowledge_files');
     
     if (!knowledgeBucketExists) {
-      console.warn('knowledge_files bucket does not exist. Please create it via SQL migrations.');
+      console.error('knowledge_files bucket does not exist. Storage functionality may not work properly.');
       return false;
     }
     
+    console.log('Storage buckets are properly configured');
     return true;
   } catch (error) {
     console.error('Exception checking storage buckets:', error);
