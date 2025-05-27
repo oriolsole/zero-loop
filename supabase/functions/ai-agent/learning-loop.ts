@@ -21,6 +21,8 @@ export async function executeLearningLoop(
 
     // For simple queries, provide direct response
     if (complexityDecision.classification === 'SIMPLE') {
+      console.log('📝 Processing simple query');
+      
       const response = await generateSimpleResponse(
         originalMessage,
         conversationHistory,
@@ -39,9 +41,10 @@ export async function executeLearningLoop(
     }
 
     // For complex queries, implement iterative processing
+    console.log('🔄 Processing complex query with iterations');
     let currentResponse = '';
     let iteration = 1;
-    const maxIterations = 3;
+    const maxIterations = 2; // Reduced to prevent timeouts
 
     while (iteration <= maxIterations) {
       const iterationResult = await processIteration(
@@ -94,7 +97,7 @@ async function generateSimpleResponse(
     const messages = [
       {
         role: 'system',
-        content: 'You are a helpful AI assistant. Provide clear, concise responses to user queries.'
+        content: 'You are a helpful AI assistant. Provide clear, concise responses to user queries. If the user is asking about Jira projects or similar tools, let them know that you can help with that through the integrated tools.'
       },
       ...conversationHistory.slice(-5), // Include last 5 messages for context
       {
@@ -155,7 +158,7 @@ async function processIteration(
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages,
-      max_tokens: 800,
+      max_tokens: 600,
       temperature: 0.7
     });
 
@@ -164,7 +167,7 @@ async function processIteration(
     return {
       response: generatedResponse,
       toolsUsed: [], // No tools used in this simple implementation
-      shouldStop: iteration >= 2 // Stop after 2 iterations for now
+      shouldStop: iteration >= 1 // Stop after 1 iteration for now to prevent timeouts
     };
   } catch (error) {
     console.error('Error in iteration processing:', error);

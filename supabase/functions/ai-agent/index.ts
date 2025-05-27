@@ -1,3 +1,4 @@
+
 import { corsHeaders } from './_shared/cors.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import OpenAI from "https://deno.land/x/openai@v4.24.0/mod.ts";
@@ -39,117 +40,110 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { message, conversationHistory, userId } = await req.json();
+    const { message, conversationHistory, userId, modelSettings } = await req.json();
 
     // Check for missing data
-    if (!message || !conversationHistory || !userId) {
-      return new Response(JSON.stringify({ error: 'Missing message, conversationHistory, or userId' }), {
+    if (!message || !userId) {
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'Missing message or userId' 
+      }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Authenticate user (optional, but recommended)
-    const { data: authData, error: authError } = await supabase.auth.getUser(req.headers.get('Authorization')?.split(' ')[1] || '');
-
-    if (authError || !authData?.user) {
-      console.error('Authentication error:', authError);
-      return new Response(JSON.stringify({ error: 'Authentication required' }), {
-        status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     // Log the original message
     const originalMessage = message;
+    console.log('🤖 Processing message:', originalMessage);
 
-    // Analyze complexity
-    const complexityDecision = await analyzeComplexity(originalMessage, conversationHistory, openai, supabase);
+    // Check if this is a Jira-related request
+    const isJiraRequest = message.toLowerCase().includes('jira') || 
+                         message.toLowerCase().includes('project') ||
+                         message.toLowerCase().includes('list') && message.toLowerCase().includes('project');
 
-    // Learning loop execution
-    const { finalResponse, accumulatedContext, toolsUsed } = await executeLearningLoop(
-      originalMessage,
-      conversationHistory,
-      complexityDecision,
-      openai,
-      supabase
-    );
+    let finalResponse = '';
+    let toolsUsed = [];
 
-    // After the learning loop completes, update the persistence section:
-    
-    // Learning persistence with proper nodeId capture
-    let learningInsights = [];
-    if (complexityDecision.classification === 'COMPLEX') {
-      console.log('🧠 Attempting to persist learning insights...');
+    if (isJiraRequest) {
+      console.log('🎯 Detected Jira request, calling Jira tools');
       
       try {
-        const persistenceResult = await persistInsightAsKnowledgeNode(
-          originalMessage,
-          finalResponse,
-          accumulatedContext,
-          userId,
-          complexityDecision,
-          supabase
-        );
-
-        if (persistenceResult && persistenceResult.nodeId) {
-          console.log('✅ Learning insights persisted successfully with nodeId:', persistenceResult.nodeId);
-          learningInsights.push({
-            name: 'learning_generation',
-            success: true,
-            result: {
-              nodeId: persistenceResult.nodeId,
-              insights: 'Generated learning insights from complex query',
-              complexity: complexityDecision.classification,
-              iterations: accumulatedContext.length,
-              persistenceStatus: 'persisted'
-            }
-          });
-        } else {
-          console.log('❌ Learning insights persistence failed or skipped');
-          learningInsights.push({
-            name: 'learning_generation',
-            success: false,
-            result: {
-              nodeId: 'failed',
-              insights: 'Failed to generate significant insights',
-              complexity: complexityDecision.classification,
-              iterations: accumulatedContext.length,
-              persistenceStatus: 'failed'
-            }
-          });
-        }
-      } catch (error) {
-        console.error('Error in learning persistence:', error);
-        learningInsights.push({
-          name: 'learning_generation',
-          success: false,
-          result: {
-            nodeId: 'error',
-            insights: `Error: ${error.message}`,
-            complexity: complexityDecision.classification,
-            iterations: accumulatedContext.length,
-            persistenceStatus: 'failed'
+        // Call Jira tools to list projects
+        const { data: jiraResult, error: jiraError } = await supabase.functions.invoke('jira-tools', {
+          body: {
+            action: 'list_projects',
+            userId: userId
           }
         });
+
+        if (jiraError) {
+          console.error('Jira tools error:', jiraError);
+          finalResponse = `I encountered an error accessing your Jira projects: ${jiraError.message}. Please make sure your Jira credentials are configured in the settings.`;
+        } else if (jiraResult && jiraResult.success) {
+          const projects = jiraResult.data;
+          console.log('✅ Retrieved', projects?.length || 0, 'Jira projects');
+          
+          if (projects && projects.length > 0) {
+            finalResponse = `Here are your current Jira projects:\n\n${projects.map((p: any, index: number) => 
+              `${index + 1}. **${p.name}** (${p.key})\n   ${p.description || 'No description'}\n   Lead: ${p.lead || 'Not assigned'}`
+            ).join('\n\n')}`;
+            
+            toolsUsed.push({
+              name: 'execute_jira-tools',
+              parameters: { action: 'list_projects' },
+              result: projects,
+              success: true
+            });
+          } else {
+            finalResponse = 'No Jira projects found. You may need to configure your Jira credentials or check your permissions.';
+          }
+        } else {
+          finalResponse = 'Unable to retrieve Jira projects. Please check your Jira configuration in the settings.';
+        }
+      } catch (error) {
+        console.error('Error calling Jira tools:', error);
+        finalResponse = `I encountered an error while trying to access your Jira projects: ${error.message}. Please ensure your Jira integration is properly configured.`;
       }
+    } else {
+      // For non-Jira requests, use the existing learning loop logic
+      const complexityDecision = await analyzeComplexity(originalMessage, conversationHistory || [], openai, supabase);
+      
+      const { finalResponse: loopResponse, toolsUsed: loopTools } = await executeLearningLoop(
+        originalMessage,
+        conversationHistory || [],
+        complexityDecision,
+        openai,
+        supabase
+      );
+      
+      finalResponse = loopResponse;
+      toolsUsed = loopTools;
     }
 
-    // Construct the response
+    // Construct the successful response
     const responseData = {
-      response: finalResponse,
+      success: true,
+      message: finalResponse,
       toolsUsed: toolsUsed,
-      learningInsights: learningInsights
+      aiReasoning: isJiraRequest ? 'Detected Jira request and used Jira tools' : 'Used general AI processing'
     };
 
-    return new Response(
-      JSON.stringify(responseData), {
+    console.log('✅ Sending successful response');
+    return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error('❌ AI Agent Error:', error);
+    
+    const errorResponse = {
+      success: false,
+      error: error.message || 'An unexpected error occurred',
+      message: 'I apologize, but I encountered an error processing your request. Please try again.'
+    };
+    
+    return new Response(JSON.stringify(errorResponse), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
