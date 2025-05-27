@@ -38,7 +38,7 @@ export async function persistInsightAsKnowledgeNode(
       return false;
     }
 
-    // Create knowledge node
+    // Create knowledge node using the admin client
     const nodeId = crypto.randomUUID();
     const { error: nodeError } = await supabase
       .from('knowledge_nodes')
@@ -50,7 +50,7 @@ export async function persistInsightAsKnowledgeNode(
         domain_id: insight.domain || 'ai-agent',
         discovered_in_loop: 0, // AI agent discoveries
         confidence: insight.confidence,
-        user_id: userId,
+        user_id: userId, // Set the user_id explicitly
         metadata: {
           source: 'ai-agent-learning-loop',
           original_query: originalMessage,
@@ -70,14 +70,18 @@ export async function persistInsightAsKnowledgeNode(
 
     console.log('Successfully persisted knowledge node:', nodeId);
 
-    // Create knowledge chunk for searchability
-    await createSearchableKnowledgeChunk(
-      insight,
-      originalMessage,
-      finalResponse,
-      userId,
-      supabase
-    );
+    // Create knowledge chunk for searchability (optional, don't fail on error)
+    try {
+      await createSearchableKnowledgeChunk(
+        insight,
+        originalMessage,
+        finalResponse,
+        userId,
+        supabase
+      );
+    } catch (chunkError) {
+      console.log('Failed to create searchable chunk, but node was created successfully:', chunkError);
+    }
 
     return { nodeId };
   } catch (error) {
@@ -214,7 +218,7 @@ async function generateInsightSummary(
         Final answer: "${finalResponse}"
 
         Tools used: ${toolsInvolved.join(', ')}
-        Query complexity: ${complexityAnalysis.complexity}
+        Query complexity: ${complexityAnalysis.classification}
 
         Extract the key insight for the knowledge base.`
       }

@@ -6,16 +6,29 @@ import { analyzeComplexity } from './complexity-analysis.ts';
 import { executeLearningLoop } from './learning-loop.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 
-// Set up Supabase client
+// Set up Supabase client with service role for admin operations
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
-const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY');
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables.');
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.');
   Deno.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey, {
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    persistSession: false
+  }
+});
+
+// Set up regular Supabase client for user operations
+const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+if (!supabaseAnonKey) {
+  console.error('Missing SUPABASE_ANON_KEY environment variable.');
+  Deno.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: false
   }
@@ -64,6 +77,7 @@ Deno.serve(async (req) => {
 
     let finalResponse = '';
     let toolsUsed = [];
+    let accumulatedContext = [];
 
     if (isJiraRequest) {
       console.log('🎯 Detected Jira request, calling Jira tools');
@@ -101,15 +115,26 @@ Deno.serve(async (req) => {
         } else {
           finalResponse = 'Unable to retrieve Jira projects. Please check your Jira configuration in the settings.';
         }
+
+        accumulatedContext = [{
+          iteration: 1,
+          response: finalResponse,
+          toolsUsed: toolsUsed
+        }];
       } catch (error) {
         console.error('Error calling Jira tools:', error);
         finalResponse = `I encountered an error while trying to access your Jira projects: ${error.message}. Please ensure your Jira integration is properly configured.`;
+        accumulatedContext = [{
+          iteration: 1,
+          response: finalResponse,
+          toolsUsed: []
+        }];
       }
     } else {
       // For non-Jira requests, use the existing learning loop logic
       const complexityDecision = await analyzeComplexity(originalMessage, conversationHistory || [], openai, supabase);
       
-      const { finalResponse: loopResponse, toolsUsed: loopTools } = await executeLearningLoop(
+      const { finalResponse: loopResponse, accumulatedContext: loopContext, toolsUsed: loopTools } = await executeLearningLoop(
         originalMessage,
         conversationHistory || [],
         complexityDecision,
@@ -119,6 +144,30 @@ Deno.serve(async (req) => {
       
       finalResponse = loopResponse;
       toolsUsed = loopTools;
+      accumulatedContext = loopContext;
+    }
+
+    // Attempt to persist learning insights (with improved error handling)
+    console.log('🧠 Attempting to persist learning insights...');
+    try {
+      const persistResult = await persistInsightAsKnowledgeNode(
+        originalMessage,
+        finalResponse,
+        accumulatedContext,
+        userId,
+        { classification: isJiraRequest ? 'SIMPLE' : 'COMPLEX', reasoning: 'AI Agent processing' },
+        supabaseAdmin // Use admin client for knowledge persistence
+      );
+      
+      if (persistResult) {
+        console.log('✅ Learning insights persisted successfully');
+      } else {
+        console.log('ℹ️ No significant insights to persist or already exists');
+      }
+    } catch (persistError) {
+      console.error('❌ Learning insights persistence failed:', persistError);
+      // Don't fail the main request - just log the error
+      console.log('❌ Learning insights persistence failed or skipped');
     }
 
     // Construct the successful response
