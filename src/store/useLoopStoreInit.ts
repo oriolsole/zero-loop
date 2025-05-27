@@ -49,21 +49,17 @@ export const useLoopStoreInit = () => {
           console.log('Domains after Supabase load:', updatedState.domains.length);
           
           if (updatedState.domains.length === 0) {
-            console.log('No domains loaded, this might indicate an issue with Supabase connection');
-            toast.error('Failed to load learning domains. Please refresh the page or check your connection.');
+            console.log('No domains found in database');
+            toast.info('No learning domains found. Create your first domain to get started!');
           } else {
-            console.log(`Successfully loaded ${updatedState.domains.length} domains from Supabase`);
-            toast.success(`Loaded ${updatedState.domains.length} learning domains`);
+            console.log(`Successfully loaded ${updatedState.domains.length} domains from database`);
+            toast.success(`Loaded ${updatedState.domains.length} learning domains from database`);
           }
         } else {
-          // If no user, try local-only mode
-          console.log('No user authenticated, using local storage only');
+          // If no user, clear domains and show sign-in message
+          console.log('No user authenticated, clearing domains');
           setUseRemoteLogging(false);
-          
-          // For local mode, we can't access the database domains
-          if (domains.length === 0) {
-            toast.info('Please sign in to access your learning domains');
-          }
+          toast.info('Please sign in to access your learning domains');
         }
         
         setHasInitialized(true);

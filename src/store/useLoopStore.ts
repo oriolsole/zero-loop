@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
@@ -60,11 +61,11 @@ export const useLoopStore = create<LoopState>()(
         useRemoteLogging: false,
         isInitialized: false,
         
-        // Enhanced initialization from Supabase
+        // Enhanced initialization from Supabase - only use persisted domains
         initializeFromSupabase: async () => {
           const currentState = get();
           
-          // Skip if already initialized or Supabase not configured
+          // Skip if Supabase not configured
           if (!isSupabaseConfigured()) {
             console.log('Supabase not configured, skipping remote initialization');
             set({ isInitialized: true });
@@ -83,33 +84,28 @@ export const useLoopStore = create<LoopState>()(
             
             console.log(`Loaded ${remoteDomains.length} domains from Supabase:`, remoteDomains.map(d => d.name));
             
+            // UPDATED: Only use domains from the database, no merging with local ones
             if (remoteDomains.length > 0) {
-              // Merge with any existing local domains, preferring remote data
-              const existingLocalDomains = currentState.domains;
-              const remoteDomainIds = new Set(remoteDomains.map(d => d.id));
-              
-              // Keep local domains that don't exist remotely
-              const localOnlyDomains = existingLocalDomains.filter(d => !remoteDomainIds.has(d.id));
-              
-              // Combine remote domains with local-only domains
-              const allDomains = [...remoteDomains, ...localOnlyDomains];
-              
-              // Set the active domain to the first one if current one doesn't exist
-              const activeDomainExists = allDomains.some(d => d.id === currentState.activeDomainId);
+              // Set the active domain to the first one if current one doesn't exist in remote domains
+              const activeDomainExists = remoteDomains.some(d => d.id === currentState.activeDomainId);
               const newActiveDomainId = activeDomainExists 
                 ? currentState.activeDomainId 
-                : (allDomains[0]?.id || '');
+                : (remoteDomains[0]?.id || '');
               
               set({ 
-                domains: allDomains,
+                domains: remoteDomains, // Only use remote domains, no merging
                 activeDomainId: newActiveDomainId,
                 isInitialized: true
               });
               
-              console.log(`Successfully initialized with ${allDomains.length} domains, active: ${newActiveDomainId}`);
+              console.log(`Successfully initialized with ${remoteDomains.length} domains from database only, active: ${newActiveDomainId}`);
             } else {
-              console.log('No domains found in Supabase');
-              set({ isInitialized: true });
+              console.log('No domains found in Supabase, clearing local domains');
+              set({ 
+                domains: [], // Clear domains if none in database
+                activeDomainId: '',
+                isInitialized: true 
+              });
             }
           } catch (error) {
             console.error('Error initializing domains from Supabase:', error);
@@ -135,6 +131,9 @@ export const useLoopStore = create<LoopState>()(
             setTimeout(() => {
               get().initializeFromSupabase().catch(console.error);
             }, 100);
+          } else {
+            // If disabling remote logging, clear domains to avoid confusion
+            set({ domains: [], activeDomainId: '' });
           }
         },
         
@@ -155,7 +154,7 @@ export const useLoopStore = create<LoopState>()(
     {
       name: 'intelligence-loop-storage',
       partialize: (state) => ({
-        domains: state.domains,
+        // UPDATED: Don't persist domains in localStorage anymore since we only want database ones
         activeDomainId: state.activeDomainId,
         loopDelay: state.loopDelay,
         loopHistory: state.loopHistory,
@@ -165,8 +164,9 @@ export const useLoopStore = create<LoopState>()(
         return (state) => {
           if (state) {
             console.log('Rehydrating store from localStorage, useRemoteLogging:', state.useRemoteLogging);
-            // Reset initialization flag on rehydration
+            // Reset initialization flag on rehydration and clear domains
             state.isInitialized = false;
+            state.domains = []; // Don't load domains from localStorage
           }
         };
       }
