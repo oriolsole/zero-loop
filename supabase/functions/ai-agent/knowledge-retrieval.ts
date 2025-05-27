@@ -1,10 +1,10 @@
 
 /**
- * Knowledge Retrieval for Learning Loop Integration
+ * Enhanced Knowledge Retrieval for Learning Loop Integration
  */
 
 /**
- * Retrieve relevant existing knowledge for a query
+ * Retrieve relevant existing knowledge for a query with enhanced company name matching
  */
 export async function getRelevantKnowledge(
   message: string,
@@ -18,18 +18,43 @@ export async function getRelevantKnowledge(
   try {
     console.log('Retrieving relevant knowledge for query:', message);
 
-    // Extract key terms from the message for matching
+    // Enhanced key term extraction for company names and meeting terms
     const keyTerms = extractKeyTerms(message);
     console.log('Extracted key terms:', keyTerms);
 
-    // Search knowledge nodes by title and description
+    // First, try semantic search via knowledge search function
+    const semanticResults = await performSemanticSearch(message, userId, supabase);
+    
+    if (semanticResults?.length > 0) {
+      console.log('Found', semanticResults.length, 'semantic search results');
+      
+      // Convert to consistent format
+      const knowledgeResults = semanticResults.map(result => ({
+        id: result.id || crypto.randomUUID(),
+        title: result.title || 'Knowledge Item',
+        description: result.snippet || result.content?.substring(0, 200) + '...' || 'No description',
+        type: result.sourceType === 'node' ? result.nodeType || 'insight' : 'chunk',
+        confidence: result.relevanceScore || result.similarity || 0.8,
+        metadata: {
+          ...result.metadata,
+          source: result.source,
+          sourceType: result.sourceType,
+          fileType: result.fileType,
+          date: result.date
+        }
+      }));
+      
+      return knowledgeResults.slice(0, 8); // Return more results for better context
+    }
+
+    // Fallback: Search knowledge nodes directly
     const { data: relevantNodes, error: nodesError } = await supabase
       .from('knowledge_nodes')
       .select('id, title, description, type, confidence, metadata')
       .eq('user_id', userId)
-      .gte('confidence', 0.6) // Only high-confidence nodes
+      .gte('confidence', 0.5) // Lower threshold for better recall
       .order('confidence', { ascending: false })
-      .limit(10);
+      .limit(15);
 
     if (nodesError) {
       console.error('Error fetching knowledge nodes:', nodesError);
@@ -41,26 +66,8 @@ export async function getRelevantKnowledge(
       isRelevantToQuery(node, message, keyTerms)
     ) || [];
 
-    // Try semantic search via knowledge chunks if available
-    if (relevantKnowledge.length < 3) {
-      const semanticResults = await performSemanticSearch(message, userId, supabase);
-      if (semanticResults?.length > 0) {
-        // Convert chunks to knowledge format
-        const additionalKnowledge = semanticResults.map(chunk => ({
-          id: chunk.id,
-          title: chunk.title,
-          description: chunk.content?.substring(0, 200) + '...',
-          type: 'chunk',
-          confidence: chunk.similarity || 0.7,
-          metadata: chunk.metadata
-        }));
-
-        relevantKnowledge.push(...additionalKnowledge);
-      }
-    }
-
-    console.log('Found', relevantKnowledge.length, 'relevant knowledge items');
-    return relevantKnowledge.slice(0, 5); // Return top 5 most relevant
+    console.log('Found', relevantKnowledge.length, 'relevant knowledge items from nodes');
+    return relevantKnowledge.slice(0, 5);
 
   } catch (error) {
     console.error('Error retrieving relevant knowledge:', error);
@@ -69,36 +76,58 @@ export async function getRelevantKnowledge(
 }
 
 /**
- * Extract key terms from a message for knowledge matching
+ * Enhanced key term extraction with better company name recognition
  */
 function extractKeyTerms(message: string): string[] {
-  // Simple key term extraction
+  // Company names and meeting-specific terms that should be preserved
+  const importantTerms = [
+    'npaw', 'adsmurai', 'meeting', 'discussed', 'reunión', 'discutido',
+    'partnership', 'collaboration', 'strategy', 'integration', 'project'
+  ];
+  
   const stopWords = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
     'by', 'from', 'up', 'about', 'into', 'through', 'during', 'before', 'after',
-    'above', 'below', 'up', 'down', 'out', 'off', 'over', 'under', 'again', 'further',
+    'above', 'below', 'out', 'off', 'over', 'under', 'again', 'further',
     'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'any',
     'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor',
     'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'can', 'will',
     'just', 'should', 'now', 'what', 'which', 'who', 'is', 'are', 'was', 'were',
-    'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
-    'would', 'could', 'should', 'may', 'might', 'must', 'shall'
+    'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'would',
+    'could', 'may', 'might', 'must', 'shall'
   ]);
 
-  return message
+  // Extract all meaningful words
+  const words = message
     .toLowerCase()
-    .replace(/[^\w\s]/g, '') // Remove punctuation
+    .replace(/[^\w\s]/g, ' ')
     .split(/\s+/)
-    .filter(word => word.length > 2 && !stopWords.has(word))
-    .slice(0, 10); // Take first 10 meaningful terms
+    .filter(word => word.length > 1)
+    .filter(word => !stopWords.has(word) || importantTerms.includes(word));
+
+  // Prioritize important terms
+  const prioritizedTerms = words.filter(word => importantTerms.includes(word));
+  const otherTerms = words.filter(word => !importantTerms.includes(word)).slice(0, 8);
+  
+  return [...prioritizedTerms, ...otherTerms];
 }
 
 /**
- * Check if a knowledge node is relevant to the current query
+ * Enhanced relevance checking with better company name matching
  */
 function isRelevantToQuery(node: any, message: string, keyTerms: string[]): boolean {
   const nodeText = `${node.title} ${node.description}`.toLowerCase();
   const messageText = message.toLowerCase();
+
+  // High priority: direct company name matches
+  const companyTerms = ['npaw', 'adsmurai'];
+  const hasCompanyMatch = companyTerms.some(company => 
+    nodeText.includes(company) || messageText.includes(company)
+  );
+  
+  if (hasCompanyMatch && (nodeText.includes('meeting') || nodeText.includes('reunión'))) {
+    return true; // High relevance for company + meeting combinations
+  }
 
   // Direct text overlap
   const hasDirectMatch = keyTerms.some(term => nodeText.includes(term));
@@ -112,16 +141,11 @@ function isRelevantToQuery(node: any, message: string, keyTerms: string[]): bool
   const hasDomainMatch = node.metadata?.domain && 
     messageText.includes(node.metadata.domain.toLowerCase());
 
-  // Tool overlap (if query might use similar tools)
-  const hasToolMatch = node.metadata?.tools_used?.some((tool: string) =>
-    shouldUseToolForQuery(messageText, tool)
-  );
-
-  return hasDirectMatch || hasTagMatch || hasDomainMatch || hasToolMatch;
+  return hasDirectMatch || hasTagMatch || hasDomainMatch || hasCompanyMatch;
 }
 
 /**
- * Perform semantic search using knowledge chunks
+ * Enhanced semantic search with better error handling
  */
 async function performSemanticSearch(
   message: string,
@@ -129,12 +153,16 @@ async function performSemanticSearch(
   supabase: any
 ): Promise<any[] | null> {
   try {
-    // Call knowledge search function with the query
+    console.log('Performing semantic search for:', message);
+    
+    // Call knowledge search function with enhanced parameters
     const { data: searchResults, error } = await supabase.functions.invoke('knowledge-search', {
       body: {
         query: message,
-        limit: 3,
-        matchThreshold: 0.7,
+        limit: 10,
+        matchThreshold: 0.3, // Lower threshold for better recall
+        includeNodes: true,
+        useEmbeddings: true,
         userId: userId
       }
     });
@@ -144,7 +172,14 @@ async function performSemanticSearch(
       return null;
     }
 
+    if (!searchResults?.success) {
+      console.error('Semantic search failed:', searchResults?.error);
+      return null;
+    }
+
+    console.log('Semantic search found', searchResults.results?.length || 0, 'results');
     return searchResults?.results || null;
+    
   } catch (error) {
     console.error('Error performing semantic search:', error);
     return null;
@@ -158,7 +193,7 @@ function shouldUseToolForQuery(messageText: string, toolName: string): boolean {
   const toolPatterns: Record<string, string[]> = {
     'web-search': ['search', 'find', 'latest', 'current', 'news', 'recent'],
     'github-tools': ['github', 'repository', 'repo', 'code', 'commit'],
-    'knowledge-search': ['knowledge', 'notes', 'remember', 'saved', 'documents'],
+    'knowledge-search': ['knowledge', 'notes', 'remember', 'saved', 'documents', 'meeting', 'discussed', 'npaw', 'adsmurai'],
     'jira-tools': ['jira', 'ticket', 'project', 'issue', 'task'],
     'web-scraper': ['scrape', 'extract', 'website', 'url', 'page']
   };
