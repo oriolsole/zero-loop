@@ -63,7 +63,11 @@ export const useUploadProgress = () => {
         return null;
       }
 
-      return data as UploadProgressData;
+      // Cast the status to the correct type since we know it should be one of these values
+      return {
+        ...data,
+        status: data.status as 'processing' | 'completed' | 'failed'
+      } as UploadProgressData;
     } catch (error) {
       console.error('Exception polling upload progress:', error);
       return null;
@@ -236,18 +240,24 @@ export const useUploadProgress = () => {
 
         // Check each upload and resume or mark as failed
         for (const upload of data) {
+          // Cast the status to the correct type
+          const typedUpload = {
+            ...upload,
+            status: upload.status as 'processing' | 'completed' | 'failed'
+          } as UploadProgressData;
+          
           // Check if upload is too old (more than 10 minutes)
-          const uploadTime = new Date(upload.created_at).getTime();
+          const uploadTime = new Date(typedUpload.created_at).getTime();
           const now = Date.now();
           const tenMinutesAgo = now - (10 * 60 * 1000);
           
-          if (uploadTime < tenMinutesAgo || isUploadStalled(upload)) {
+          if (uploadTime < tenMinutesAgo || isUploadStalled(typedUpload)) {
             // Mark old or stalled uploads as failed
-            await markUploadAsFailed(upload.id, 'Upload timed out or stalled');
+            await markUploadAsFailed(typedUpload.id, 'Upload timed out or stalled');
             stalledCount++;
           } else {
             // Resume polling for recent uploads
-            startPollingForUpload(upload.id, upload.title);
+            startPollingForUpload(typedUpload.id, typedUpload.title);
             resumedCount++;
           }
         }
