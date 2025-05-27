@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -48,6 +47,14 @@ export interface ConversationMessage {
     progressUpdate?: string;
   };
   followUpSuggestions?: string[];
+  streamSteps?: Array<{
+    id: string;
+    type: 'step-announcement' | 'partial-result' | 'tool-announcement' | 'tool-status' | 'thinking';
+    content: string;
+    timestamp: Date;
+    toolName?: string;
+    toolAction?: string;
+  }>;
 }
 
 export interface ConversationSession {
@@ -274,7 +281,15 @@ export const useAgentConversation = () => {
           status: 'pending' | 'executing' | 'completed' | 'failed';
           displayName?: string;
         }> : undefined,
-        aiReasoning: row.ai_reasoning || undefined
+        aiReasoning: row.ai_reasoning || undefined,
+        streamSteps: Array.isArray(row.stream_steps) ? row.stream_steps as Array<{
+          id: string;
+          type: 'step-announcement' | 'partial-result' | 'tool-announcement' | 'tool-status' | 'thinking';
+          content: string;
+          timestamp: Date;
+          toolName?: string;
+          toolAction?: string;
+        }> : undefined
       }));
 
       setConversations(messages);
