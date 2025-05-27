@@ -10,6 +10,7 @@ import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
 import SessionsSidebar from './SessionsSidebar';
+import StreamingMessage from './StreamingMessage';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
@@ -30,6 +31,8 @@ const AIAgentChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
+  const [streamingSteps, setStreamingSteps] = useState<any[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
 
   const {
     tools,
@@ -119,24 +122,21 @@ const AIAgentChat: React.FC = () => {
     const enhancedMessage = contextualMessage ? `${message}\n\nContext: ${contextualMessage}` : message;
 
     setIsLoading(true);
+    setIsStreaming(true);
+    setStreamingSteps([]);
     clearTools();
-
-    const statusId = addStatusMessage("Analyzing your request...");
 
     try {
       const conversationHistory = getConversationHistory();
 
-      setTimeout(() => {
-        updateMessage(statusId, { content: "Determining complexity and tool requirements..." });
-      }, 800);
-
+      // Use streaming for enhanced experience
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
           message: enhancedMessage,
           conversationHistory,
           userId: user.id,
           sessionId: currentSessionId,
-          streaming: false,
+          streaming: true,
           modelSettings: modelSettings
         }
       });
@@ -145,39 +145,80 @@ const AIAgentChat: React.FC = () => {
         throw new Error(error.message);
       }
 
-      if (!data || !data.success) {
-        throw new Error(data?.error || 'Failed to get response from AI agent');
-      }
+      // Handle streaming response
+      if (data && typeof data === 'string') {
+        const lines = data.split('\n').filter(line => line.trim());
+        let finalResult: any = null;
+        const steps: any[] = [];
 
-      removeStatusMessage(statusId);
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            
+            if (parsed.type === 'final-result') {
+              finalResult = parsed;
+            } else {
+              steps.push(parsed);
+              setStreamingSteps(prev => [...prev, parsed]);
+              
+              // Small delay between steps for natural flow
+              await new Promise(resolve => setTimeout(resolve, 200));
+            }
+          } catch (parseError) {
+            console.warn('Failed to parse streaming chunk:', line);
+          }
+        }
 
-      const assistantMessage: ConversationMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.message,
-        timestamp: new Date(),
-        messageType: 'response',
-        toolsUsed: data.toolsUsed || [],
-        aiReasoning: data.aiReasoning || undefined
-      };
+        // Add final assistant message
+        if (finalResult && finalResult.success) {
+          const assistantMessage: ConversationMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: finalResult.message,
+            timestamp: new Date(),
+            messageType: 'response',
+            toolsUsed: finalResult.toolsUsed || [],
+            streamSteps: steps
+          };
 
-      addMessage(assistantMessage);
+          addMessage(assistantMessage);
 
-      if (data.toolsUsed && data.toolsUsed.length > 0) {
-        const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
-        if (successCount > 0) {
-          toast.success(`Used ${successCount} tool(s) successfully`);
+          if (finalResult.toolsUsed && finalResult.toolsUsed.length > 0) {
+            const successCount = finalResult.toolsUsed.filter((tool: any) => tool.success).length;
+            if (successCount > 0) {
+              toast.success(`Used ${successCount} tool(s) successfully`);
+            }
+          }
+        }
+      } else {
+        // Fallback to non-streaming response
+        if (!data || !data.success) {
+          throw new Error(data?.error || 'Failed to get response from AI agent');
+        }
+
+        const assistantMessage: ConversationMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.message,
+          timestamp: new Date(),
+          messageType: 'response',
+          toolsUsed: data.toolsUsed || [],
+          aiReasoning: data.aiReasoning || undefined
+        };
+
+        addMessage(assistantMessage);
+
+        if (data.toolsUsed && data.toolsUsed.length > 0) {
+          const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
+          if (successCount > 0) {
+            toast.success(`Used ${successCount} tool(s) successfully`);
+          }
         }
       }
 
     } catch (error) {
       console.error('Error sending message:', error);
       
-      updateMessage(statusId, { 
-        content: `❌ Error: ${error.message}`,
-        messageType: 'status' as any
-      });
-
       toast.error('Failed to send message', {
         description: error.message || 'Please try again.',
         duration: 10000
@@ -193,6 +234,8 @@ const AIAgentChat: React.FC = () => {
       addMessage(errorMessage);
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
+      setStreamingSteps([]);
     }
   };
 
@@ -243,6 +286,8 @@ const AIAgentChat: React.FC = () => {
           toolsActive={toolsActive}
           scrollAreaRef={scrollAreaRef}
           onFollowUpAction={handleFollowUpAction}
+          streamingSteps={streamingSteps}
+          isStreaming={isStreaming}
         />
         
         <SimplifiedChatInput

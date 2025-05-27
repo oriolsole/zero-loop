@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -9,6 +8,7 @@ import { ToolProgressItem } from '@/types/tools';
 import AIAgentMessage from './AIAgentMessage';
 import ToolExecutionCard from './ToolExecutionCard';
 import StatusMessage from './StatusMessage';
+import StreamingMessage from './StreamingMessage';
 
 interface SimplifiedChatInterfaceProps {
   conversations: ConversationMessage[];
@@ -21,6 +21,8 @@ interface SimplifiedChatInterfaceProps {
   toolsActive: boolean;
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   onFollowUpAction?: (action: string) => void;
+  streamingSteps?: any[];
+  isStreaming?: boolean;
 }
 
 const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
@@ -30,7 +32,9 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   tools,
   toolsActive,
   scrollAreaRef,
-  onFollowUpAction
+  onFollowUpAction,
+  streamingSteps = [],
+  isStreaming = false
 }) => {
   const suggestedActions = [
     {
@@ -63,7 +67,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
     <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
       <ScrollArea className="h-full" ref={scrollAreaRef}>
         <div className="max-w-4xl mx-auto px-6 py-8">
-          {conversations.length === 0 && (
+          {conversations.length === 0 && !isStreaming && (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
               <div className="w-20 h-20 mb-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center shadow-lg">
                 <Bot className="h-10 w-10 text-primary" />
@@ -118,6 +122,19 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             ))}
           </div>
           
+          {/* Show streaming steps */}
+          {isStreaming && streamingSteps.length > 0 && (
+            <div className="mt-8 space-y-4">
+              {streamingSteps.map((step, index) => (
+                <StreamingMessage 
+                  key={`${step.id}-${index}`}
+                  step={step}
+                  isAnimated={true}
+                />
+              ))}
+            </div>
+          )}
+          
           {toolsActive && tools.length > 0 && (
             <div className="mt-8 space-y-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -137,7 +154,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             </div>
           )}
           
-          {isLoading && !toolsActive && (
+          {isLoading && !toolsActive && !isStreaming && (
             <div className="mt-8">
               <StatusMessage 
                 content="Processing your request..."
