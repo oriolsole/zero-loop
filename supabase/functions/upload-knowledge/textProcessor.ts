@@ -14,8 +14,8 @@ export async function handleTextContent(body: any, supabase: any) {
     metadata = {},
     domain_id,
     source_url,
-    chunk_size = 400, // Smaller default chunk size
-    overlap = 50
+    chunk_size = 300, // Even smaller default chunk size
+    overlap = 30
   } = body;
   
   // Validate required fields
@@ -33,12 +33,10 @@ export async function handleTextContent(body: any, supabase: any) {
   }
 
   // Get user from auth context
-  const authHeader = supabase.auth.getUser ? 
-    await supabase.auth.getUser() : 
-    { data: { user: null }, error: null };
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
     
-  const user = authHeader.data?.user;
-  if (!user) {
+  if (userError || !user) {
+    console.error('Authentication error:', userError);
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -54,7 +52,7 @@ export async function handleTextContent(body: any, supabase: any) {
   // Split content into smaller chunks
   const chunks = chunkText(content, chunk_size, overlap);
   
-  console.log(`Split content into ${chunks.length} chunks`);
+  console.log(`Split content into ${chunks.length} chunks for user ${user.id}`);
   
   // Get embeddings for all chunks with improved error handling
   let embeddings: number[][] = [];
@@ -138,7 +136,7 @@ export async function handleTextContent(body: any, supabase: any) {
     );
   }
   
-  console.log(`Successfully inserted ${chunks.length} chunks into the knowledge base`);
+  console.log(`Successfully inserted ${chunks.length} chunks into the knowledge base for user ${user.id}`);
   
   return new Response(
     JSON.stringify({ 

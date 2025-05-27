@@ -14,11 +14,28 @@ serve(async (req) => {
   }
 
   try {
+    // Extract Authorization header
+    const authHeader = req.headers.get('Authorization');
+    const authToken = authHeader?.replace('Bearer ', '');
+    
+    if (!authToken) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Authentication required' 
+        }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     // Get request body
     const body = await req.json();
 
-    // Initialize Supabase client
-    const supabase = createSupabaseClient();
+    // Initialize Supabase client with auth token
+    const supabase = createSupabaseClient(authToken);
 
     // Process based on content type
     if (body.contentType === 'text') {

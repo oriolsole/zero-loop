@@ -19,8 +19,8 @@ export async function handleFileContent(body: any, supabase: any) {
     metadata = {},
     domain_id,
     source_url,
-    chunk_size = 400, // Much smaller default chunk size
-    overlap = 50
+    chunk_size = 300, // Much smaller default chunk size
+    overlap = 30
   } = body;
   
   // Validate required fields
@@ -38,12 +38,10 @@ export async function handleFileContent(body: any, supabase: any) {
   }
   
   // Get user from auth context
-  const authHeader = supabase.auth.getUser ? 
-    await supabase.auth.getUser() : 
-    { data: { user: null }, error: null };
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
     
-  const user = authHeader.data?.user;
-  if (!user) {
+  if (userError || !user) {
+    console.error('Authentication error:', userError);
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -133,7 +131,7 @@ export async function handleFileContent(body: any, supabase: any) {
   // Split extracted text into much smaller chunks
   const chunks = extractedText ? chunkText(extractedText, chunk_size, overlap) : [];
   
-  console.log(`Split extracted content into ${chunks.length} chunks using ${processingMethod}`);
+  console.log(`Split extracted content into ${chunks.length} chunks using ${processingMethod} for user ${user.id}`);
   
   // Get embeddings for all chunks with improved error handling
   let embeddings: number[][] = [];
@@ -233,7 +231,7 @@ export async function handleFileContent(body: any, supabase: any) {
     );
   }
   
-  console.log(`Successfully processed file ${fileName} using ${processingMethod} and inserted ${chunks.length} chunks`);
+  console.log(`Successfully processed file ${fileName} using ${processingMethod} and inserted ${chunks.length} chunks for user ${user.id}`);
   
   return new Response(
     JSON.stringify({ 
