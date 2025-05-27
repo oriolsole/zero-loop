@@ -4,11 +4,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
-import { generateSystemPrompt } from './system-prompts.ts';
+import { generateSystemPrompt, createKnowledgeAwareMessages } from './system-prompts.ts';
 import { extractAssistantMessage } from './response-handler.ts';
 import { detectQueryComplexity, shouldUseLearningLoop } from './learning-loop-detector.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
-import { getRelevantKnowledge } from './knowledge-retrieval.ts';
+import { getRelevantKnowledge, logToolOveruse } from './knowledge-retrieval.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,7 +33,7 @@ serve(async (req) => {
       throw new Error('Message is required');
     }
 
-    console.log('AI Agent request:', { 
+    console.log('🤖 AI Agent request:', { 
       message, 
       historyLength: conversationHistory.length, 
       userId, 
@@ -58,8 +58,8 @@ serve(async (req) => {
     const complexityDecision = await detectQueryComplexity(message, conversationHistory, supabase, modelSettings);
     const useKnowledgeLoop = shouldUseLearningLoop(complexityDecision);
 
-    console.log('AI complexity decision:', complexityDecision);
-    console.log('Using learning loop:', useKnowledgeLoop);
+    console.log('🧠 AI complexity decision:', complexityDecision);
+    console.log('🔄 Using learning loop:', useKnowledgeLoop);
 
     // In test mode, return complexity decision for validation
     if (testMode) {
@@ -87,8 +87,8 @@ serve(async (req) => {
         complexityDecision
       );
     } else {
-      // Use standard tool chaining for simple queries
-      return await handleSimpleQuery(
+      // Use knowledge-first approach for simple queries
+      return await handleSimpleQueryWithKnowledgeFirst(
         message, 
         conversationHistory, 
         userId, 
@@ -100,7 +100,7 @@ serve(async (req) => {
     }
 
   } catch (error) {
-    console.error('AI Agent error:', error);
+    console.error('❌ AI Agent error:', error);
     
     return new Response(
       JSON.stringify({
@@ -117,7 +117,7 @@ serve(async (req) => {
 });
 
 /**
- * Handle complex queries using learning loop integration
+ * Handle complex queries using learning loop integration with knowledge-first approach
  */
 async function handleComplexQueryWithLearningLoop(
   message: string,
@@ -128,12 +128,12 @@ async function handleComplexQueryWithLearningLoop(
   supabase: any,
   complexityDecision: any
 ): Promise<Response> {
-  console.log('Starting complex query with learning loop integration');
-  console.log('AI reasoning:', complexityDecision.reasoning);
+  console.log('🔄 Starting complex query with learning loop integration');
+  console.log('🧠 AI reasoning:', complexityDecision.reasoning);
   
-  // 1. Retrieve relevant existing knowledge
+  // 1. Retrieve relevant existing knowledge FIRST
   const relevantKnowledge = await getRelevantKnowledge(message, userId, supabase);
-  console.log('Retrieved relevant knowledge:', relevantKnowledge?.length || 0, 'nodes');
+  console.log('📚 Retrieved relevant knowledge:', relevantKnowledge?.length || 0, 'nodes');
 
   // 2. Get available tools (updated to use new knowledge-search key)
   const { data: mcps, error: mcpError } = await supabase
@@ -147,50 +147,43 @@ async function handleComplexQueryWithLearningLoop(
   }
 
   const tools = convertMCPsToTools(mcps);
-  const systemPrompt = generateSystemPrompt(mcps);
+  const systemPrompt = generateSystemPrompt(mcps, relevantKnowledge);
 
-  // 3. Execute iterative reasoning loop
+  // 3. Execute iterative reasoning loop with knowledge-first approach
   let iteration = 0;
   const maxIterations = 4;
   let accumulatedContext: any[] = [];
   let stopSignalReached = false;
   let finalResponse = '';
 
-  // Enhanced system prompt for learning loop integration
+  // Enhanced system prompt for learning loop integration with knowledge priority
   const learningLoopPrompt = `${systemPrompt}
 
-**LEARNING LOOP MODE ACTIVATED**
+**🔄 LEARNING LOOP MODE ACTIVATED**
 
-You are now in learning loop mode for a complex query. The AI classifier determined this query is COMPLEX because: ${complexityDecision.reasoning}
+The AI classifier determined this query is COMPLEX because: ${complexityDecision.reasoning}
 
-Your goal is to:
-1. Break down the complex question into steps
-2. Use tools iteratively to gather information
-3. Build knowledge progressively across iterations
-4. Synthesize insights and persist valuable knowledge
-5. Only provide final response when you have sufficient information
+Your enhanced goals:
+1. **CHECK KNOWLEDGE BASE FIRST** - Use existing knowledge when available
+2. Break down complex questions only if knowledge base is insufficient
+3. Use tools iteratively to fill knowledge gaps
+4. Build knowledge progressively across iterations
+5. Synthesize insights and persist valuable new knowledge
+6. Only provide final response when you have comprehensive information
 
-Relevant existing knowledge:
-${relevantKnowledge?.map(node => `- ${node.title}: ${node.description}`).join('\n') || 'No relevant prior knowledge found'}
-
-Continue until you have enough information to provide a comprehensive answer.`;
+Continue until you have enough information for a complete answer, but prioritize existing knowledge.`;
 
   while (!stopSignalReached && iteration < maxIterations) {
     iteration++;
-    console.log(`Learning loop iteration ${iteration}/${maxIterations}`);
+    console.log(`🔄 Learning loop iteration ${iteration}/${maxIterations}`);
 
-    // Prepare messages with accumulated context
-    const iterationMessages = [
-      {
-        role: 'system',
-        content: learningLoopPrompt
-      },
-      ...conversationHistory,
-      {
-        role: 'user',
-        content: iteration === 1 ? message : `Continue with iteration ${iteration}. Previous results: ${JSON.stringify(accumulatedContext.slice(-2))}`
-      }
-    ];
+    // Prepare knowledge-aware messages
+    const iterationMessages = createKnowledgeAwareMessages(
+      learningLoopPrompt,
+      conversationHistory,
+      iteration === 1 ? message : `Continue with iteration ${iteration}. Previous results: ${JSON.stringify(accumulatedContext.slice(-2))}`,
+      iteration === 1 ? relevantKnowledge : undefined
+    );
 
     // Get AI decision on next steps
     const response = await supabase.functions.invoke('ai-model-proxy', {
@@ -217,10 +210,17 @@ Continue until you have enough information to provide a comprehensive answer.`;
       throw new Error('No valid message content received from AI model');
     }
 
-    // Execute tools if chosen
+    // Execute tools if chosen (and log potential overuse)
     let toolResults: any[] = [];
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-      console.log(`Executing ${assistantMessage.tool_calls.length} tools in iteration ${iteration}`);
+      console.log(`🛠️ Executing ${assistantMessage.tool_calls.length} tools in iteration ${iteration}`);
+      
+      // Log potential tool overuse for debugging
+      logToolOveruse(
+        message, 
+        relevantKnowledge || [], 
+        assistantMessage.tool_calls.map((tc: any) => tc.function?.name || 'unknown')
+      );
       
       const { toolResults: results, toolsUsed } = await executeTools(
         assistantMessage.tool_calls,
@@ -240,7 +240,7 @@ Continue until you have enough information to provide a comprehensive answer.`;
       accumulatedContext.push({
         iteration,
         response: assistantMessage.content,
-        reasoning: 'No tools used - direct response'
+        reasoning: 'Used knowledge base or direct response - no tools needed'
       });
     }
 
@@ -321,8 +321,8 @@ Continue until you have enough information to provide a comprehensive answer.`;
     });
   }
 
-  console.log('Learning loop completed after', iteration, 'iterations');
-  console.log('Final response length:', finalResponse.length);
+  console.log('✅ Learning loop completed after', iteration, 'iterations');
+  console.log('📏 Final response length:', finalResponse.length);
 
   return new Response(
     JSON.stringify({
@@ -330,6 +330,7 @@ Continue until you have enough information to provide a comprehensive answer.`;
       message: finalResponse,
       learningLoopUsed: true,
       iterations: iteration,
+      knowledgeUsed: relevantKnowledge?.length || 0,
       accumulatedContext: accumulatedContext.length,
       toolsUsed: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
       aiReasoning: complexityDecision.reasoning,
@@ -340,9 +341,9 @@ Continue until you have enough information to provide a comprehensive answer.`;
 }
 
 /**
- * Handle simple queries using standard tool chaining
+ * Handle simple queries using knowledge-first approach
  */
-async function handleSimpleQuery(
+async function handleSimpleQueryWithKnowledgeFirst(
   message: string,
   conversationHistory: any[],
   userId: string | null,
@@ -351,7 +352,13 @@ async function handleSimpleQuery(
   streaming: boolean,
   supabase: any
 ): Promise<Response> {
-  // Fetch available MCPs from the database (updated to use new knowledge-search key)
+  console.log('📝 Handling simple query with knowledge-first approach');
+
+  // 1. FIRST: Retrieve relevant knowledge
+  const relevantKnowledge = await getRelevantKnowledge(message, userId, supabase);
+  console.log('📚 Retrieved knowledge for simple query:', relevantKnowledge?.length || 0, 'items');
+
+  // 2. Fetch available MCPs 
   const { data: mcps, error: mcpError } = await supabase
     .from('mcps')
     .select('*')
@@ -363,20 +370,15 @@ async function handleSimpleQuery(
   }
 
   const tools = convertMCPsToTools(mcps);
-  const systemPrompt = generateSystemPrompt(mcps);
+  const systemPrompt = generateSystemPrompt(mcps, relevantKnowledge);
 
-  // Prepare messages for AI model
-  const messages = [
-    {
-      role: 'system',
-      content: systemPrompt
-    },
-    ...conversationHistory,
-    {
-      role: 'user',
-      content: message
-    }
-  ];
+  // 3. Prepare knowledge-aware messages
+  const messages = createKnowledgeAwareMessages(
+    systemPrompt,
+    conversationHistory,
+    message,
+    relevantKnowledge
+  );
 
   const modelRequestBody = {
     messages,
@@ -419,8 +421,17 @@ async function handleSimpleQuery(
   let finalResponse = assistantMessage.content;
   let toolsUsed: any[] = [];
 
-  // Execute tools if the model chose to use them
+  // Execute tools if the model chose to use them (log potential overuse)
   if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+    console.log('🛠️ AI chose to use tools despite knowledge being available');
+    
+    // Log potential tool overuse for debugging
+    logToolOveruse(
+      message, 
+      relevantKnowledge || [], 
+      assistantMessage.tool_calls.map((tc: any) => tc.function?.name || 'unknown')
+    );
+    
     const { toolResults, toolsUsed: executedTools } = await executeTools(
       assistantMessage.tool_calls,
       mcps,
@@ -443,6 +454,8 @@ async function handleSimpleQuery(
     if (synthesizedResponse) {
       finalResponse = synthesizedResponse;
     }
+  } else {
+    console.log('✅ AI used knowledge base appropriately - no tools needed');
   }
 
   // Store assistant response in database
@@ -462,6 +475,7 @@ async function handleSimpleQuery(
       success: true,
       message: finalResponse,
       learningLoopUsed: false,
+      knowledgeUsed: relevantKnowledge?.length || 0,
       toolsUsed: toolsUsed.map(t => ({
         name: t.name,
         parameters: t.parameters,
