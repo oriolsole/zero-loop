@@ -1,4 +1,3 @@
-
 /**
  * Knowledge Persistence for Learning Loop Integration
  */
@@ -13,7 +12,7 @@ export async function persistInsightAsKnowledgeNode(
   userId: string,
   complexityDecision: any,
   supabase: any
-): Promise<{ nodeId: string } | false> {
+): Promise<boolean> {
   try {
     console.log('Persisting insights as knowledge node...');
 
@@ -38,7 +37,7 @@ export async function persistInsightAsKnowledgeNode(
       return false;
     }
 
-    // Create knowledge node using the admin client
+    // Create knowledge node
     const nodeId = crypto.randomUUID();
     const { error: nodeError } = await supabase
       .from('knowledge_nodes')
@@ -50,7 +49,7 @@ export async function persistInsightAsKnowledgeNode(
         domain_id: insight.domain || 'ai-agent',
         discovered_in_loop: 0, // AI agent discoveries
         confidence: insight.confidence,
-        user_id: userId, // Set the user_id explicitly
+        user_id: userId,
         metadata: {
           source: 'ai-agent-learning-loop',
           original_query: originalMessage,
@@ -70,20 +69,16 @@ export async function persistInsightAsKnowledgeNode(
 
     console.log('Successfully persisted knowledge node:', nodeId);
 
-    // Create knowledge chunk for searchability (optional, don't fail on error)
-    try {
-      await createSearchableKnowledgeChunk(
-        insight,
-        originalMessage,
-        finalResponse,
-        userId,
-        supabase
-      );
-    } catch (chunkError) {
-      console.log('Failed to create searchable chunk, but node was created successfully:', chunkError);
-    }
+    // Create knowledge chunk for searchability
+    await createSearchableKnowledgeChunk(
+      insight,
+      originalMessage,
+      finalResponse,
+      userId,
+      supabase
+    );
 
-    return { nodeId };
+    return true;
   } catch (error) {
     console.error('Error persisting insight as knowledge node:', error);
     return false;
@@ -218,7 +213,7 @@ async function generateInsightSummary(
         Final answer: "${finalResponse}"
 
         Tools used: ${toolsInvolved.join(', ')}
-        Query complexity: ${complexityAnalysis.classification}
+        Query complexity: ${complexityAnalysis.complexity}
 
         Extract the key insight for the knowledge base.`
       }

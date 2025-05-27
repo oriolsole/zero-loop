@@ -1,10 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Database, Lightbulb, ExternalLink, Copy, Loader2 } from 'lucide-react';
+import { Database, Lightbulb, ExternalLink, Copy } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
-import { supabase } from '@/integrations/supabase/client';
 
 interface KnowledgeSource {
   id?: string;
@@ -14,16 +13,6 @@ interface KnowledgeSource {
   sourceType?: string;
   nodeType?: string;
   metadata?: any;
-}
-
-interface KnowledgeNode {
-  id: string;
-  title: string;
-  description: string;
-  type: string;
-  confidence: number;
-  metadata: any;
-  created_at: string;
 }
 
 interface KnowledgeToolResultProps {
@@ -36,45 +25,10 @@ interface KnowledgeToolResultProps {
 }
 
 const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
-  const [knowledgeNode, setKnowledgeNode] = useState<KnowledgeNode | null>(null);
-  const [loadingNode, setLoadingNode] = useState(false);
-
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard`);
   };
-
-  // Fetch knowledge node details when nodeId is available
-  useEffect(() => {
-    const fetchKnowledgeNode = async () => {
-      const nodeId = tool.result?.nodeId;
-      if (!nodeId || nodeId === 'unknown' || tool.name !== 'learning_generation') return;
-
-      setLoadingNode(true);
-      try {
-        const { data, error } = await supabase
-          .from('knowledge_nodes')
-          .select('*')
-          .eq('id', nodeId)
-          .single();
-
-        if (error) {
-          console.error('Error fetching knowledge node:', error);
-          return;
-        }
-
-        if (data) {
-          setKnowledgeNode(data);
-        }
-      } catch (error) {
-        console.error('Exception fetching knowledge node:', error);
-      } finally {
-        setLoadingNode(false);
-      }
-    };
-
-    fetchKnowledgeNode();
-  }, [tool.result?.nodeId, tool.name]);
 
   const renderKnowledgeRetrievalResult = () => {
     const sources = tool.result?.sources || [];
@@ -188,7 +142,6 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
             <div className="text-xs">
               <span className="font-medium text-muted-foreground">Node ID: </span>
               <span className="font-mono">{nodeId}</span>
-              {loadingNode && <Loader2 className="h-3 w-3 animate-spin inline ml-2" />}
             </div>
           )}
           
@@ -199,37 +152,7 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
             </div>
           )}
 
-          {/* Display actual knowledge node data if available */}
-          {knowledgeNode ? (
-            <div className="space-y-2">
-              <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1">Title:</div>
-                <div className="text-sm font-medium text-foreground">{knowledgeNode.title}</div>
-              </div>
-              <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1">Description:</div>
-                <div className="text-sm text-foreground">{knowledgeNode.description}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs">{knowledgeNode.type}</Badge>
-                <Badge variant="secondary" className="text-xs">
-                  {(knowledgeNode.confidence * 100).toFixed(0)}% confidence
-                </Badge>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 p-1 text-xs mt-2"
-                onClick={() => copyToClipboard(
-                  `${knowledgeNode.title}\n\n${knowledgeNode.description}`,
-                  'Knowledge node content'
-                )}
-              >
-                <Copy className="h-3 w-3 mr-1" />
-                Copy Knowledge
-              </Button>
-            </div>
-          ) : insights && (
+          {insights && (
             <div>
               <div className="text-xs font-medium text-muted-foreground mb-1">Generated Insights:</div>
               <div className="text-sm text-foreground">
