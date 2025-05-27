@@ -201,36 +201,47 @@ async function generateInsightSummary(
     const insightMessages = [
       {
         role: 'system',
-        content: `Generate a structured insight summary for a knowledge base. Extract the key learnings, patterns, and reusable knowledge from this research session.
+        content: `Generate a structured insight summary for a knowledge base. Focus on extracting reusable knowledge that would help with similar future queries.
+
+        Consider:
+        - Intent vs. data mismatches and how they were resolved
+        - Patterns in tool usage and data retrieval
+        - Cross-project or cross-domain insights
+        - Process improvements or learnings
 
         Respond with ONLY a JSON object in this exact format:
         {
           "title": "Concise, searchable title (max 100 chars)",
-          "description": "Detailed description of the insight (max 500 chars)",
-          "type": "insight|concept|process|fact|strategy",
+          "description": "Detailed description focusing on reusable insights (max 500 chars)",
+          "type": "insight|pattern|process|gap-analysis|cross-reference",
           "confidence": 0.0-1.0,
           "domain": "relevant domain or category",
-          "tags": ["tag1", "tag2", "tag3"],
+          "tags": ["intent-mismatch", "data-pattern", "synthesis", "tool-usage"],
           "isSignificant": true/false,
-          "reasoning": "Why this insight is valuable for future reference"
+          "reasoning": "Why this insight is valuable for future similar queries"
         }
 
-        Only mark as significant if it contains reusable knowledge, patterns, or insights that would be valuable for future queries.
-        Do NOT wrap the JSON in markdown code blocks or add any other text.`
+        Mark as significant if it contains:
+        - Patterns in how users search vs. what data is available
+        - Insights about data relationships across tools
+        - Process learnings about handling intent mismatches
+        - Reusable synthesis strategies
+
+        Do NOT wrap the JSON in markdown code blocks.`
       },
       {
         role: 'user',
         content: `Original query: "${originalMessage}"
 
-        Research process:
+        Research process and context:
         ${contextSummary}
 
-        Final answer: "${finalResponse}"
+        Final synthesized answer: "${finalResponse}"
 
         Tools used: ${toolsInvolved.join(', ')}
         Query complexity: ${complexityAnalysis.complexity}
 
-        Extract the key insight for the knowledge base.`
+        Extract insights about query patterns, data relationships, and synthesis strategies.`
       }
     ];
 
