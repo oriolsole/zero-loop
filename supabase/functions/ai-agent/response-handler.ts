@@ -1,7 +1,73 @@
-
 /**
  * Enhanced response handler with improved synthesis for data gaps
  */
+
+/**
+ * Extract assistant message from AI model response
+ */
+export function extractAssistantMessage(response: any): string {
+  try {
+    // Handle different response formats
+    if (!response) {
+      console.error('No response provided to extractAssistantMessage');
+      return 'I apologize, but I encountered an error processing your request.';
+    }
+
+    // Check for direct message content (some APIs return this directly)
+    if (typeof response === 'string') {
+      return response;
+    }
+
+    // Standard OpenAI format: response.choices[0].message.content
+    if (response.choices && response.choices.length > 0) {
+      const choice = response.choices[0];
+      
+      // Handle tool calls scenario
+      if (choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
+        // If there are tool calls, return any content or indicate tool usage
+        const content = choice.message?.content;
+        if (content && content.trim()) {
+          return content;
+        }
+        // If no content but tool calls exist, return a placeholder
+        return 'Processing your request with available tools...';
+      }
+      
+      // Standard message content
+      if (choice.message?.content) {
+        return choice.message.content;
+      }
+    }
+
+    // Handle direct content field
+    if (response.content) {
+      return response.content;
+    }
+
+    // Handle message field directly
+    if (response.message) {
+      if (typeof response.message === 'string') {
+        return response.message;
+      }
+      if (response.message.content) {
+        return response.message.content;
+      }
+    }
+
+    // Handle data field (some APIs wrap response in data)
+    if (response.data) {
+      return extractAssistantMessage(response.data);
+    }
+
+    // If we can't find content, log the response structure for debugging
+    console.error('Could not extract message from response:', JSON.stringify(response, null, 2));
+    
+    return 'I apologize, but I encountered an issue processing the response. Please try again.';
+  } catch (error) {
+    console.error('Error in extractAssistantMessage:', error);
+    return 'I apologize, but I encountered an error processing your request.';
+  }
+}
 
 /**
  * Synthesize final response with awareness of tool execution context
