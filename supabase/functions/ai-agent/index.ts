@@ -1,4 +1,4 @@
-import { serve } from 'https://deno.land/std@1.66.0/http/server.ts';
+
 import { corsHeaders } from './_shared/cors.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { OpenAI } from "https://deno.land/x/openai@v1.0.0/mod.ts";
