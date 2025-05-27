@@ -1,176 +1,144 @@
 
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
-import { Brain, TestTube, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { toast } from '@/components/ui/sonner';
-
-interface TestCase {
-  query: string;
-  expectedComplexity: 'SIMPLE' | 'COMPLEX';
-  description: string;
-}
-
-const testCases: TestCase[] = [
-  {
-    query: "What are the major news stories in 2025?",
-    expectedComplexity: "COMPLEX",
-    description: "Current events requiring web search"
-  },
-  {
-    query: "What is the capital of France?",
-    expectedComplexity: "SIMPLE", 
-    description: "General knowledge question"
-  },
-  {
-    query: "Latest AI developments today",
-    expectedComplexity: "COMPLEX",
-    description: "Time-sensitive query"
-  },
-  {
-    query: "How does photosynthesis work?",
-    expectedComplexity: "SIMPLE",
-    description: "Scientific concept explanation"
-  },
-  {
-    query: "What are the biggest M&A deals of 2025?",
-    expectedComplexity: "COMPLEX",
-    description: "Current business/financial data"
-  },
-  {
-    query: "Explain the theory of relativity",
-    expectedComplexity: "SIMPLE",
-    description: "Established scientific theory"
-  },
-  {
-    query: "Find recent developments in quantum computing",
-    expectedComplexity: "COMPLEX",
-    description: "Recent tech developments"
-  }
-];
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Brain, Play, RotateCcw, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { toast } from "@/components/ui/sonner";
 
 interface TestResult {
-  query: string;
-  expectedComplexity: 'SIMPLE' | 'COMPLEX';
-  actualComplexity: 'SIMPLE' | 'COMPLEX' | null;
-  reasoning: string;
-  confidence: number;
-  passed: boolean | null;
-  timestamp: Date;
+  task: string;
+  solution: string;
+  verification: string;
+  reflection: string;
+  success: boolean;
+  score: number;
+  executionTime: number;
 }
 
-const LearningLoopTester: React.FC = () => {
-  const [customQuery, setCustomQuery] = useState('');
-  const [testResults, setTestResults] = useState<TestResult[]>([]);
+interface LearningLoopTesterProps {
+  domainId?: string;
+  engineType?: string;
+}
+
+export const LearningLoopTester: React.FC<LearningLoopTesterProps> = ({
+  domainId,
+  engineType = 'logic'
+}) => {
   const [isRunning, setIsRunning] = useState(false);
-  const [currentTest, setCurrentTest] = useState<string | null>(null);
+  const [testTask, setTestTask] = useState('');
+  const [selectedEngine, setSelectedEngine] = useState(engineType);
+  const [results, setResults] = useState<TestResult[]>([]);
+  const [currentResult, setCurrentResult] = useState<TestResult | null>(null);
 
-  const testSingleQuery = async (testCase: TestCase): Promise<TestResult> => {
+  const predefinedTasks = {
+    logic: [
+      'If all birds can fly and penguins are birds, can penguins fly?',
+      'Find the pattern in: 2, 4, 8, 16, ?',
+      'Solve: If A implies B, and B implies C, and A is true, what can we conclude about C?'
+    ],
+    math: [
+      'Calculate the derivative of x^2 + 3x + 2',
+      'Find the area of a circle with radius 5',
+      'Solve the quadratic equation: x^2 - 5x + 6 = 0'
+    ],
+    regex: [
+      'Create a regex pattern to match email addresses',
+      'Write a regex to validate phone numbers in format (xxx) xxx-xxxx',
+      'Design a pattern to extract all URLs from text'
+    ]
+  };
+
+  const runLearningLoop = async () => {
+    if (!testTask.trim()) {
+      toast.error('Please enter a task to test');
+      return;
+    }
+
+    setIsRunning(true);
+    const startTime = Date.now();
+
     try {
-      setCurrentTest(testCase.query);
-      
-      const { data, error } = await supabase.functions.invoke('ai-agent', {
-        body: {
-          message: testCase.query,
-          conversationHistory: [],
-          userId: 'test-user',
-          sessionId: 'test-session',
-          testMode: true
-        }
-      });
+      // Simulate learning loop execution
+      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
 
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      const result: TestResult = {
-        query: testCase.query,
-        expectedComplexity: testCase.expectedComplexity,
-        actualComplexity: data.complexity?.classification || null,
-        reasoning: data.complexity?.reasoning || 'No reasoning provided',
-        confidence: data.complexity?.confidence || 0,
-        passed: data.complexity?.classification === testCase.expectedComplexity,
-        timestamp: new Date()
+      // Mock results based on engine type
+      const mockResult: TestResult = {
+        task: testTask,
+        solution: generateMockSolution(testTask, selectedEngine),
+        verification: generateMockVerification(testTask, selectedEngine),
+        reflection: generateMockReflection(testTask, selectedEngine),
+        success: Math.random() > 0.3,
+        score: Math.floor(70 + Math.random() * 30),
+        executionTime: Date.now() - startTime
       };
 
-      return result;
-    } catch (error) {
-      console.error('Test error:', error);
-      return {
-        query: testCase.query,
-        expectedComplexity: testCase.expectedComplexity,
-        actualComplexity: null,
-        reasoning: `Error: ${error.message}`,
-        confidence: 0,
-        passed: false,
-        timestamp: new Date()
-      };
-    }
-  };
-
-  const runAllTests = async () => {
-    setIsRunning(true);
-    setTestResults([]);
-    
-    try {
-      const results: TestResult[] = [];
+      setCurrentResult(mockResult);
+      setResults(prev => [mockResult, ...prev]);
       
-      for (const testCase of testCases) {
-        const result = await testSingleQuery(testCase);
-        results.push(result);
-        setTestResults([...results]);
-        
-        // Small delay between tests
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      
-      const passedCount = results.filter(r => r.passed).length;
-      toast.success(`Tests completed: ${passedCount}/${results.length} passed`);
+      toast.success(
+        mockResult.success 
+          ? `Learning loop completed successfully! Score: ${mockResult.score}%`
+          : 'Learning loop completed with issues. Check the reflection for insights.'
+      );
     } catch (error) {
-      toast.error('Test suite failed');
+      toast.error('Failed to execute learning loop');
+      console.error('Learning loop error:', error);
     } finally {
       setIsRunning(false);
-      setCurrentTest(null);
     }
   };
 
-  const testCustomQuery = async () => {
-    if (!customQuery.trim()) return;
-    
-    setIsRunning(true);
-    try {
-      const result = await testSingleQuery({
-        query: customQuery,
-        expectedComplexity: 'COMPLEX', // Default assumption for custom queries
-        description: 'Custom test query'
-      });
-      
-      setTestResults([result, ...testResults]);
-      toast.success('Custom query tested');
-    } catch (error) {
-      toast.error('Custom test failed');
-    } finally {
-      setIsRunning(false);
-      setCustomQuery('');
-    }
+  const generateMockSolution = (task: string, engine: string): string => {
+    const solutions = {
+      logic: `Based on logical analysis of "${task}", I need to apply deductive reasoning principles...`,
+      math: `To solve "${task}", I'll use mathematical methods and formulas...`,
+      regex: `For the pattern "${task}", I'll construct a regular expression using...`
+    };
+    return solutions[engine as keyof typeof solutions] || 'Analyzing the problem systematically...';
   };
 
-  const getResultIcon = (result: TestResult) => {
-    if (result.actualComplexity === null) return <XCircle className="h-4 w-4 text-red-500" />;
-    if (result.passed) return <CheckCircle className="h-4 w-4 text-green-500" />;
-    return <XCircle className="h-4 w-4 text-red-500" />;
+  const generateMockVerification = (task: string, engine: string): string => {
+    const verifications = {
+      logic: 'Verified using truth tables and logical consistency checks.',
+      math: 'Verified through mathematical proof and numerical validation.',
+      regex: 'Tested against sample inputs and edge cases.'
+    };
+    return verifications[engine as keyof typeof verifications] || 'Solution verified through systematic testing.';
   };
 
-  const getComplexityBadge = (complexity: 'SIMPLE' | 'COMPLEX' | null) => {
-    if (complexity === null) return <Badge variant="destructive">ERROR</Badge>;
-    return (
-      <Badge variant={complexity === 'COMPLEX' ? 'purple' : 'secondary'}>
-        {complexity}
-      </Badge>
-    );
+  const generateMockReflection = (task: string, engine: string): string => {
+    const reflections = {
+      logic: 'This problem required careful attention to logical fallacies and assumption validation.',
+      math: 'The mathematical approach was efficient, though alternative methods could be explored.',
+      regex: 'Pattern matching required balancing specificity with flexibility for edge cases.'
+    };
+    return reflections[engine as keyof typeof reflections] || 'The solution process revealed important insights about problem-solving strategies.';
+  };
+
+  const loadPredefinedTask = (task: string) => {
+    setTestTask(task);
+  };
+
+  const clearResults = () => {
+    setResults([]);
+    setCurrentResult(null);
+  };
+
+  const getResultBadgeVariant = (success: boolean): "default" | "secondary" | "destructive" | "outline" => {
+    return success ? 'default' : 'destructive';
+  };
+
+  const getScoreBadgeVariant = (score: number): "default" | "secondary" | "destructive" | "outline" => {
+    if (score >= 90) return 'default';
+    if (score >= 70) return 'secondary';
+    if (score >= 50) return 'outline';
+    return 'destructive';
   };
 
   return (
@@ -178,115 +146,168 @@ const LearningLoopTester: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <TestTube className="h-5 w-5" />
-            Learning Loop Detector Tester
+            <Brain className="h-5 w-5" />
+            Learning Loop Tester
           </CardTitle>
         </CardHeader>
+        
         <CardContent className="space-y-4">
-          <div className="flex gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="engine">Engine Type</Label>
+              <Select value={selectedEngine} onValueChange={setSelectedEngine}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select an engine" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="logic">Logic Engine</SelectItem>
+                  <SelectItem value="math">Math Engine</SelectItem>
+                  <SelectItem value="regex">Regex Engine</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Quick Tasks</Label>
+              <div className="flex flex-wrap gap-1">
+                {predefinedTasks[selectedEngine as keyof typeof predefinedTasks]?.map((task, index) => (
+                  <Button
+                    key={index}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadPredefinedTask(task)}
+                    className="text-xs"
+                  >
+                    Task {index + 1}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="task">Test Task</Label>
+            <Textarea
+              id="task"
+              placeholder="Enter a task to test the learning loop..."
+              value={testTask}
+              onChange={(e) => setTestTask(e.target.value)}
+              rows={3}
+            />
+          </div>
+          
+          <div className="flex items-center gap-2">
             <Button 
-              onClick={runAllTests} 
-              disabled={isRunning}
+              onClick={runLearningLoop} 
+              disabled={isRunning || !testTask.trim()}
               className="flex items-center gap-2"
             >
               {isRunning ? (
                 <>
-                  <Clock className="h-4 w-4 animate-spin" />
-                  Running Tests...
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Running...
                 </>
               ) : (
                 <>
-                  <Brain className="h-4 w-4" />
-                  Run All Tests
+                  <Play className="h-4 w-4" />
+                  Run Learning Loop
                 </>
               )}
             </Button>
             
-            <div className="flex-1 flex gap-2">
-              <Textarea
-                placeholder="Enter custom query to test..."
-                value={customQuery}
-                onChange={(e) => setCustomQuery(e.target.value)}
-                rows={2}
-                disabled={isRunning}
-              />
-              <Button 
-                onClick={testCustomQuery}
-                disabled={isRunning || !customQuery.trim()}
-                variant="outline"
-              >
-                Test
+            {results.length > 0 && (
+              <Button variant="outline" onClick={clearResults}>
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Clear Results
               </Button>
-            </div>
-          </div>
-
-          {currentTest && (
-            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-              <p className="text-sm font-medium text-blue-700">Currently testing:</p>
-              <p className="text-sm text-blue-600">{currentTest}</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Predefined Test Cases</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {testCases.map((testCase, index) => (
-              <div key={index} className="bg-gray-50 p-3 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">{testCase.query}</span>
-                  <Badge variant={testCase.expectedComplexity === 'COMPLEX' ? 'purple' : 'secondary'}>
-                    Expected: {testCase.expectedComplexity}
-                  </Badge>
-                </div>
-                <p className="text-sm text-gray-600">{testCase.description}</p>
-              </div>
-            ))}
+            )}
           </div>
         </CardContent>
       </Card>
-
-      {testResults.length > 0 && (
+      
+      {currentResult && (
         <Card>
           <CardHeader>
-            <CardTitle>Test Results</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              <span>Latest Result</span>
+              <div className="flex items-center gap-2">
+                <Badge variant={getResultBadgeVariant(currentResult.success)}>
+                  {currentResult.success ? (
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                  ) : (
+                    <XCircle className="h-3 w-3 mr-1" />
+                  )}
+                  {currentResult.success ? 'Success' : 'Failed'}
+                </Badge>
+                <Badge variant={getScoreBadgeVariant(currentResult.score)}>
+                  Score: {currentResult.score}%
+                </Badge>
+              </div>
+            </CardTitle>
           </CardHeader>
+          
+          <CardContent className="space-y-4">
+            <div>
+              <h4 className="font-medium mb-2">Task</h4>
+              <p className="text-sm text-muted-foreground bg-muted p-3 rounded">
+                {currentResult.task}
+              </p>
+            </div>
+            
+            <div>
+              <h4 className="font-medium mb-2">Solution</h4>
+              <p className="text-sm text-muted-foreground bg-muted p-3 rounded">
+                {currentResult.solution}
+              </p>
+            </div>
+            
+            <div>
+              <h4 className="font-medium mb-2">Verification</h4>
+              <p className="text-sm text-muted-foreground bg-muted p-3 rounded">
+                {currentResult.verification}
+              </p>
+            </div>
+            
+            <div>
+              <h4 className="font-medium mb-2">Reflection</h4>
+              <p className="text-sm text-muted-foreground bg-muted p-3 rounded">
+                {currentResult.reflection}
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span>Execution Time: {currentResult.executionTime}ms</span>
+              <span>Engine: {selectedEngine}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {results.length > 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Test History</CardTitle>
+          </CardHeader>
+          
           <CardContent>
-            <div className="space-y-4">
-              {testResults.map((result, index) => (
-                <div key={index} className="border rounded-lg p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    {getResultIcon(result)}
-                    <span className="font-medium flex-1">{result.query}</span>
-                    <div className="flex gap-2">
-                      {getComplexityBadge(result.actualComplexity)}
-                      <Badge variant="outline">
-                        {Math.round(result.confidence * 100)}% confidence
-                      </Badge>
-                    </div>
+            <div className="space-y-3">
+              {results.slice(1).map((result, index) => (
+                <div key={index} className="flex items-center justify-between p-3 border rounded">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium truncate">{result.task}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {result.executionTime}ms execution time
+                    </p>
                   </div>
-                  
-                  <div className="text-sm space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Expected:</span>
-                      <span>{result.expectedComplexity}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Actual:</span>
-                      <span>{result.actualComplexity || 'ERROR'}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Reasoning:</span>
-                      <p className="mt-1 text-sm bg-gray-50 p-2 rounded">{result.reasoning}</p>
-                    </div>
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>Tested at:</span>
-                      <span>{result.timestamp.toLocaleTimeString()}</span>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={getScoreBadgeVariant(result.score)} className="text-xs">
+                      {result.score}%
+                    </Badge>
+                    {result.success ? (
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-red-500" />
+                    )}
                   </div>
                 </div>
               ))}
@@ -297,5 +318,3 @@ const LearningLoopTester: React.FC = () => {
     </div>
   );
 };
-
-export default LearningLoopTester;

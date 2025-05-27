@@ -1,132 +1,146 @@
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Terminal, XCircle, CheckCircle, Clock, Brain } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown, ChevronRight, AlertCircle, Info, CheckCircle, XCircle } from "lucide-react";
 
-interface DebugLog {
-  id: string;
-  timestamp: Date;
-  type: 'complexity' | 'tool' | 'knowledge' | 'error' | 'info';
+interface DebugLogEntry {
+  timestamp: string;
+  level: 'info' | 'warning' | 'error' | 'success';
   message: string;
-  data?: any;
+  details?: any;
 }
 
-const DebugConsole: React.FC = () => {
-  const [logs, setLogs] = useState<DebugLog[]>([]);
-  const [isVisible, setIsVisible] = useState(false);
+interface DebugConsoleProps {
+  logs: DebugLogEntry[];
+  isVisible?: boolean;
+  onToggle?: () => void;
+}
 
-  useEffect(() => {
-    // Listen for debug events from the system
-    const handleDebugEvent = (event: CustomEvent) => {
-      const newLog: DebugLog = {
-        id: Date.now().toString(),
-        timestamp: new Date(),
-        type: event.detail.type,
-        message: event.detail.message,
-        data: event.detail.data
-      };
-      
-      setLogs(prev => [newLog, ...prev.slice(0, 99)]); // Keep last 100 logs
-    };
+export const DebugConsole: React.FC<DebugConsoleProps> = ({ 
+  logs, 
+  isVisible = false, 
+  onToggle 
+}) => {
+  const [expandedLogs, setExpandedLogs] = useState<Set<number>>(new Set());
 
-    window.addEventListener('debugLog' as any, handleDebugEvent);
-    return () => window.removeEventListener('debugLog' as any, handleDebugEvent);
-  }, []);
+  const toggleLogExpansion = (index: number) => {
+    const newExpanded = new Set(expandedLogs);
+    if (newExpanded.has(index)) {
+      newExpanded.delete(index);
+    } else {
+      newExpanded.add(index);
+    }
+    setExpandedLogs(newExpanded);
+  };
 
-  const clearLogs = () => setLogs([]);
-
-  const getLogIcon = (type: DebugLog['type']) => {
-    switch (type) {
-      case 'complexity':
-        return <Brain className="h-4 w-4 text-purple-500" />;
-      case 'tool':
-        return <CheckCircle className="h-4 w-4 text-blue-500" />;
-      case 'knowledge':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
+  const getLevelIcon = (level: string) => {
+    switch (level) {
+      case 'info':
+        return <Info className="h-4 w-4 text-blue-500" />;
+      case 'warning':
+        return <AlertCircle className="h-4 w-4 text-yellow-500" />;
       case 'error':
         return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'success':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
       default:
-        return <Clock className="h-4 w-4 text-gray-500" />;
+        return <Info className="h-4 w-4 text-gray-500" />;
     }
   };
 
-  const getLogBadge = (type: DebugLog['type']) => {
-    const variants = {
-      complexity: 'purple',
-      tool: 'default',
-      knowledge: 'secondary',
-      error: 'destructive',
-      info: 'outline'
-    } as const;
-    
-    return <Badge variant={variants[type] || 'outline'}>{type.toUpperCase()}</Badge>;
+  const getLevelBadgeVariant = (level: string): "default" | "secondary" | "destructive" | "outline" => {
+    switch (level) {
+      case 'error':
+        return 'destructive';
+      case 'warning':
+        return 'outline';
+      case 'success':
+        return 'default';
+      case 'info':
+      default:
+        return 'secondary';
+    }
   };
 
   if (!isVisible) {
-    return (
-      <Button 
-        onClick={() => setIsVisible(true)} 
-        variant="outline" 
-        size="sm"
-        className="fixed bottom-4 right-4 z-50"
-      >
-        <Terminal className="h-4 w-4 mr-2" />
-        Debug Console {logs.length > 0 && `(${logs.length})`}
-      </Button>
-    );
+    return null;
   }
 
   return (
-    <Card className="fixed bottom-4 right-4 w-96 h-80 z-50 shadow-lg">
-      <CardHeader className="pb-2">
+    <Card className="w-full max-h-96 overflow-hidden">
+      <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Terminal className="h-4 w-4" />
-            Debug Console
-          </CardTitle>
-          <div className="flex gap-2">
-            <Button onClick={clearLogs} variant="outline" size="sm">
-              Clear
-            </Button>
-            <Button onClick={() => setIsVisible(false)} variant="outline" size="sm">
-              ×
-            </Button>
+          <CardTitle className="text-sm font-medium">Debug Console</CardTitle>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">
+              {logs.length} entries
+            </Badge>
+            {onToggle && (
+              <Button variant="ghost" size="sm" onClick={onToggle}>
+                ×
+              </Button>
+            )}
           </div>
         </div>
       </CardHeader>
+      
       <CardContent className="p-0">
-        <ScrollArea className="h-60 px-4">
-          <div className="space-y-2 pb-4">
-            {logs.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-8">
-                No debug logs yet. Test some queries to see classification decisions.
-              </p>
-            ) : (
-              logs.map((log) => (
-                <div key={log.id} className="border-l-2 border-gray-200 pl-3 py-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    {getLogIcon(log.type)}
-                    {getLogBadge(log.type)}
-                    <span className="text-xs text-gray-500">
-                      {log.timestamp.toLocaleTimeString()}
+        <ScrollArea className="h-80 p-4">
+          <div className="space-y-2">
+            {logs.map((log, index) => (
+              <div key={index} className="border rounded-lg">
+                <Collapsible>
+                  <CollapsibleTrigger 
+                    className="w-full p-3 text-left hover:bg-muted/50 flex items-center gap-2"
+                    onClick={() => toggleLogExpansion(index)}
+                  >
+                    {expandedLogs.has(index) ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                    {getLevelIcon(log.level)}
+                    <Badge variant={getLevelBadgeVariant(log.level)} className="text-xs">
+                      {log.level}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {log.timestamp}
                     </span>
-                  </div>
-                  <p className="text-sm text-gray-700">{log.message}</p>
-                  {log.data && (
-                    <details className="mt-1">
-                      <summary className="text-xs text-gray-500 cursor-pointer">
-                        Show data
-                      </summary>
-                      <pre className="text-xs bg-gray-50 p-2 rounded mt-1 overflow-x-auto">
-                        {JSON.stringify(log.data, null, 2)}
-                      </pre>
-                    </details>
-                  )}
-                </div>
-              ))
+                    <span className="text-sm flex-1 truncate">
+                      {log.message}
+                    </span>
+                  </CollapsibleTrigger>
+                  
+                  <CollapsibleContent className="px-3 pb-3 border-t bg-muted/20">
+                    <div className="mt-2 space-y-2">
+                      <div className="text-sm">
+                        <strong>Message:</strong> {log.message}
+                      </div>
+                      {log.details && (
+                        <div className="text-xs">
+                          <strong>Details:</strong>
+                          <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-x-auto">
+                            {typeof log.details === 'string' 
+                              ? log.details 
+                              : JSON.stringify(log.details, null, 2)
+                            }
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
+            ))}
+            
+            {logs.length === 0 && (
+              <div className="text-center text-muted-foreground py-8">
+                No debug logs available
+              </div>
             )}
           </div>
         </ScrollArea>
@@ -134,5 +148,3 @@ const DebugConsole: React.FC = () => {
     </Card>
   );
 };
-
-export default DebugConsole;

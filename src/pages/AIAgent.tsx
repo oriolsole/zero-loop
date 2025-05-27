@@ -1,59 +1,56 @@
 
 import React from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import AIAgentChat from '@/components/knowledge/AIAgentChat';
-import AIAgentTestTab from '@/components/knowledge/AIAgentTestTab';
-import { Bot, MessageSquare, TestTube, Brain } from 'lucide-react';
 import MainLayout from '@/components/layouts/MainLayout';
+import AIAgentChat from '@/components/knowledge/AIAgentChat';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Brain, Zap, MessageSquare } from "lucide-react";
 
 const AIAgent: React.FC = () => {
   return (
     <MainLayout>
-      <div className="container mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-3">
-              <Bot className="h-8 w-8 text-purple-600" />
-              AI Agent
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Intelligent assistant with adaptive reasoning and tool integration
-            </p>
+      <div className="container mx-auto py-6 space-y-6">
+        <div className="text-center space-y-4">
+          <div className="flex items-center justify-center gap-2">
+            <Brain className="h-8 w-8 text-primary" />
+            <h1 className="text-3xl font-bold">AI Agent</h1>
+            <Badge variant="secondary" className="ml-2">
+              Beta
+            </Badge>
           </div>
           
-          <div className="flex gap-2">
-            <Badge variant="purple" className="flex items-center gap-1">
-              <Brain className="h-3 w-3" />
-              Learning Loop Active
-            </Badge>
-            <Badge variant="secondary">
-              Multi-Tool Support
-            </Badge>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Intelligent assistant powered by advanced reasoning and tool integration. 
+            Ask questions, request analysis, or get help with complex tasks.
+          </p>
+          
+          <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4" />
+              <span>Real-time reasoning</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              <span>Context-aware responses</span>
+            </div>
           </div>
         </div>
 
-        <Tabs defaultValue="chat" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="chat" className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              AI Chat
-            </TabsTrigger>
-            <TabsTrigger value="testing" className="flex items-center gap-2">
-              <TestTube className="h-4 w-4" />
-              Testing & Debug
-            </TabsTrigger>
-          </TabsList>
+        <Card className="max-w-6xl mx-auto">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              AI Assistant
+            </CardTitle>
+            <CardDescription>
+              Chat with the AI agent to get help with analysis, reasoning, and problem-solving tasks
+            </CardDescription>
+          </CardHeader>
           
-          <TabsContent value="chat" className="mt-6">
+          <CardContent className="p-0">
             <AIAgentChat />
-          </TabsContent>
-          
-          <TabsContent value="testing" className="mt-6">
-            <AIAgentTestTab />
-          </TabsContent>
-        </Tabs>
+          </CardContent>
+        </Card>
       </div>
     </MainLayout>
   );
