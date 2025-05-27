@@ -5,10 +5,10 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { MessageSquare, Plus, Trash2, Loader2 } from 'lucide-react';
-import { ConversationSession } from '@/hooks/useAgentConversation';
+import { Session } from '@/hooks/useAgentConversation';
 
 interface SessionsSidebarProps {
-  sessions: ConversationSession[];
+  sessions: Session[];
   currentSessionId: string | null;
   onStartNewSession: () => void;
   onLoadSession: (sessionId: string) => void;
@@ -24,7 +24,8 @@ const SessionsSidebar: React.FC<SessionsSidebarProps> = ({
   onDeleteSession,
   isLoading = false
 }) => {
-  const formatDate = (date: Date) => {
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
     const now = new Date();
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
     
