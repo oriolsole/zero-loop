@@ -52,6 +52,24 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
     }
   };
 
+  const handleNewSessionClick = () => {
+    console.log('New Session button clicked');
+    try {
+      onNewSession();
+    } catch (error) {
+      console.error('Error creating new session:', error);
+    }
+  };
+
+  const handleToggleSessionsClick = () => {
+    console.log('Toggle Sessions button clicked');
+    try {
+      onToggleSessions();
+    } catch (error) {
+      console.error('Error toggling sessions:', error);
+    }
+  };
+
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -87,7 +105,7 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
         <Button
           variant="outline"
           size="sm"
-          onClick={onToggleSessions}
+          onClick={handleToggleSessionsClick}
         >
           <MessageSquare className="h-4 w-4 mr-2" />
           {showSessions ? 'Hide' : 'Show'} History
@@ -95,8 +113,8 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
         <Button
           variant="outline"
           size="sm"
-          onClick={onNewSession}
-          disabled={isCreatingSession}
+          onClick={handleNewSessionClick}
+          disabled={isCreatingSession || isLoading}
         >
           {isCreatingSession ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
