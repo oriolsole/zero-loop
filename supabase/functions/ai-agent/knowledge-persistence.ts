@@ -1,3 +1,4 @@
+
 /**
  * Knowledge Persistence for Learning Loop Integration
  */
@@ -12,7 +13,7 @@ export async function persistInsightAsKnowledgeNode(
   userId: string,
   complexityDecision: any,
   supabase: any
-): Promise<boolean> {
+): Promise<{ nodeId: string } | false> {
   try {
     console.log('Persisting insights as knowledge node...');
 
@@ -78,7 +79,7 @@ export async function persistInsightAsKnowledgeNode(
       supabase
     );
 
-    return true;
+    return { nodeId };
   } catch (error) {
     console.error('Error persisting insight as knowledge node:', error);
     return false;
