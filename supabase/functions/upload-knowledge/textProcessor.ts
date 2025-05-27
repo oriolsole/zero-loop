@@ -5,7 +5,7 @@ import { chunkText } from "./textChunker.ts";
 import { isValidUUID } from "./utils.ts";
 
 /**
- * Process text content upload
+ * Process text content upload with user authentication
  */
 export async function handleTextContent(body: any, supabase: any) {
   const {
@@ -14,8 +14,8 @@ export async function handleTextContent(body: any, supabase: any) {
     metadata = {},
     domain_id,
     source_url,
-    chunk_size = 1000,
-    overlap = 100
+    chunk_size = 400, // Smaller default chunk size
+    overlap = 50
   } = body;
   
   // Validate required fields
@@ -32,12 +32,31 @@ export async function handleTextContent(body: any, supabase: any) {
     );
   }
 
-  // Split content into chunks
+  // Get user from auth context
+  const authHeader = supabase.auth.getUser ? 
+    await supabase.auth.getUser() : 
+    { data: { user: null }, error: null };
+    
+  const user = authHeader.data?.user;
+  if (!user) {
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: 'Authentication required' 
+      }),
+      { 
+        status: 401, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+
+  // Split content into smaller chunks
   const chunks = chunkText(content, chunk_size, overlap);
   
   console.log(`Split content into ${chunks.length} chunks`);
   
-  // Get embeddings for all chunks
+  // Get embeddings for all chunks with improved error handling
   let embeddings: number[][] = [];
   
   try {
@@ -47,7 +66,8 @@ export async function handleTextContent(body: any, supabase: any) {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: 'Failed to generate embeddings' 
+        error: 'Failed to generate embeddings',
+        details: error.message
       }),
       { 
         status: 500, 
@@ -65,11 +85,12 @@ export async function handleTextContent(body: any, supabase: any) {
     processed_at: new Date().toISOString()
   };
   
-  // Prepare the base insert object (without domain_id if not provided)
+  // Prepare the base insert object with required user_id
   const baseInsertObject: Record<string, any> = {
     title,
     content: '',  // Will be overridden for each chunk
     embedding: [],  // Will be overridden for each chunk
+    user_id: user.id, // Include user_id for RLS compliance
     source_url,
     metadata: enhancedMetadata
   };

@@ -7,7 +7,7 @@ import { extractTextFromPDF, analyzePDFContent } from "./pdfProcessor.ts";
 import { isValidUUID } from "./utils.ts";
 
 /**
- * Process file upload (PDF, images, etc)
+ * Process file upload (PDF, images, etc) with improved user handling
  */
 export async function handleFileContent(body: any, supabase: any) {
   const {
@@ -19,8 +19,8 @@ export async function handleFileContent(body: any, supabase: any) {
     metadata = {},
     domain_id,
     source_url,
-    chunk_size = 600, // Reduced default chunk size for better token management
-    overlap = 80
+    chunk_size = 400, // Much smaller default chunk size
+    overlap = 50
   } = body;
   
   // Validate required fields
@@ -37,6 +37,25 @@ export async function handleFileContent(body: any, supabase: any) {
     );
   }
   
+  // Get user from auth context
+  const authHeader = supabase.auth.getUser ? 
+    await supabase.auth.getUser() : 
+    { data: { user: null }, error: null };
+    
+  const user = authHeader.data?.user;
+  if (!user) {
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: 'Authentication required' 
+      }),
+      { 
+        status: 401, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+
   // Decode the base64 file
   const binaryData = Uint8Array.from(atob(fileBase64.split(',')[1]), c => c.charCodeAt(0));
 
@@ -111,17 +130,17 @@ export async function handleFileContent(body: any, supabase: any) {
     .from('knowledge_files')
     .getPublicUrl(filePath);
   
-  // Split extracted text into chunks with improved token management
+  // Split extracted text into much smaller chunks
   const chunks = extractedText ? chunkText(extractedText, chunk_size, overlap) : [];
   
   console.log(`Split extracted content into ${chunks.length} chunks using ${processingMethod}`);
   
-  // Get embeddings for all chunks with improved token-aware batch processing
+  // Get embeddings for all chunks with improved error handling
   let embeddings: number[][] = [];
   
   if (chunks.length > 0) {
     try {
-      console.log(`Generating embeddings for ${chunks.length} chunks with token-aware batching...`);
+      console.log(`Generating embeddings for ${chunks.length} chunks with conservative batching...`);
       embeddings = await generateEmbeddings(chunks);
       console.log(`Successfully generated ${embeddings.length} embeddings`);
     } catch (error) {
@@ -140,10 +159,11 @@ export async function handleFileContent(body: any, supabase: any) {
     }
   }
   
-  // Prepare the base insert object
+  // Prepare the base insert object with required user_id
   const baseInsertObject: Record<string, any> = {
     title,
     content: '',  // Will be overridden for each chunk
+    user_id: user.id, // Include user_id for RLS compliance
     file_path: filePath,
     original_file_type: fileType,
     file_size: fileSize,

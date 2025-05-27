@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import MainLayout from '@/components/layouts/MainLayout';
 import KnowledgeUpload from '@/components/knowledge/KnowledgeUpload';
@@ -10,13 +11,18 @@ import MCPsTab from '@/components/knowledge/MCPsTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Library, Cog, Brain, FileSearch, Terminal } from "lucide-react";
-import { ensureStorageBucketsExist } from '@/utils/supabase/storage';
+import { checkStorageBucketsExist } from '@/utils/supabase/storage';
 
 const KnowledgeManagement: React.FC = () => {
-  // Ensure storage buckets exist on component mount
+  // Check storage buckets exist on component mount (read-only)
   useEffect(() => {
-    ensureStorageBucketsExist()
-      .catch(err => console.error('Failed to initialize storage buckets:', err));
+    checkStorageBucketsExist()
+      .then(exists => {
+        if (!exists) {
+          console.warn('Storage buckets may not be properly configured');
+        }
+      })
+      .catch(err => console.error('Failed to check storage buckets:', err));
   }, []);
   
   return (

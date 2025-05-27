@@ -3,14 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 
 /**
- * Ensures the required storage buckets exist
- * Should be called during app initialization
- * Note: Creating buckets requires admin privileges. 
- * In most cases, buckets should be created via migrations rather than client-side code.
+ * Check if storage buckets exist (read-only check)
+ * Note: Buckets should be created via migrations, not client-side
  */
-export const ensureStorageBucketsExist = async (): Promise<boolean> => {
+export const checkStorageBucketsExist = async (): Promise<boolean> => {
   try {
-    // Check if knowledge_files bucket exists
+    // Just check if we can list buckets (this tests if the bucket exists and we have access)
     const { data: buckets, error } = await supabase
       .storage
       .listBuckets();
@@ -23,32 +21,13 @@ export const ensureStorageBucketsExist = async (): Promise<boolean> => {
     const knowledgeBucketExists = buckets.some(bucket => bucket.name === 'knowledge_files');
     
     if (!knowledgeBucketExists) {
-      // Try to create the bucket
-      const { error: createError } = await supabase
-        .storage
-        .createBucket('knowledge_files', {
-          public: true,
-        });
-      
-      if (createError) {
-        // Check if the error is due to RLS policies (which likely means the bucket already exists
-        // but the current user doesn't have permission to see it)
-        if (createError.message?.includes('violates row-level security policy')) {
-          console.log('Bucket likely exists but current user lacks permission to create/view it');
-          // We'll assume the bucket exists and continue
-          return true;
-        }
-        
-        console.error('Error creating knowledge_files bucket:', createError);
-        return false;
-      }
-      
-      console.log('Created knowledge_files storage bucket');
+      console.warn('knowledge_files bucket does not exist. Please create it via SQL migrations.');
+      return false;
     }
     
     return true;
   } catch (error) {
-    console.error('Exception checking/creating storage buckets:', error);
+    console.error('Exception checking storage buckets:', error);
     return false;
   }
 };
@@ -91,3 +70,6 @@ export const deleteFile = async (bucketName: string, filePath: string): Promise<
     return false;
   }
 };
+
+// Note: ensureStorageBucketsExist function removed - buckets should be created via SQL migrations
+export const ensureStorageBucketsExist = checkStorageBucketsExist;
