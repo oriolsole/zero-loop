@@ -25,59 +25,70 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({ tool, compact = f
     }
   };
 
-  const getStatusColor = () => {
+  const getStatusStyle = () => {
     switch (tool.status) {
       case 'completed':
-        return 'bg-green-100 border-green-200';
+        return 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800/30';
       case 'failed':
-        return 'bg-red-100 border-red-200';
+        return 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800/30';
       case 'executing':
-        return 'bg-blue-100 border-blue-200';
+        return 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800/30';
       default:
-        return 'bg-yellow-100 border-yellow-200';
+        return 'bg-yellow-50 border-yellow-200 dark:bg-yellow-950/20 dark:border-yellow-800/30';
     }
   };
 
   if (compact) {
     return (
-      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${getStatusColor()}`}>
+      <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-sm ${getStatusStyle()}`}>
         {getStatusIcon()}
-        <span className="text-sm font-medium">{tool.displayName}</span>
+        <span className="text-sm font-medium flex-1">{tool.displayName}</span>
         {tool.progress !== undefined && tool.status === 'executing' && (
-          <Progress value={tool.progress} className="w-16 h-2" />
+          <div className="flex items-center gap-2">
+            <Progress value={tool.progress} className="w-20 h-2" />
+            <span className="text-xs text-muted-foreground min-w-[2rem] text-right">
+              {tool.progress}%
+            </span>
+          </div>
         )}
       </div>
     );
   }
 
   return (
-    <Card className={`border ${getStatusColor()}`}>
+    <Card className={`border shadow-sm ${getStatusStyle()}`}>
       <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
             {getStatusIcon()}
             <span className="font-medium">{tool.displayName}</span>
           </div>
-          <Badge variant={tool.status === 'completed' ? 'default' : 'secondary'}>
+          <Badge 
+            variant={tool.status === 'completed' ? 'default' : 'secondary'}
+            className="text-xs"
+          >
             {tool.status}
           </Badge>
         </div>
         
         {tool.progress !== undefined && tool.status === 'executing' && (
-          <div className="mb-2">
+          <div className="mb-3">
+            <div className="flex justify-between text-xs text-muted-foreground mb-1">
+              <span>Progress</span>
+              <span>{tool.progress}%</span>
+            </div>
             <Progress value={tool.progress} className="w-full h-2" />
-            <span className="text-xs text-muted-foreground mt-1">{tool.progress}%</span>
           </div>
         )}
         
         {tool.parameters && Object.keys(tool.parameters).length > 0 && (
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-muted-foreground bg-secondary/30 p-2 rounded-lg">
             <strong>Parameters:</strong> {JSON.stringify(tool.parameters, null, 1)}
           </div>
         )}
         
         {tool.error && (
-          <div className="text-xs text-red-600 mt-2">
+          <div className="text-xs text-red-600 dark:text-red-400 mt-2 bg-red-50 dark:bg-red-950/20 p-2 rounded-lg">
             <strong>Error:</strong> {tool.error}
           </div>
         )}

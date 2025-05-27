@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -25,8 +24,8 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   };
 
   const getMessageStyle = () => {
-    if (message.role === 'user') return 'bg-primary text-primary-foreground ml-12';
-    return 'bg-secondary/50 border border-border mr-12';
+    if (message.role === 'user') return 'bg-primary text-primary-foreground ml-16 shadow-sm';
+    return 'bg-secondary/40 border border-border/50 mr-16 shadow-sm';
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -35,19 +34,17 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   };
 
   const renderToolResult = (tool: any) => {
-    // Check if this is a knowledge or learning tool
     if (tool.name === 'knowledge_retrieval' || tool.name === 'learning_generation') {
       return <KnowledgeToolResult tool={tool} />;
     }
 
-    // Render regular tool results
     const result = tool.result;
     if (typeof result === 'string') {
       const content = result.length > 1000 ? `${result.substring(0, 1000)}...` : result;
       return <MarkdownRenderer content={content} className="text-foreground" />;
     } else {
       return (
-        <pre className="text-sm text-foreground whitespace-pre-wrap max-h-48 overflow-y-auto bg-secondary/20 p-2 rounded">
+        <pre className="text-sm text-foreground whitespace-pre-wrap max-h-48 overflow-y-auto bg-secondary/20 p-3 rounded-lg border border-border/30">
           {JSON.stringify(result, null, 2)}
         </pre>
       );
@@ -67,47 +64,47 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   };
 
   return (
-    <div className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
+    <div className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
       {message.role !== 'user' && (
-        <Avatar className="h-8 w-8 mt-0.5 flex-shrink-0">
-          <AvatarFallback className="bg-secondary">
-            <Bot className="h-4 w-4" />
+        <Avatar className="h-8 w-8 mt-1 flex-shrink-0 shadow-sm">
+          <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20">
+            <Bot className="h-4 w-4 text-primary" />
           </AvatarFallback>
         </Avatar>
       )}
       
-      <div className={`rounded-lg px-4 py-3 max-w-[80%] shadow-sm ${getMessageStyle()}`}>
-        {/* Main message content with markdown rendering */}
-        <div className="text-sm">
+      <div className={`rounded-2xl px-5 py-4 max-w-[75%] ${getMessageStyle()}`}>
+        <div className="text-sm leading-relaxed">
           <MarkdownRenderer content={message.content} />
         </div>
         
-        {/* Enhanced Reasoning Trail Sections */}
+        {/* AI Reasoning Section */}
         {message.aiReasoning && (
-          <Collapsible open={showReasoning} onOpenChange={setShowReasoning} className="mt-3">
+          <Collapsible open={showReasoning} onOpenChange={setShowReasoning} className="mt-4">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="sm" className="h-7 p-0 text-xs text-muted-foreground hover:text-foreground transition-colors">
                 {showReasoning ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
                 <Brain className="h-3 w-3 mr-1" />
-                Why this answer?
+                AI Reasoning
               </Button>
             </CollapsibleTrigger>
-            <CollapsibleContent className="mt-2">
-              <div className="bg-muted/50 p-3 rounded-md border border-muted">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    🤔 AI Reasoning
+            <CollapsibleContent className="mt-3">
+              <div className="bg-muted/30 p-4 rounded-xl border border-muted/50">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                    <Brain className="h-3 w-3" />
+                    Thought Process
                   </span>
                   <Button 
                     variant="ghost" 
                     size="sm" 
-                    className="h-6 w-6 p-0"
+                    className="h-6 w-6 p-0 hover:bg-muted/50"
                     onClick={() => copyToClipboard(message.aiReasoning!, 'AI Reasoning')}
                   >
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
-                <pre className="whitespace-pre-wrap font-mono text-xs leading-snug text-foreground">
+                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground/90">
                   {message.aiReasoning}
                 </pre>
               </div>
@@ -115,17 +112,18 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
           </Collapsible>
         )}
 
+        {/* Tool Decision Section */}
         {message.toolDecision && (
           <Collapsible open={showToolDecision} onOpenChange={setShowToolDecision} className="mt-3">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="sm" className="h-7 p-0 text-xs text-muted-foreground hover:text-foreground transition-colors">
                 {showToolDecision ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
                 <Cog className="h-3 w-3 mr-1" />
                 Tool Selection
               </Button>
             </CollapsibleTrigger>
-            <CollapsibleContent className="mt-2">
-              <div className="bg-muted/50 p-3 rounded-md border border-muted">
+            <CollapsibleContent className="mt-3">
+              <div className="bg-muted/30 p-4 rounded-xl border border-muted/50">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     🧩 Tool Decision Process
@@ -164,8 +162,9 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
           </Collapsible>
         )}
 
+        {/* Self Reflection */}
         {message.selfReflection && (
-          <div className="mt-3 bg-muted/30 p-2 rounded-md border border-muted">
+          <div className="mt-4 bg-muted/20 p-3 rounded-xl border border-muted/30">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Target className="h-3 w-3" />
               <span className="font-medium">Self Assessment:</span>
@@ -174,14 +173,14 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
           </div>
         )}
         
-        {/* Enhanced Tools Used Display */}
+        {/* Tools Used Display */}
         {message.toolsUsed && message.toolsUsed.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1">
+          <div className="mt-4 flex flex-wrap gap-2">
             {message.toolsUsed.map((tool, index) => (
               <Badge 
                 key={index} 
                 variant={tool.success ? "default" : "destructive"}
-                className="text-xs"
+                className="text-xs shadow-sm"
               >
                 {tool.success ? getToolIcon(tool.name) : <XCircle className="h-3 w-3 mr-1" />}
                 {getToolDisplayName(tool.name)}
@@ -192,19 +191,19 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
 
         {/* Follow-up Suggestions */}
         {message.followUpSuggestions && message.followUpSuggestions.length > 0 && (
-          <div className="mt-4 p-3 bg-indigo-900/30 rounded-lg border border-indigo-500/30">
-            <div className="flex items-center gap-2 mb-2">
-              <ArrowRight className="h-4 w-4 text-indigo-400" />
-              <span className="text-sm font-medium text-indigo-300">What's next?</span>
+          <div className="mt-5 p-4 bg-gradient-to-r from-primary/5 to-primary/10 rounded-xl border border-primary/20">
+            <div className="flex items-center gap-2 mb-3">
+              <ArrowRight className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-primary">Continue the conversation</span>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-2">
               {message.followUpSuggestions.map((suggestion, index) => (
                 <Button
                   key={index}
                   variant="outline"
                   size="sm"
                   onClick={() => onFollowUpAction?.(suggestion)}
-                  className="mr-2 mb-1 text-xs bg-secondary/60 hover:bg-secondary border-indigo-500/30 text-indigo-300 hover:text-indigo-200"
+                  className="mr-2 mb-1 text-xs bg-background/80 hover:bg-background border-primary/30 text-primary hover:text-primary/90 shadow-sm"
                 >
                   {suggestion}
                 </Button>
@@ -213,20 +212,21 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
           </div>
         )}
 
-        {/* Enhanced Tool Results Details */}
+        {/* Tool Results Details */}
         {message.toolsUsed && message.toolsUsed.some(tool => tool.result) && (
-          <Collapsible open={showDetails} onOpenChange={setShowDetails} className="mt-3">
+          <Collapsible open={showDetails} onOpenChange={setShowDetails} className="mt-4">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="sm" className="h-7 p-0 text-xs text-muted-foreground hover:text-foreground transition-colors">
                 {showDetails ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
-                View Tool Results
+                View Detailed Results
               </Button>
             </CollapsibleTrigger>
-            <CollapsibleContent className="mt-2 space-y-2">
+            <CollapsibleContent className="mt-3 space-y-3">
               {message.toolsUsed?.filter(tool => tool.result).map((tool, index) => (
-                <div key={index} className="p-3 bg-secondary/30 rounded-lg border border-border">
-                  <div className="text-xs font-medium text-muted-foreground mb-2">
-                    {getToolDisplayName(tool.name)} Result:
+                <div key={index} className="p-4 bg-secondary/20 rounded-xl border border-border/30">
+                  <div className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1">
+                    {getToolIcon(tool.name)}
+                    {getToolDisplayName(tool.name)} Result
                   </div>
                   <div className="max-h-48 overflow-y-auto">
                     {renderToolResult(tool)}
@@ -237,15 +237,15 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
           </Collapsible>
         )}
         
-        <div className="text-xs opacity-70 mt-2">
+        <div className="text-xs opacity-60 mt-3 text-right">
           {formatTimestamp(message.timestamp)}
         </div>
       </div>
       
       {message.role === 'user' && (
-        <Avatar className="h-8 w-8 mt-0.5 flex-shrink-0">
-          <AvatarFallback className="bg-secondary">
-            <User className="h-4 w-4" />
+        <Avatar className="h-8 w-8 mt-1 flex-shrink-0 shadow-sm">
+          <AvatarFallback className="bg-primary/10 border border-primary/20">
+            <User className="h-4 w-4 text-primary" />
           </AvatarFallback>
         </Avatar>
       )}

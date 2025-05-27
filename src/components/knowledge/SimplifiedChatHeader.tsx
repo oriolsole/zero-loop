@@ -2,7 +2,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bot, MessageSquare, Plus, Settings } from 'lucide-react';
+import { Bot, MessageSquare, Plus, Settings, Loader2 } from 'lucide-react';
 import { ModelProvider } from '@/services/modelProviderService';
 
 interface SimplifiedChatHeaderProps {
@@ -24,46 +24,57 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
   isLoading
 }) => {
   return (
-    <div className="border-b border-border px-6 py-4 flex items-center justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <Bot className="h-5 w-5 text-primary" />
-          <h1 className="text-lg font-semibold">AI Assistant</h1>
+    <div className="border-b border-border/50 px-6 py-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex items-center justify-between max-w-6xl mx-auto">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-lg flex items-center justify-center">
+              <Bot className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold text-foreground">AI Assistant</h1>
+              {isLoading && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>Thinking...</span>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <Badge variant="outline" className="text-xs font-medium bg-secondary/50 border-border/50">
+            {modelSettings.provider.toUpperCase()}
+            {modelSettings.selectedModel && ` • ${modelSettings.selectedModel}`}
+          </Badge>
         </div>
         
-        <Badge variant="outline" className="text-xs">
-          {modelSettings.provider.toUpperCase()}
-          {modelSettings.selectedModel && ` - ${modelSettings.selectedModel}`}
-        </Badge>
-        
-        {isLoading && (
-          <span className="text-sm text-muted-foreground">Thinking...</span>
-        )}
-      </div>
-      
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => window.location.href = '/settings'}
-        >
-          <Settings className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onToggleSessions}
-        >
-          <MessageSquare className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onNewSession}
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          New
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => window.location.href = '/settings'}
+            className="h-8 w-8 p-0 hover:bg-secondary/80"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggleSessions}
+            className="h-8 w-8 p-0 hover:bg-secondary/80"
+          >
+            <MessageSquare className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onNewSession}
+            className="ml-2 h-8 bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary hover:text-primary"
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            New Chat
+          </Button>
+        </div>
       </div>
     </div>
   );
