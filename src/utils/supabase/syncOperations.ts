@@ -12,9 +12,9 @@ import { isSupabaseConfigured } from '../supabase-client';
  * Returns true if the domain is valid for Supabase sync
  */
 export function isValidDomainForSync(domain: Domain): boolean {
-  // Domain must have an ID and it must be a valid UUID
-  if (!domain.id || !isValidUUID(domain.id)) {
-    console.log(`Invalid domain ID for Supabase sync: ${domain.id}. Must be a valid UUID.`);
+  // Domain must have an ID - all domains now have valid UUIDs
+  if (!domain.id) {
+    console.log(`Domain missing ID for Supabase sync`);
     return false;
   }
   
@@ -81,19 +81,19 @@ export async function syncWithSupabase(
       }
     }
 
-    // Sync domains - ONLY if they have valid UUIDs
+    // Sync domains - all domains now have valid UUIDs
     for (const domain of domains) {
       try {
-        // Skip invalid domains entirely
+        // Validate domain before syncing
         if (!isValidDomainForSync(domain)) {
-          console.log(`Skipping domain sync for invalid domain ID: ${domain.id}`);
+          console.log(`Skipping domain sync for invalid domain: ${domain.name}`);
           stats.failures++;
           continue;
         }
         
         // For existing domains, update; for new ones, save
         let success: boolean;
-        if (isValidUUID(domain.id) && await domainExistsInSupabase(domain.id)) {
+        if (await domainExistsInSupabase(domain.id)) {
           success = await updateDomainInSupabase(domain);
         } else {
           success = await saveDomainToSupabase(domain);

@@ -1,14 +1,14 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Loader, Database, Upload, AlertCircle, CheckCircle, Info, Trash2, RefreshCw, Wrench } from 'lucide-react';
+import { Loader, Database, Upload, AlertCircle, CheckCircle, Info, Trash2, RefreshCw } from 'lucide-react';
 import { useLoopStore } from "../store/useLoopStore";
 import { useSupabaseLogger } from "../hooks/useSupabaseLogger";
 import { isSupabaseConfigured } from "../utils/supabase-client";
-import { isValidUUID } from "../utils/supabase/helpers";
 import { toast } from '@/components/ui/sonner';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { 
@@ -21,10 +21,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { v4 as uuidv4 } from 'uuid';
 
 const SupabaseControl = () => {
-  const { useRemoteLogging, setUseRemoteLogging, initializeFromSupabase, domains, setActiveDomain } = useLoopStore();
+  const { useRemoteLogging, setUseRemoteLogging, initializeFromSupabase, domains } = useLoopStore();
   const { 
     state, 
     toggleRemoteLogging, 
@@ -40,12 +39,6 @@ const SupabaseControl = () => {
   const [lastSyncStatus, setLastSyncStatus] = useState<'success' | 'warning' | 'error' | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
-  const [isFixDomainDialogOpen, setIsFixDomainDialogOpen] = useState(false);
-  const [fixingDomains, setFixingDomains] = useState(false);
-
-  // Find any domains with invalid IDs that might cause sync issues
-  const invalidDomains = domains.filter(d => !isValidUUID(d.id));
-  const hasInvalidDomains = invalidDomains.length > 0;
 
   useEffect(() => {
     // Check if Supabase is configured
@@ -69,7 +62,6 @@ const SupabaseControl = () => {
           console.log(`Queueing domains for initial sync (limited to 2)`);
           // Only queue up to 2 domains to prevent overwhelming the system
           domains
-            .filter(domain => isValidUUID(domain.id))
             .slice(0, 2)
             .forEach(domain => {
               queueDomain(domain);
@@ -79,6 +71,9 @@ const SupabaseControl = () => {
         console.error("Error initializing from Supabase:", err);
         toast.error("Failed to initialize from Supabase");
       }
+    } else {
+      // When disabling remote logging, reset sync stats for clarity
+      setLastSyncStatus(null);
     }
     
     toast[checked ? 'success' : 'info'](
@@ -127,77 +122,13 @@ const SupabaseControl = () => {
   const handleResetAllData = async () => {
     try {
       await clearAllTrackedData();
+      // Reset local sync status when clearing all data
+      setLastSyncStatus(null);
       toast.success('All sync data has been reset');
       setIsResetDialogOpen(false);
     } catch (error) {
       console.error('Error resetting all data:', error);
       toast.error('Failed to reset sync data');
-    }
-  };
-
-  // New function to fix domains with invalid UUIDs
-  const handleFixInvalidDomains = () => {
-    setFixingDomains(true);
-    try {
-      // Turn off remote logging temporarily to prevent auto-queueing
-      const wasRemoteLoggingEnabled = useRemoteLogging;
-      if (wasRemoteLoggingEnabled) {
-        setUseRemoteLogging(false);
-        toggleRemoteLogging(false);
-      }
-      
-      // Clear the sync queue first
-      clearSyncQueue().then(() => {
-        // Fix each domain with an invalid ID
-        const fixedDomains = invalidDomains.map(domain => {
-          // Create a copy of the domain with a new valid UUID
-          return {
-            ...domain,
-            id: uuidv4()
-          };
-        });
-        
-        // Update the domains in the store by updating each domain
-        const { updateDomain } = useLoopStore.getState();
-        fixedDomains.forEach(domain => {
-          updateDomain(domain);
-        });
-        
-        // If there's an invalid activeDomainId, switch to a valid one
-        const { activeDomainId } = useLoopStore.getState();
-        if (!isValidUUID(activeDomainId)) {
-          const firstValidDomain = domains.find(d => isValidUUID(d.id));
-          if (firstValidDomain) {
-            setActiveDomain(firstValidDomain.id);
-          }
-        }
-        
-        // Re-enable remote logging if it was enabled
-        if (wasRemoteLoggingEnabled) {
-          setTimeout(() => {
-            setUseRemoteLogging(true);
-            toggleRemoteLogging(true);
-            
-            // Immediately sync the new fixed domains
-            const { domains } = useLoopStore.getState();
-            const validDomains = domains.filter(d => isValidUUID(d.id)).slice(0, 3);
-            validDomains.forEach(d => {
-              queueDomain(d);
-            });
-            
-            // Trigger a sync
-            syncPendingItems();
-          }, 500);
-        }
-        
-        setIsFixDomainDialogOpen(false);
-        toast.success(`Fixed ${fixedDomains.length} domains with invalid IDs`);
-      });
-    } catch (error) {
-      console.error('Error fixing invalid domains:', error);
-      toast.error('Failed to fix domains with invalid IDs');
-    } finally {
-      setFixingDomains(false);
     }
   };
 
@@ -219,18 +150,6 @@ const SupabaseControl = () => {
           <AlertTitle>Sync Failed</AlertTitle>
           <AlertDescription>
             The last sync attempt failed. Check console for details.
-          </AlertDescription>
-        </Alert>
-      )}
-      
-      {/* New alert for invalid domain IDs */}
-      {hasInvalidDomains && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Invalid Domain IDs Detected</AlertTitle>
-          <AlertDescription>
-            {invalidDomains.length} domain(s) have non-UUID IDs which cannot be synced with Supabase. 
-            Use the "Fix Invalid Domains" tool below to repair them.
           </AlertDescription>
         </Alert>
       )}
@@ -289,16 +208,16 @@ const SupabaseControl = () => {
               
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Total synced:</span>
-                <span>{state.syncStats.totalSynced}</span>
+                <span>{state.isRemoteEnabled ? state.syncStats.totalSynced : 'N/A'}</span>
               </div>
               
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Last sync status:</span>
+                <span className="text-muted-foreground">Sync status:</span>
                 <span>
                   {lastSyncStatus === 'success' && <CheckCircle className="w-4 h-4 text-green-500" />}
                   {lastSyncStatus === 'warning' && <AlertCircle className="w-4 h-4 text-amber-500" />}
                   {lastSyncStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
-                  {!lastSyncStatus && <span className="text-muted-foreground">No sync yet</span>}
+                  {!lastSyncStatus && <span className="text-muted-foreground">Ready</span>}
                 </span>
               </div>
             </div>
@@ -320,28 +239,6 @@ const SupabaseControl = () => {
                     <>
                       <Upload className="w-4 h-4 mr-2" />
                       Sync Now {pendingItemsCount > 0 ? `(${pendingItemsCount})` : ''}
-                    </>
-                  )}
-                </Button>
-              )}
-              
-              {/* New button to fix invalid domain IDs */}
-              {hasInvalidDomains && (
-                <Button
-                  onClick={() => setIsFixDomainDialogOpen(true)}
-                  variant="destructive"
-                  className="w-full"
-                  disabled={fixingDomains}
-                >
-                  {fixingDomains ? (
-                    <>
-                      <Loader className="w-4 h-4 mr-2 animate-spin" />
-                      Fixing Domains...
-                    </>
-                  ) : (
-                    <>
-                      <Wrench className="w-4 h-4 mr-2" />
-                      Fix Invalid Domains ({invalidDomains.length})
                     </>
                   )}
                 </Button>
@@ -385,7 +282,7 @@ const SupabaseControl = () => {
                 </span>
               </div>
 
-              {state.syncStats.failedSyncs > 0 && (
+              {state.syncStats.failedSyncs > 0 && state.isRemoteEnabled && (
                 <div className="flex items-start gap-2 mt-2 text-warning-foreground">
                   <AlertCircle className="w-4 h-4 mt-0.5" />
                   <span>
@@ -394,11 +291,11 @@ const SupabaseControl = () => {
                 </div>
               )}
               
-              {state.syncStats.totalSynced > 0 && (
+              {state.syncStats.totalSynced > 0 && state.isRemoteEnabled && (
                 <div className="flex items-start gap-2 mt-2 text-success-foreground">
                   <CheckCircle className="w-4 h-4 mt-0.5" />
                   <span>
-                    {state.syncStats.totalSynced} item(s) successfully synced.
+                    {state.syncStats.totalSynced} item(s) successfully synced to database.
                   </span>
                 </div>
               )}
@@ -441,45 +338,6 @@ const SupabaseControl = () => {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleResetAllData} className="bg-red-500 hover:bg-red-600">
               Yes, reset all data
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      
-      {/* New dialog for fixing invalid domain IDs */}
-      <AlertDialog open={isFixDomainDialogOpen} onOpenChange={setIsFixDomainDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Fix Invalid Domain IDs</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will fix {invalidDomains.length} domain(s) with invalid IDs by assigning them valid UUIDs. 
-              These domains will work with Supabase after being fixed.
-              
-              <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
-                <strong>Affected domains:</strong>
-                <ul className="mt-1 list-disc pl-5">
-                  {invalidDomains.map(domain => (
-                    <li key={domain.id}>"{domain.name}" (ID: {domain.id})</li>
-                  ))}
-                </ul>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleFixInvalidDomains} 
-              className="bg-amber-500 hover:bg-amber-600"
-              disabled={fixingDomains}
-            >
-              {fixingDomains ? (
-                <>
-                  <Loader className="w-4 h-4 mr-2 animate-spin" />
-                  Fixing...
-                </>
-              ) : (
-                'Yes, fix domains'
-              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
