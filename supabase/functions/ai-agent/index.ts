@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -144,21 +143,42 @@ function createKnowledgeRetrievalTool(knowledgeTrackingInfo: any): any {
 /**
  * Create learning generation tool entry
  */
-function createLearningGenerationTool(learningTrackingInfo: any): any {
+function createLearningGenerationTool(originalMessage: string, learningTrackingInfo: any): any {
   if (!learningTrackingInfo) return null;
+  
+  // Extract actual insight data from the learning tracking info
+  const persistResult = learningTrackingInfo.result || {};
+  const insights = persistResult.insights;
+  
+  // Parse insights if they're in string format
+  let parsedInsights = null;
+  if (typeof insights === 'string') {
+    try {
+      parsedInsights = JSON.parse(insights);
+    } catch {
+      // Keep as string if parsing fails
+    }
+  } else if (typeof insights === 'object') {
+    parsedInsights = insights;
+  }
   
   return {
     name: 'learning_generation',
     parameters: {
-      query: 'Generated learning insights from complex query',
-      complexity: learningTrackingInfo.result?.complexity || 'unknown',
-      iterations: learningTrackingInfo.result?.iterations || 1
+      query: originalMessage,
+      originalMessage: originalMessage,
+      complexity: persistResult.complexity || 'unknown',
+      iterations: persistResult.iterations || 1
     },
     result: {
-      nodeId: learningTrackingInfo.result?.nodeId,
-      insights: learningTrackingInfo.result?.insights,
-      complexity: learningTrackingInfo.result?.complexity,
-      iterations: learningTrackingInfo.result?.iterations,
+      nodeId: persistResult.nodeId,
+      insights: parsedInsights || insights || 'Generated learning insights from complex query',
+      complexity: persistResult.complexity,
+      iterations: persistResult.iterations,
+      iterationCount: persistResult.iterations,
+      domain: parsedInsights?.domain,
+      toolsUsed: persistResult.toolsInvolved || [],
+      toolsInvolved: persistResult.toolsInvolved || [],
       persistenceStatus: learningTrackingInfo.success ? 'persisted' : 'failed'
     },
     success: learningTrackingInfo.success
@@ -392,14 +412,21 @@ Continue until you have enough information for a complete answer, but prioritize
           nodeId: persistResult?.nodeId || 'unknown',
           insights: persistResult?.insights || 'Generated learning insights from complex query',
           complexity: complexityDecision.classification,
-          iterations: iteration
+          iterations: iteration,
+          toolsInvolved: Array.from(new Set(
+            accumulatedContext.flatMap(ctx => ctx.toolsUsed?.map(t => t.name) || [])
+          ))
         }
       };
     } catch (error) {
       learningTrackingInfo = {
         name: 'Learning Generation',
         success: false,
-        error: error.message || 'Failed to persist learning insights'
+        error: error.message || 'Failed to persist learning insights',
+        result: {
+          complexity: complexityDecision.classification,
+          iterations: iteration
+        }
       };
     }
   }
@@ -414,7 +441,7 @@ Continue until you have enough information for a complete answer, but prioritize
   }
   
   // Add learning generation as a tool
-  const learningTool = createLearningGenerationTool(learningTrackingInfo);
+  const learningTool = createLearningGenerationTool(message, learningTrackingInfo);
   if (learningTool) {
     allToolsUsed.push(learningTool); // Add at the end to show it was done last
   }
