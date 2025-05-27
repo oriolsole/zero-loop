@@ -21,6 +21,7 @@ const AIAgentChat: React.FC = () => {
     conversations,
     sessions,
     isLoadingSessions,
+    isCreatingSession,
     startNewSession,
     loadSession,
     addMessage,
@@ -102,7 +103,10 @@ const AIAgentChat: React.FC = () => {
   };
 
   const handleFollowUpAction = async (action: string) => {
-    if (!user || !currentSessionId) return;
+    if (!user || !currentSessionId) {
+      toast.error('Please start a new chat session first');
+      return;
+    }
 
     const followUpMessage: ConversationMessage = {
       id: Date.now().toString(),
@@ -118,7 +122,10 @@ const AIAgentChat: React.FC = () => {
   };
 
   const processMessage = async (message: string) => {
-    if (!user || !currentSessionId) return;
+    if (!user || !currentSessionId) {
+      toast.error('Please start a new chat session first');
+      return;
+    }
 
     const contextualMessage = getContextForMessage(message);
     const enhancedMessage = contextualMessage ? `${message}\n\nContext: ${contextualMessage}` : message;
@@ -231,7 +238,12 @@ const AIAgentChat: React.FC = () => {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading || !user || !currentSessionId) return;
+    if (!input.trim() || isLoading || !user) return;
+
+    if (!currentSessionId) {
+      toast.error('Please start a new chat session first');
+      return;
+    }
 
     const userMessage: ConversationMessage = {
       id: Date.now().toString(),
@@ -268,6 +280,7 @@ const AIAgentChat: React.FC = () => {
             onToggleSessions={() => setShowSessions(!showSessions)}
             onNewSession={startNewSession}
             isLoading={isLoading}
+            isCreatingSession={isCreatingSession}
           />
         </CardHeader>
         

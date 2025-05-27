@@ -3,7 +3,7 @@ import React from 'react';
 import { CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Bot, Cloud, HardDrive, Zap, Settings, MessageSquare, Plus } from 'lucide-react';
+import { Bot, Cloud, HardDrive, Zap, Settings, MessageSquare, Plus, Loader2 } from 'lucide-react';
 import { ModelProvider } from '@/services/modelProviderService';
 
 interface AIAgentHeaderProps {
@@ -15,6 +15,7 @@ interface AIAgentHeaderProps {
   onToggleSessions: () => void;
   onNewSession: () => void;
   isLoading: boolean;
+  isCreatingSession?: boolean;
 }
 
 const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
@@ -22,7 +23,8 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
   showSessions,
   onToggleSessions,
   onNewSession,
-  isLoading
+  isLoading,
+  isCreatingSession = false
 }) => {
   const getProviderIcon = (provider: ModelProvider) => {
     switch (provider) {
@@ -94,8 +96,13 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
           variant="outline"
           size="sm"
           onClick={onNewSession}
+          disabled={isCreatingSession}
         >
-          <Plus className="h-4 w-4 mr-2" />
+          {isCreatingSession ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4 mr-2" />
+          )}
           New Chat
         </Button>
       </div>
