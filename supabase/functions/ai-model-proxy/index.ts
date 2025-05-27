@@ -27,6 +27,55 @@ function ensureApiPrefix(url: string): string {
   return `${baseUrl}/v1`;
 }
 
+/**
+ * Validate and sanitize messages to prevent null content errors
+ */
+function validateAndSanitizeMessages(messages: any[]): any[] {
+  if (!Array.isArray(messages)) {
+    console.warn('Messages is not an array, returning empty array');
+    return [];
+  }
+
+  return messages
+    .filter(message => {
+      // Remove messages with completely invalid structure
+      if (!message || typeof message !== 'object') {
+        console.warn('Removing invalid message object:', message);
+        return false;
+      }
+      
+      // Ensure role is valid
+      if (!message.role || typeof message.role !== 'string') {
+        console.warn('Removing message with invalid role:', message);
+        return false;
+      }
+
+      return true;
+    })
+    .map(message => {
+      // Sanitize content
+      let content = message.content;
+      
+      if (content === null || content === undefined) {
+        console.warn(`Message with role "${message.role}" has null/undefined content, replacing with placeholder`);
+        content = `[Content unavailable for ${message.role} message]`;
+      } else if (typeof content !== 'string') {
+        console.warn(`Message with role "${message.role}" has non-string content, converting to string`);
+        content = String(content);
+      }
+      
+      // Ensure content is not empty
+      if (!content.trim()) {
+        content = `[Empty ${message.role} message]`;
+      }
+
+      return {
+        ...message,
+        content: content
+      };
+    });
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -114,16 +163,29 @@ serve(async (req) => {
         }
       }
       
-      // Default to OpenAI models
+      // Default to OpenAI models including o1 models
       return new Response(
         JSON.stringify({ 
           models: [
             { id: 'gpt-4o', name: 'GPT-4O', provider: 'openai' },
-            { id: 'gpt-4o-mini', name: 'GPT-4O Mini', provider: 'openai' }
+            { id: 'gpt-4o-mini', name: 'GPT-4O Mini', provider: 'openai' },
+            { id: 'o1-mini', name: 'O1 Mini', provider: 'openai' },
+            { id: 'o1-preview', name: 'O1 Preview', provider: 'openai' }
           ] 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+    
+    // Validate and sanitize messages before processing
+    if (requestData.messages) {
+      const originalMessageCount = requestData.messages.length;
+      requestData.messages = validateAndSanitizeMessages(requestData.messages);
+      const sanitizedMessageCount = requestData.messages.length;
+      
+      if (originalMessageCount !== sanitizedMessageCount) {
+        console.log(`Message validation: ${originalMessageCount} -> ${sanitizedMessageCount} messages`);
+      }
     }
     
     // Determine which provider to use based on request
@@ -196,7 +258,7 @@ serve(async (req) => {
         max_tokens: requestData.max_tokens || 1000
       };
 
-      // CRITICAL FIX: Add tools and tool_choice for OpenAI
+      // Add tools and tool_choice for OpenAI
       if (requestData.tools && requestData.tools.length > 0) {
         requestBody.tools = requestData.tools;
         requestBody.tool_choice = requestData.tool_choice || 'auto';

@@ -75,7 +75,7 @@ ${formattedKnowledge}
 }
 
 /**
- * Create knowledge-aware messages array for AI model
+ * Create knowledge-aware messages array for AI model with proper content validation
  */
 export function createKnowledgeAwareMessages(
   systemPrompt: string,
@@ -90,24 +90,84 @@ export function createKnowledgeAwareMessages(
     }
   ];
 
-  // Inject knowledge as assistant messages to make them feel more natural
+  // Inject knowledge as assistant messages with proper content validation
   if (relevantKnowledge && relevantKnowledge.length > 0) {
     relevantKnowledge.forEach(knowledge => {
-      messages.push({
+      // Validate knowledge content before creating message
+      let knowledgeContent = '';
+      
+      if (knowledge.snippet && typeof knowledge.snippet === 'string' && knowledge.snippet.trim()) {
+        knowledgeContent = knowledge.snippet;
+      } else if (knowledge.description && typeof knowledge.description === 'string' && knowledge.description.trim()) {
+        knowledgeContent = knowledge.description;
+      } else if (knowledge.content && typeof knowledge.content === 'string' && knowledge.content.trim()) {
+        knowledgeContent = knowledge.content;
+      } else {
+        // Fallback if no valid content is found
+        knowledgeContent = `Knowledge item: ${knowledge.title || 'Untitled'} - Content not available`;
+        console.warn('Knowledge item has no valid content:', knowledge);
+      }
+      
+      // Create the knowledge message with validated content
+      const knowledgeMessage = {
         role: 'assistant',
-        content: `From knowledge base: ${knowledge.title}\n${knowledge.snippet || knowledge.description}`
-      });
+        content: `From knowledge base: ${knowledge.title || 'Untitled Knowledge'}\n${knowledgeContent}`
+      };
+      
+      messages.push(knowledgeMessage);
     });
   }
 
-  // Add conversation history
-  messages.push(...conversationHistory);
+  // Add conversation history with validation
+  if (conversationHistory && Array.isArray(conversationHistory)) {
+    conversationHistory.forEach(historyMessage => {
+      // Validate each history message
+      if (historyMessage && typeof historyMessage === 'object' && historyMessage.role) {
+        let content = historyMessage.content;
+        
+        // Ensure content is a valid string
+        if (content === null || content === undefined) {
+          content = `[Content unavailable for ${historyMessage.role} message]`;
+          console.warn('History message has null/undefined content, using placeholder');
+        } else if (typeof content !== 'string') {
+          content = String(content);
+          console.warn('History message content was not a string, converted');
+        } else if (!content.trim()) {
+          content = `[Empty ${historyMessage.role} message]`;
+        }
+        
+        messages.push({
+          role: historyMessage.role,
+          content: content
+        });
+      } else {
+        console.warn('Invalid history message found, skipping:', historyMessage);
+      }
+    });
+  }
 
-  // Add current user message
+  // Add current user message with validation
+  let validatedUserMessage = userMessage;
+  if (!validatedUserMessage || typeof validatedUserMessage !== 'string') {
+    validatedUserMessage = String(validatedUserMessage || 'Empty message');
+    console.warn('User message was not a valid string, converted');
+  }
+  
   messages.push({
     role: 'user',
-    content: userMessage
+    content: validatedUserMessage
   });
 
-  return messages;
+  // Final validation pass - ensure all messages have valid content
+  const validatedMessages = messages.filter(msg => {
+    if (!msg || !msg.role || !msg.content || typeof msg.content !== 'string' || !msg.content.trim()) {
+      console.warn('Removing invalid message:', msg);
+      return false;
+    }
+    return true;
+  });
+
+  console.log(`Message validation: ${messages.length} -> ${validatedMessages.length} messages`);
+  
+  return validatedMessages;
 }
