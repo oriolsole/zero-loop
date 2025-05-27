@@ -3,6 +3,7 @@ import React from 'react';
 import { ModelProvider } from '@/services/modelProviderService';
 import { Bot, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 
 interface SimplifiedChatHeaderProps {
   modelSettings: {
@@ -19,6 +20,7 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
       <div className="max-w-4xl mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <SidebarTrigger />
             <div className="flex items-center justify-center w-10 h-10 bg-primary/10 rounded-xl">
               <Bot className="h-5 w-5 text-primary" />
             </div>
