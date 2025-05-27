@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
@@ -61,11 +60,20 @@ export const useLoopStore = create<LoopState>()(
         useRemoteLogging: false,
         isInitialized: false,
         
-        // Basic initialization and state setters
+        // Enhanced initialization from Supabase
         initializeFromSupabase: async () => {
+          const currentState = get();
+          
           // Skip if already initialized or Supabase not configured
-          if (get().isInitialized || !isSupabaseConfigured() || !get().useRemoteLogging) {
-            set({ isInitialized: true }); // Mark as initialized even if not using remote
+          if (!isSupabaseConfigured()) {
+            console.log('Supabase not configured, skipping remote initialization');
+            set({ isInitialized: true });
+            return;
+          }
+          
+          if (!currentState.useRemoteLogging) {
+            console.log('Remote logging disabled, skipping Supabase initialization');
+            set({ isInitialized: true });
             return;
           }
           
@@ -73,39 +81,23 @@ export const useLoopStore = create<LoopState>()(
             console.log('Initializing domains from Supabase...');
             const remoteDomains = await loadDomainsFromSupabase();
             
+            console.log(`Loaded ${remoteDomains.length} domains from Supabase:`, remoteDomains.map(d => d.name));
+            
             if (remoteDomains.length > 0) {
-              console.log(`Loaded ${remoteDomains.length} domains from Supabase`);
-              
-              // Keep local knowledge nodes and edges for each domain
-              const mergedDomains = remoteDomains.map(remoteDomain => {
-                // Find matching local domain (if any)
-                const localDomain = get().domains.find(d => d.id === remoteDomain.id);
-                
-                if (localDomain) {
-                  return {
-                    ...remoteDomain,
-                    knowledgeNodes: localDomain.knowledgeNodes,
-                    knowledgeEdges: localDomain.knowledgeEdges || []
-                  };
-                }
-                
-                return {
-                  ...remoteDomain,
-                  knowledgeNodes: [],
-                  knowledgeEdges: []
-                };
-              });
-              
-              // If there are any domains locally that don't exist in remote, add them
+              // Merge with any existing local domains, preferring remote data
+              const existingLocalDomains = currentState.domains;
               const remoteDomainIds = new Set(remoteDomains.map(d => d.id));
-              const localOnlyDomains = get().domains.filter(d => !remoteDomainIds.has(d.id));
               
-              const allDomains = [...mergedDomains, ...localOnlyDomains];
+              // Keep local domains that don't exist remotely
+              const localOnlyDomains = existingLocalDomains.filter(d => !remoteDomainIds.has(d.id));
               
-              // Set the active domain to the first one if the current one doesn't exist
-              const activeDomainExists = allDomains.some(d => d.id === get().activeDomainId);
+              // Combine remote domains with local-only domains
+              const allDomains = [...remoteDomains, ...localOnlyDomains];
+              
+              // Set the active domain to the first one if current one doesn't exist
+              const activeDomainExists = allDomains.some(d => d.id === currentState.activeDomainId);
               const newActiveDomainId = activeDomainExists 
-                ? get().activeDomainId 
+                ? currentState.activeDomainId 
                 : (allDomains[0]?.id || '');
               
               set({ 
@@ -114,32 +106,35 @@ export const useLoopStore = create<LoopState>()(
                 isInitialized: true
               });
               
-              console.log('Domains initialized from Supabase');
+              console.log(`Successfully initialized with ${allDomains.length} domains, active: ${newActiveDomainId}`);
             } else {
-              console.log('No domains found in Supabase, keeping local domains');
+              console.log('No domains found in Supabase');
               set({ isInitialized: true });
             }
           } catch (error) {
             console.error('Error initializing domains from Supabase:', error);
-            set({ isInitialized: true }); // Mark as initialized even on error
+            set({ isInitialized: true }); // Mark as initialized even on error to prevent loops
+            throw error; // Re-throw to let caller handle the error
           }
         },
         
         setActiveDomain: (domainId) => {
           // Only allow domain change when not in a running loop
           if (!get().isRunningLoop) {
+            console.log('Setting active domain:', domainId);
             set({ activeDomainId: domainId });
           }
         },
         
         setUseRemoteLogging: (useRemote) => {
-          const { isInitialized } = get();
+          console.log('Setting remote logging:', useRemote);
+          set({ useRemoteLogging: useRemote, isInitialized: false });
           
-          set({ useRemoteLogging: useRemote });
-          
-          // If enabling remote logging and not initialized, initialize from Supabase
-          if (useRemote && !isInitialized) {
-            get().initializeFromSupabase();
+          // If enabling remote logging, initialize from Supabase
+          if (useRemote) {
+            setTimeout(() => {
+              get().initializeFromSupabase().catch(console.error);
+            }, 100);
           }
         },
         
@@ -169,14 +164,9 @@ export const useLoopStore = create<LoopState>()(
       onRehydrateStorage: () => {
         return (state) => {
           if (state) {
-            // Initialize from Supabase if remote logging is enabled
-            if (state.useRemoteLogging) {
-              setTimeout(() => {
-                state.initializeFromSupabase();
-              }, 0);
-            } else {
-              state.isInitialized = true;
-            }
+            console.log('Rehydrating store from localStorage, useRemoteLogging:', state.useRemoteLogging);
+            // Reset initialization flag on rehydration
+            state.isInitialized = false;
           }
         };
       }

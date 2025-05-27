@@ -4,8 +4,6 @@ import { useLoopStore } from './useLoopStore';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
-import { getTemplateDomains } from '@/utils/templateData';
-import { saveDomainToSupabase } from '@/utils/supabase';
 
 export const useLoopStoreInit = () => {
   const { user, isLoading: authLoading } = useAuth();
@@ -14,7 +12,8 @@ export const useLoopStoreInit = () => {
     domains, 
     addNewDomain, 
     useRemoteLogging,
-    setUseRemoteLogging
+    setUseRemoteLogging,
+    isInitialized
   } = useLoopStore();
   
   const [isInitializing, setIsInitializing] = useState(true);
@@ -22,16 +21,17 @@ export const useLoopStoreInit = () => {
 
   // Initialize the store when auth state changes
   useEffect(() => {
-    // Skip if already initialized to prevent repeated initialization
-    if (hasInitialized && !authLoading) {
-      return;
-    }
-    
     const initializeStore = async () => {
       if (authLoading) return;
       
       try {
         setIsInitializing(true);
+        console.log('Starting store initialization...', { 
+          user: !!user, 
+          useRemoteLogging, 
+          isInitialized,
+          domainsCount: domains.length 
+        });
         
         if (user) {
           // If user is authenticated, enable remote logging and load from Supabase
@@ -40,62 +40,46 @@ export const useLoopStoreInit = () => {
             setUseRemoteLogging(true);
           }
           
+          // Always try to load from Supabase when user is authenticated
+          console.log('Loading domains from Supabase...');
           await initializeFromSupabase();
           
-          // If no domains were loaded from Supabase, create default template domains
-          if (domains.length === 0) {
-            console.log('No domains found, creating template domains');
-            const templateDomains = getTemplateDomains();
-            
-            // Create only the first two template domains to avoid overloading
-            const limitedDomains = templateDomains.slice(0, 2);
-            
-            // Create each template domain in Supabase and add it to the store
-            for (const domain of limitedDomains) {
-              try {
-                await saveDomainToSupabase(domain);
-                addNewDomain(domain);
-              } catch (err) {
-                console.error('Error saving domain template:', err);
-              }
-            }
-            
-            // If we created domains, note that but don't re-initialize
-            // to avoid creating an initialization loop
-            if (limitedDomains.length > 0) {
-              console.log(`Created ${limitedDomains.length} template domains`);
-            }
-          }
+          // Check if we successfully loaded domains
+          const updatedState = useLoopStore.getState();
+          console.log('Domains after Supabase load:', updatedState.domains.length);
           
-          console.log('Store initialization complete');
+          if (updatedState.domains.length === 0) {
+            console.log('No domains loaded, this might indicate an issue with Supabase connection');
+            toast.error('Failed to load learning domains. Please refresh the page or check your connection.');
+          } else {
+            console.log(`Successfully loaded ${updatedState.domains.length} domains from Supabase`);
+            toast.success(`Loaded ${updatedState.domains.length} learning domains`);
+          }
         } else {
-          // If no user, default to local storage only
+          // If no user, try local-only mode
           console.log('No user authenticated, using local storage only');
           setUseRemoteLogging(false);
           
-          // If no domains exist at all, create template domains locally
+          // For local mode, we can't access the database domains
           if (domains.length === 0) {
-            console.log('No domains found locally, creating template domains');
-            // Only create two domains to avoid overloading storage
-            const templateDomains = getTemplateDomains().slice(0, 2);
-            
-            for (const domain of templateDomains) {
-              addNewDomain(domain);
-            }
+            toast.info('Please sign in to access your learning domains');
           }
         }
         
         setHasInitialized(true);
       } catch (error) {
         console.error('Error initializing store:', error);
-        toast.error('Failed to initialize application data');
+        toast.error('Failed to initialize application data. Please refresh the page.');
       } finally {
         setIsInitializing(false);
       }
     };
     
-    initializeStore();
-  }, [user, authLoading, initializeFromSupabase, setUseRemoteLogging, domains, hasInitialized]);
+    // Only initialize once per auth state change
+    if (!hasInitialized || (user && !isInitialized)) {
+      initializeStore();
+    }
+  }, [user, authLoading, useRemoteLogging, hasInitialized, isInitialized]);
   
   return { isInitializing };
 };
