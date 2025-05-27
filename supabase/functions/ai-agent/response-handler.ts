@@ -1,9 +1,9 @@
 /**
- * Enhanced response handler with improved synthesis for data gaps
+ * Enhanced response handler with improved synthesis for data gaps and comprehensive validation
  */
 
 /**
- * Extract assistant message from AI model response
+ * Extract assistant message from AI model response with enhanced validation
  */
 export function extractAssistantMessage(response: any): string {
   try {
@@ -15,7 +15,7 @@ export function extractAssistantMessage(response: any): string {
 
     // Check for direct message content (some APIs return this directly)
     if (typeof response === 'string') {
-      return response;
+      return response.trim() || 'I apologize, but I received an empty response. Please try again.';
     }
 
     // Standard OpenAI format: response.choices[0].message.content
@@ -27,7 +27,7 @@ export function extractAssistantMessage(response: any): string {
         // If there are tool calls, return any content or indicate tool usage
         const content = choice.message?.content;
         if (content && content.trim()) {
-          return content;
+          return content.trim();
         }
         // If no content but tool calls exist, return a placeholder
         return 'Processing your request with available tools...';
@@ -35,22 +35,26 @@ export function extractAssistantMessage(response: any): string {
       
       // Standard message content
       if (choice.message?.content) {
-        return choice.message.content;
+        const content = choice.message.content.trim();
+        return content || 'I apologize, but I received an empty response. Please try again.';
       }
     }
 
     // Handle direct content field
     if (response.content) {
-      return response.content;
+      const content = String(response.content).trim();
+      return content || 'I apologize, but I received an empty response. Please try again.';
     }
 
     // Handle message field directly
     if (response.message) {
       if (typeof response.message === 'string') {
-        return response.message;
+        const content = response.message.trim();
+        return content || 'I apologize, but I received an empty response. Please try again.';
       }
       if (response.message.content) {
-        return response.message.content;
+        const content = String(response.message.content).trim();
+        return content || 'I apologize, but I received an empty response. Please try again.';
       }
     }
 
@@ -153,13 +157,13 @@ export async function synthesizeFinalResponse(
 
     const synthesizedResponse = response.data?.choices?.[0]?.message?.content;
     
-    if (!synthesizedResponse) {
+    if (!synthesizedResponse || !synthesizedResponse.trim()) {
       console.log('No synthesis response received, using fallback');
       return generateFallbackResponse(originalMessage, toolResults, knowledgeResults, toolAnalysis);
     }
 
     console.log('📋 Synthesis result: Success', `(${synthesizedResponse.length} chars)`);
-    return synthesizedResponse;
+    return synthesizedResponse.trim();
 
   } catch (error) {
     console.error('Error in synthesizeFinalResponse:', error);

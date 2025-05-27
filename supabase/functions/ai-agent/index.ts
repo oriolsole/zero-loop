@@ -20,6 +20,57 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+/**
+ * Validate and ensure response content is never null/undefined
+ */
+function validateAndEnsureContent(content: any, context: string = 'Unknown'): string {
+  // Handle null, undefined, or empty content
+  if (!content) {
+    console.error(`Content validation failed for ${context}: content is null/undefined`);
+    return `I apologize, but I encountered an issue generating a response for your request. Please try again.`;
+  }
+
+  // Handle non-string content
+  if (typeof content !== 'string') {
+    console.warn(`Content validation warning for ${context}: content is not a string, converting`);
+    const stringContent = String(content);
+    if (!stringContent.trim()) {
+      return `I apologize, but I encountered an issue generating a response for your request. Please try again.`;
+    }
+    return stringContent;
+  }
+
+  // Handle empty string content
+  if (!content.trim()) {
+    console.error(`Content validation failed for ${context}: content is empty string`);
+    return `I apologize, but I encountered an issue generating a response for your request. Please try again.`;
+  }
+
+  return content;
+}
+
+/**
+ * Enhanced assistant message extraction with validation
+ */
+function extractAndValidateAssistantMessage(response: any, context: string = 'AI Response'): string {
+  console.log(`Extracting assistant message for ${context}:`, {
+    hasResponse: !!response,
+    responseType: typeof response,
+    hasChoices: response?.choices?.length > 0
+  });
+
+  const rawContent = extractAssistantMessage(response);
+  const validatedContent = validateAndEnsureContent(rawContent, context);
+  
+  console.log(`Content validation result for ${context}:`, {
+    originalLength: rawContent?.length || 0,
+    validatedLength: validatedContent.length,
+    wasModified: rawContent !== validatedContent
+  });
+
+  return validatedContent;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -45,11 +96,12 @@ serve(async (req) => {
 
     // Store conversation in database if userId and sessionId provided (skip in test mode)
     if (userId && sessionId && !testMode) {
+      const validatedUserMessage = validateAndEnsureContent(message, 'User Message');
       await supabase.from('agent_conversations').insert({
         user_id: userId,
         session_id: sessionId,
         role: 'user',
-        content: message,
+        content: validatedUserMessage,
         created_at: new Date().toISOString()
       });
     }
@@ -275,27 +327,24 @@ Continue until you have enough information for a complete answer, but prioritize
       throw new Error(`AI Model Proxy error: ${response.error.message}`);
     }
 
-    const assistantMessage = extractAssistantMessage(response.data);
-    if (!assistantMessage) {
-      throw new Error('No valid message content received from AI model');
-    }
+    const assistantMessage = extractAndValidateAssistantMessage(response.data, `Learning Loop Iteration ${iteration}`);
 
-    console.log('🤖 Iteration', iteration, 'assistant response length:', assistantMessage.content?.length || 0);
+    console.log('🤖 Iteration', iteration, 'assistant response length:', assistantMessage.length);
 
     // Execute tools if chosen (and log potential overuse)
     let toolResults: any[] = [];
-    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-      console.log(`🛠️ Executing ${assistantMessage.tool_calls.length} tools in iteration ${iteration}`);
+    if (response.data?.choices?.[0]?.message?.tool_calls && response.data.choices[0].message.tool_calls.length > 0) {
+      console.log(`🛠️ Executing ${response.data.choices[0].message.tool_calls.length} tools in iteration ${iteration}`);
       
       // Log potential tool overuse for debugging
       logToolOveruse(
         message, 
         relevantKnowledge || [], 
-        assistantMessage.tool_calls.map((tc: any) => tc.function?.name || 'unknown')
+        response.data.choices[0].message.tool_calls.map((tc: any) => tc.function?.name || 'unknown')
       );
       
       const { toolResults: results, toolsUsed } = await executeTools(
-        assistantMessage.tool_calls,
+        response.data.choices[0].message.tool_calls,
         mcps,
         userId,
         supabase
@@ -312,14 +361,14 @@ Continue until you have enough information for a complete answer, but prioritize
       
       accumulatedContext.push({
         iteration,
-        response: assistantMessage.content,
+        response: assistantMessage,
         toolsUsed,
         toolResults: results
       });
     } else {
       accumulatedContext.push({
         iteration,
-        response: assistantMessage.content,
+        response: assistantMessage,
         reasoning: 'Used knowledge base or direct response - no tools needed'
       });
     }
@@ -328,25 +377,27 @@ Continue until you have enough information for a complete answer, but prioritize
     const shouldContinue = await evaluateIterationCompletion(
       message,
       accumulatedContext,
-      assistantMessage.content,
+      assistantMessage,
       modelSettings,
       supabase
     );
 
     if (!shouldContinue || iteration >= maxIterations) {
       stopSignalReached = true;
-      finalResponse = assistantMessage.content;
+      finalResponse = assistantMessage;
     }
   }
 
-  // 4. Synthesize final response - USE SAME LOGIC AS SIMPLE QUERIES
+  // 4. Validate final response before proceeding
+  finalResponse = validateAndEnsureContent(finalResponse, 'Complex Query Final Response');
+
+  // 5. Synthesize final response if tools were used
   if (finalToolsUsed.length > 0) {
     console.log('🧠 Synthesizing tool results for complex query:', {
       toolCount: finalToolsUsed.length,
       iterations: iteration
     });
     
-    // Use the same synthesis function as simple queries for consistency
     const synthesizedResponse = await synthesizeToolResults(
       message,
       conversationHistory,
@@ -358,11 +409,9 @@ Continue until you have enough information for a complete answer, but prioritize
     
     if (synthesizedResponse) {
       console.log('✅ Synthesis successful, response length:', synthesizedResponse.length);
-      finalResponse = synthesizedResponse;
+      finalResponse = validateAndEnsureContent(synthesizedResponse, 'Complex Query Synthesized Response');
     } else {
       console.warn('⚠️ Synthesis failed, using enhanced fallback strategy');
-      
-      // Enhanced fallback for complex queries with tool results
       finalResponse = createEnhancedFallbackResponse(message, finalToolsUsed, accumulatedContext);
     }
   } else if (accumulatedContext.length > 1) {
@@ -376,23 +425,18 @@ Continue until you have enough information for a complete answer, but prioritize
     );
     
     if (synthesisResponse) {
-      finalResponse = synthesisResponse;
+      finalResponse = validateAndEnsureContent(synthesisResponse, 'Complex Query Iterative Synthesis');
     } else {
       console.warn('⚠️ Synthesis failed. Using fallback strategy.');
-      
-      // Fallback strategy: Use the last iteration response
       const lastContext = accumulatedContext[accumulatedContext.length - 1];
-      finalResponse = lastContext?.response || 'I processed your request but encountered an issue generating the response.';
+      finalResponse = validateAndEnsureContent(lastContext?.response, 'Complex Query Last Context') || 'I processed your request but encountered an issue generating the response.';
     }
   }
 
-  // Ensure we have a meaningful response
-  if (!finalResponse || finalResponse.trim().length === 0) {
-    console.warn('⚠️ No final response generated. Using emergency fallback.');
-    finalResponse = createEnhancedFallbackResponse(message, finalToolsUsed, accumulatedContext);
-  }
+  // Final validation before persistence
+  finalResponse = validateAndEnsureContent(finalResponse, 'Complex Query Pre-Persistence');
 
-  // 5. Persist valuable insights as knowledge nodes
+  // 6. Persist valuable insights as knowledge nodes
   let learningTrackingInfo = null;
   if (userId && accumulatedContext.length > 0) {
     try {
@@ -431,7 +475,7 @@ Continue until you have enough information for a complete answer, but prioritize
     }
   }
 
-  // 6. Create tool entries for knowledge and learning operations
+  // 7. Create tool entries for knowledge and learning operations
   const allToolsUsed = [...finalToolsUsed];
   
   // Add knowledge retrieval as a tool
@@ -446,13 +490,14 @@ Continue until you have enough information for a complete answer, but prioritize
     allToolsUsed.push(learningTool); // Add at the end to show it was done last
   }
 
-  // 7. Store final response with comprehensive tool tracking
+  // 8. Store final response with comprehensive tool tracking and validation
   if (userId && sessionId) {
+    const validatedFinalResponse = validateAndEnsureContent(finalResponse, 'Complex Query Database Storage');
     await supabase.from('agent_conversations').insert({
       user_id: userId,
       session_id: sessionId,
       role: 'assistant',
-      content: finalResponse,
+      content: validatedFinalResponse,
       tools_used: allToolsUsed,
       ai_reasoning: complexityDecision.reasoning,
       created_at: new Date().toISOString()
@@ -495,12 +540,12 @@ function createEnhancedFallbackResponse(message: string, toolsUsed: any[], accum
       }
     }
     
-    return response || 'I was able to gather information but encountered an issue formatting the response.';
+    return validateAndEnsureContent(response, 'Enhanced Fallback with Tools') || 'I was able to gather information but encountered an issue formatting the response.';
   }
   
   if (accumulatedContext.length > 0) {
     const lastContext = accumulatedContext[accumulatedContext.length - 1];
-    return lastContext?.response || 'I processed your request through multiple steps but encountered an issue creating the final summary.';
+    return validateAndEnsureContent(lastContext?.response, 'Enhanced Fallback Last Context') || 'I processed your request through multiple steps but encountered an issue creating the final summary.';
   }
   
   return 'I attempted to process your request but encountered technical difficulties. Please try again.';
@@ -549,7 +594,7 @@ function formatJiraResult(result: any): string {
 }
 
 /**
- * Handle simple queries using knowledge-first approach
+ * Handle simple queries using knowledge-first approach with enhanced validation
  */
 async function handleSimpleQueryWithKnowledgeFirst(
   message: string,
@@ -621,27 +666,22 @@ async function handleSimpleQueryWithKnowledgeFirst(
     });
   }
 
-  const assistantMessage = extractAssistantMessage(data);
-  if (!assistantMessage) {
-    throw new Error('No valid message content received from AI model');
-  }
-
-  let finalResponse = assistantMessage.content;
+  let finalResponse = extractAndValidateAssistantMessage(data, 'Simple Query Initial Response');
   let toolsUsed: any[] = [];
 
   // Execute tools if the model chose to use them (log potential overuse)
-  if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+  if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
     console.log('🛠️ AI chose to use tools despite knowledge being available');
     
     // Log potential tool overuse for debugging
     logToolOveruse(
       message, 
       relevantKnowledge || [], 
-      assistantMessage.tool_calls.map((tc: any) => tc.function?.name || 'unknown')
+      data.choices[0].message.tool_calls.map((tc: any) => tc.function?.name || 'unknown')
     );
     
     const { toolResults, toolsUsed: executedTools } = await executeTools(
-      assistantMessage.tool_calls,
+      data.choices[0].message.tool_calls,
       mcps,
       userId,
       supabase
@@ -654,17 +694,20 @@ async function handleSimpleQueryWithKnowledgeFirst(
       message,
       conversationHistory,
       toolsUsed,
-      assistantMessage.content,
+      finalResponse,
       modelSettings,
       supabase
     );
     
     if (synthesizedResponse) {
-      finalResponse = synthesizedResponse;
+      finalResponse = validateAndEnsureContent(synthesizedResponse, 'Simple Query Synthesized Response');
     }
   } else {
     console.log('✅ AI used knowledge base appropriately - no tools needed');
   }
+
+  // Final validation before database storage
+  finalResponse = validateAndEnsureContent(finalResponse, 'Simple Query Pre-Database');
 
   // Create comprehensive tools list including knowledge retrieval
   const allToolsUsed = [...toolsUsed];
@@ -675,13 +718,14 @@ async function handleSimpleQueryWithKnowledgeFirst(
     allToolsUsed.unshift(knowledgeTool); // Add at the beginning to show it was used first
   }
 
-  // Store assistant response in database with comprehensive tool tracking
+  // Store assistant response in database with comprehensive tool tracking and validation
   if (userId && sessionId) {
+    const validatedFinalResponse = validateAndEnsureContent(finalResponse, 'Simple Query Database Storage');
     await supabase.from('agent_conversations').insert({
       user_id: userId,
       session_id: sessionId,
       role: 'assistant',
-      content: finalResponse,
+      content: validatedFinalResponse,
       tools_used: allToolsUsed,
       created_at: new Date().toISOString()
     });
@@ -763,10 +807,10 @@ async function evaluateIterationCompletion(
       return false; // Stop on error
     }
 
-    const evaluationMessage = extractAssistantMessage(response.data);
-    if (evaluationMessage?.content) {
+    const evaluationMessage = extractAndValidateAssistantMessage(response.data, 'Iteration Evaluation');
+    if (evaluationMessage) {
       try {
-        const evaluation = JSON.parse(evaluationMessage.content);
+        const evaluation = JSON.parse(evaluationMessage);
         console.log('Iteration evaluation:', evaluation);
         return evaluation.continue === true;
       } catch (parseError) {
@@ -846,13 +890,13 @@ async function synthesizeIterativeResults(
 
     console.log('📥 Synthesis response received:', response.data ? 'Success' : 'No data');
 
-    const synthesisMessage = extractAssistantMessage(response.data);
+    const synthesisMessage = extractAndValidateAssistantMessage(response.data, 'Iterative Synthesis');
     
-    if (synthesisMessage?.content) {
-      console.log('✅ Synthesis successful, content length:', synthesisMessage.content.length);
-      return synthesisMessage.content;
+    if (synthesisMessage) {
+      console.log('✅ Synthesis successful, content length:', synthesisMessage.length);
+      return synthesisMessage;
     } else {
-      console.warn('⚠️ No content in synthesis message:', synthesisMessage);
+      console.warn('⚠️ No content in synthesis message');
       return null;
     }
 
@@ -925,12 +969,11 @@ Give a clear, human-readable answer based on this information. Format the respon
       return null;
     }
     
-    const synthesisMessage = extractAssistantMessage(synthesisResponse.data);
-    const result = synthesisMessage?.content || null;
+    const synthesisMessage = extractAndValidateAssistantMessage(synthesisResponse.data, 'Tool Results Synthesis');
     
-    console.log('📋 Synthesis result:', result ? `Success (${result.length} chars)` : 'Failed');
+    console.log('📋 Synthesis result:', synthesisMessage ? `Success (${synthesisMessage.length} chars)` : 'Failed');
     
-    return result;
+    return synthesisMessage;
     
   } catch (error) {
     console.error('Error in synthesis:', error);
