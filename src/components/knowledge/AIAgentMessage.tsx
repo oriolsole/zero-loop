@@ -9,6 +9,7 @@ import { ConversationMessage } from '@/hooks/useAgentConversation';
 import MarkdownRenderer from './MarkdownRenderer';
 import KnowledgeToolResult from './KnowledgeToolResult';
 import FollowUpSnippets from './FollowUpSnippets';
+import ThinkingMessage from './ThinkingMessage';
 import { toast } from '@/components/ui/sonner';
 
 interface AIAgentMessageProps {
@@ -24,6 +25,21 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   const formatTimestamp = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
+
+  // Handle thinking message types
+  if (message.messageType === 'step-announcement' || 
+      message.messageType === 'partial-result' || 
+      message.messageType === 'tool-announcement') {
+    return (
+      <ThinkingMessage 
+        type={message.messageType}
+        content={message.content}
+        timestamp={message.timestamp}
+        toolName={message.toolName}
+        toolAction={message.toolAction}
+      />
+    );
+  }
 
   const getMessageStyle = () => {
     if (message.role === 'user') return 'bg-primary text-primary-foreground ml-16 shadow-sm';

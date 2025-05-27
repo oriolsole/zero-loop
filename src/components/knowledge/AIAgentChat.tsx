@@ -34,7 +34,6 @@ const AIAgentChat: React.FC = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [workingStatus, setWorkingStatus] = useState('Processing your request...');
   const [currentTool, setCurrentTool] = useState<string | undefined>();
-  const [toolProgress, setToolProgress] = useState<number | undefined>();
 
   const {
     tools,
@@ -104,6 +103,32 @@ const AIAgentChat: React.FC = () => {
       const parsed = JSON.parse(line);
       console.log('Parsed streaming chunk:', parsed);
       
+      // Handle thinking step messages - add them as individual chat messages
+      if (parsed.type === 'step-announcement' || 
+          parsed.type === 'partial-result' || 
+          parsed.type === 'tool-announcement') {
+        
+        const thinkingMessage: ConversationMessage = {
+          id: parsed.id || `thinking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          role: 'assistant',
+          content: parsed.content,
+          timestamp: new Date(parsed.timestamp || Date.now()),
+          messageType: parsed.type,
+          toolName: parsed.toolName,
+          toolAction: parsed.toolAction
+        };
+        
+        addMessage(thinkingMessage);
+        console.log('Added thinking message:', thinkingMessage);
+        
+        // Also update working status for live feedback
+        if (parsed.type === 'step-announcement') {
+          setWorkingStatus(parsed.content);
+        }
+        
+        return { type: 'thinking-message', data: thinkingMessage };
+      }
+      
       // Handle tool announcements
       if (parsed.type === 'tool-announcement') {
         console.log('Tool announced:', parsed.toolName);
@@ -113,29 +138,12 @@ const AIAgentChat: React.FC = () => {
           {}
         );
         setCurrentTool(parsed.toolName);
-        setWorkingStatus(parsed.content || `Using ${getToolDisplayName(parsed.toolName || 'unknown')}...`);
         return { type: 'tool-start', toolId, toolName: parsed.toolName };
-      }
-      
-      // Handle step announcements
-      if (parsed.type === 'step-announcement') {
-        console.log('Step announced:', parsed.content);
-        setWorkingStatus(parsed.content);
-        return { type: 'step-update', content: parsed.content };
-      }
-      
-      // Handle partial results
-      if (parsed.type === 'partial-result') {
-        console.log('Partial result:', parsed.content);
-        setWorkingStatus(parsed.content);
-        return { type: 'partial-result', content: parsed.content };
       }
       
       // Handle progress updates
       if (parsed.progress !== undefined) {
         console.log('Progress update:', parsed.progress);
-        setToolProgress(parsed.progress);
-        // Update tool progress if we have an active tool
         const activeTool = tools.find(t => t.status === 'executing');
         if (activeTool) {
           updateToolProgress(activeTool.id, parsed.progress);
@@ -183,7 +191,6 @@ const AIAgentChat: React.FC = () => {
     setIsStreaming(true);
     setWorkingStatus('Analyzing your request...');
     setCurrentTool(undefined);
-    setToolProgress(undefined);
     clearTools();
 
     console.log('Starting message processing:', { message, enhancedMessage });
@@ -324,7 +331,6 @@ const AIAgentChat: React.FC = () => {
       setIsStreaming(false);
       setWorkingStatus('Processing your request...');
       setCurrentTool(undefined);
-      setToolProgress(undefined);
     }
   };
 
@@ -379,7 +385,7 @@ const AIAgentChat: React.FC = () => {
           isStreaming={isStreaming}
           workingStatus={workingStatus}
           currentTool={currentTool}
-          toolProgress={toolProgress}
+          toolProgress={undefined}
         />
         
         <SimplifiedChatInput
