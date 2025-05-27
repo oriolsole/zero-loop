@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -86,7 +85,10 @@ export const useAgentConversation = () => {
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading sessions:', error);
+        return;
+      }
 
       if (sessionData && sessionData.length > 0) {
         // Group messages by session_id and create session metadata
