@@ -21,31 +21,44 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 /**
- * Validate and ensure response content is never null/undefined
+ * Enhanced content validation with guaranteed non-null response
  */
 function validateAndEnsureContent(content: any, context: string = 'Unknown'): string {
-  // Handle null, undefined, or empty content
+  console.log(`[CONTENT_VALIDATION] Validating content for ${context}:`, {
+    contentType: typeof content,
+    contentLength: content?.length || 0,
+    isNull: content === null,
+    isUndefined: content === undefined,
+    isEmpty: !content || content.trim?.() === ''
+  });
+
+  // Handle null, undefined, or empty content with specific fallback messages
   if (!content) {
-    console.error(`Content validation failed for ${context}: content is null/undefined`);
-    return `I apologize, but I encountered an issue generating a response for your request. Please try again.`;
+    const fallbackMessage = `I apologize, but I encountered an issue generating a response for your request (${context}). Please try again or rephrase your question.`;
+    console.error(`[CONTENT_VALIDATION] Content validation failed for ${context}: content is null/undefined, using fallback`);
+    return fallbackMessage;
   }
 
   // Handle non-string content
   if (typeof content !== 'string') {
-    console.warn(`Content validation warning for ${context}: content is not a string, converting`);
+    console.warn(`[CONTENT_VALIDATION] Content validation warning for ${context}: content is not a string, converting`);
     const stringContent = String(content);
     if (!stringContent.trim()) {
-      return `I apologize, but I encountered an issue generating a response for your request. Please try again.`;
+      const fallbackMessage = `I processed your request but encountered an issue formatting the response (${context}). Please try again.`;
+      console.error(`[CONTENT_VALIDATION] Converted content is empty for ${context}, using fallback`);
+      return fallbackMessage;
     }
     return stringContent;
   }
 
   // Handle empty string content
   if (!content.trim()) {
-    console.error(`Content validation failed for ${context}: content is empty string`);
-    return `I apologize, but I encountered an issue generating a response for your request. Please try again.`;
+    const fallbackMessage = `I received your request but generated an empty response (${context}). Please try rephrasing your question.`;
+    console.error(`[CONTENT_VALIDATION] Content validation failed for ${context}: content is empty string, using fallback`);
+    return fallbackMessage;
   }
 
+  console.log(`[CONTENT_VALIDATION] Content validation successful for ${context}: ${content.length} characters`);
   return content;
 }
 
@@ -53,22 +66,46 @@ function validateAndEnsureContent(content: any, context: string = 'Unknown'): st
  * Enhanced assistant message extraction with validation
  */
 function extractAndValidateAssistantMessage(response: any, context: string = 'AI Response'): string {
-  console.log(`Extracting assistant message for ${context}:`, {
+  console.log(`[MESSAGE_EXTRACTION] Extracting assistant message for ${context}:`, {
     hasResponse: !!response,
     responseType: typeof response,
     hasChoices: response?.choices?.length > 0
   });
 
-  const rawContent = extractAssistantMessage(response);
-  const validatedContent = validateAndEnsureContent(rawContent, context);
-  
-  console.log(`Content validation result for ${context}:`, {
-    originalLength: rawContent?.length || 0,
-    validatedLength: validatedContent.length,
-    wasModified: rawContent !== validatedContent
+  try {
+    const rawContent = extractAssistantMessage(response);
+    const validatedContent = validateAndEnsureContent(rawContent, context);
+    
+    console.log(`[MESSAGE_EXTRACTION] Extraction result for ${context}:`, {
+      originalLength: rawContent?.length || 0,
+      validatedLength: validatedContent.length,
+      wasModified: rawContent !== validatedContent
+    });
+
+    return validatedContent;
+  } catch (error) {
+    console.error(`[MESSAGE_EXTRACTION] Error extracting message for ${context}:`, error);
+    return `I encountered an error processing the AI response (${context}). Please try your request again.`;
+  }
+}
+
+/**
+ * Absolute final validation before database insertion
+ */
+function finalDatabaseValidation(content: string, context: string): string {
+  console.log(`[DB_VALIDATION] Final database validation for ${context}:`, {
+    contentType: typeof content,
+    contentLength: content?.length || 0,
+    isValidString: typeof content === 'string' && content.trim().length > 0
   });
 
-  return validatedContent;
+  if (!content || typeof content !== 'string' || !content.trim()) {
+    const emergencyFallback = `I processed your request but encountered a technical issue preparing the response for storage. Your query was received and understood, but I cannot provide the specific answer at this moment. Please try again.`;
+    console.error(`[DB_VALIDATION] EMERGENCY FALLBACK ACTIVATED for ${context} - original content was invalid:`, content);
+    return emergencyFallback;
+  }
+
+  return content;
 }
 
 serve(async (req) => {
@@ -525,72 +562,118 @@ Continue until you have enough information for a complete answer, but prioritize
 }
 
 /**
- * Enhanced fallback response generator for complex queries
+ * Enhanced fallback response generator that guarantees a non-null string
  */
 function createEnhancedFallbackResponse(message: string, toolsUsed: any[], accumulatedContext: any[]): string {
-  console.log('🔧 Creating enhanced fallback response');
+  console.log('🔧 Creating enhanced fallback response for message:', message);
   
-  if (toolsUsed.length > 0) {
-    // Format tool results into a readable response
-    let response = `Here are the results for "${message}":\n\n`;
-    
-    for (const tool of toolsUsed) {
-      if (tool.success && tool.result) {
-        response += formatToolResult(tool.name, tool.result);
+  try {
+    if (toolsUsed && toolsUsed.length > 0) {
+      // Format tool results into a readable response
+      let response = `Here are the results for "${message}":\n\n`;
+      
+      let hasValidResults = false;
+      for (const tool of toolsUsed) {
+        if (tool && tool.success && tool.result) {
+          const formattedResult = formatToolResult(tool.name, tool.result);
+          if (formattedResult && formattedResult.trim()) {
+            response += formattedResult;
+            hasValidResults = true;
+          }
+        }
+      }
+      
+      if (hasValidResults) {
+        return validateAndEnsureContent(response, 'Enhanced Fallback with Tools');
       }
     }
     
-    return validateAndEnsureContent(response, 'Enhanced Fallback with Tools') || 'I was able to gather information but encountered an issue formatting the response.';
+    if (accumulatedContext && accumulatedContext.length > 0) {
+      const lastContext = accumulatedContext[accumulatedContext.length - 1];
+      if (lastContext && lastContext.response) {
+        return validateAndEnsureContent(lastContext.response, 'Enhanced Fallback Last Context');
+      }
+    }
+    
+    // Final guarantee - return a meaningful message about the user's query
+    return `I received your message "${message}" and attempted to process it, but encountered technical difficulties generating a complete response. Please try rephrasing your question or try again in a moment.`;
+    
+  } catch (error) {
+    console.error('🔧 Error in createEnhancedFallbackResponse:', error);
+    // Emergency fallback - guaranteed to work
+    return `I'm experiencing technical difficulties processing your request "${message}". Please try again.`;
   }
-  
-  if (accumulatedContext.length > 0) {
-    const lastContext = accumulatedContext[accumulatedContext.length - 1];
-    return validateAndEnsureContent(lastContext?.response, 'Enhanced Fallback Last Context') || 'I processed your request through multiple steps but encountered an issue creating the final summary.';
-  }
-  
-  return 'I attempted to process your request but encountered technical difficulties. Please try again.';
 }
 
 /**
- * Format tool results into human-readable text
+ * Format tool results into human-readable text with guaranteed output
  */
 function formatToolResult(toolName: string, result: any): string {
-  if (toolName.includes('jira')) {
-    return formatJiraResult(result);
+  try {
+    if (!toolName || !result) {
+      return `Tool result: No data available\n\n`;
+    }
+
+    if (toolName.includes('jira')) {
+      return formatJiraResult(result);
+    }
+    
+    if (typeof result === 'string' && result.trim()) {
+      return result.trim() + '\n\n';
+    }
+    
+    if (Array.isArray(result)) {
+      if (result.length === 0) {
+        return `${toolName}: No results found\n\n`;
+      }
+      return result.map(item => 
+        typeof item === 'string' ? item : JSON.stringify(item, null, 2)
+      ).join('\n') + '\n\n';
+    }
+    
+    if (typeof result === 'object') {
+      return JSON.stringify(result, null, 2) + '\n\n';
+    }
+    
+    return `${toolName}: ${String(result)}\n\n`;
+  } catch (error) {
+    console.error('Error formatting tool result:', error);
+    return `${toolName || 'Tool'}: Error formatting result\n\n`;
   }
-  
-  if (typeof result === 'string') {
-    return result + '\n\n';
-  }
-  
-  if (Array.isArray(result)) {
-    return result.map(item => typeof item === 'string' ? item : JSON.stringify(item, null, 2)).join('\n') + '\n\n';
-  }
-  
-  return JSON.stringify(result, null, 2) + '\n\n';
 }
 
 /**
- * Format Jira results into readable lists
+ * Format Jira results into readable lists with guaranteed output
  */
 function formatJiraResult(result: any): string {
-  if (Array.isArray(result)) {
-    if (result.length === 0) {
-      return 'No projects found.\n\n';
+  try {
+    if (!result) {
+      return 'No Jira data available.\n\n';
+    }
+
+    if (Array.isArray(result)) {
+      if (result.length === 0) {
+        return 'No Jira projects found.\n\n';
+      }
+      
+      let response = 'Available Jira Projects:\n\n';
+      for (const project of result) {
+        if (project && typeof project === 'object') {
+          response += `• **${project.name || 'Unknown'}** (${project.key || 'N/A'})`;
+          if (project.projectTypeKey) {
+            response += ` - ${project.projectTypeKey}`;
+          }
+          response += '\n';
+        }
+      }
+      return response + '\n';
     }
     
-    let response = 'Available Jira Projects:\n\n';
-    for (const project of result) {
-      response += `• **${project.name}** (${project.key})`;
-      if (project.projectTypeKey) {
-        response += ` - ${project.projectTypeKey}`;
-      }
-      response += '\n';
-    }
-    return response + '\n';
+    return JSON.stringify(result, null, 2) + '\n\n';
+  } catch (error) {
+    console.error('Error formatting Jira result:', error);
+    return 'Error formatting Jira results.\n\n';
   }
-  
-  return JSON.stringify(result, null, 2) + '\n\n';
 }
 
 /**
@@ -607,146 +690,195 @@ async function handleSimpleQueryWithKnowledgeFirst(
 ): Promise<Response> {
   console.log('📝 Handling simple query with knowledge-first approach');
 
-  // 1. FIRST: Retrieve relevant knowledge with tracking
-  const { knowledge: relevantKnowledge, trackingInfo: knowledgeTrackingInfo } = await getRelevantKnowledge(message, userId, supabase);
-  console.log('📚 Retrieved knowledge for simple query:', relevantKnowledge?.length || 0, 'items');
+  let finalResponse = '';
 
-  // 2. Fetch available MCPs 
-  const { data: mcps, error: mcpError } = await supabase
-    .from('mcps')
-    .select('*')
-    .eq('isDefault', true)
-    .in('default_key', ['web-search', 'github-tools', 'knowledge-search', 'jira-tools', 'web-scraper']);
+  try {
+    // 1. FIRST: Retrieve relevant knowledge with tracking
+    const { knowledge: relevantKnowledge, trackingInfo: knowledgeTrackingInfo } = await getRelevantKnowledge(message, userId, supabase);
+    console.log('📚 Retrieved knowledge for simple query:', relevantKnowledge?.length || 0, 'items');
 
-  if (mcpError) {
-    throw new Error('Failed to fetch available tools');
-  }
+    // 2. Fetch available MCPs 
+    const { data: mcps, error: mcpError } = await supabase
+      .from('mcps')
+      .select('*')
+      .eq('isDefault', true)
+      .in('default_key', ['web-search', 'github-tools', 'knowledge-search', 'jira-tools', 'web-scraper']);
 
-  const tools = convertMCPsToTools(mcps);
-  const systemPrompt = generateSystemPrompt(mcps, relevantKnowledge);
-
-  // 3. Prepare knowledge-aware messages
-  const messages = createKnowledgeAwareMessages(
-    systemPrompt,
-    conversationHistory,
-    message,
-    relevantKnowledge
-  );
-
-  const modelRequestBody = {
-    messages,
-    tools: tools.length > 0 ? tools : undefined,
-    tool_choice: 'auto',
-    temperature: 0.7,
-    max_tokens: 2000,
-    stream: streaming,
-    ...(modelSettings && {
-      provider: modelSettings.provider,
-      model: modelSettings.selectedModel,
-      localModelUrl: modelSettings.localModelUrl
-    })
-  };
-
-  const response = await supabase.functions.invoke('ai-model-proxy', {
-    body: modelRequestBody
-  });
-
-  if (response.error) {
-    throw new Error(`AI Model Proxy error: ${response.error.message}`);
-  }
-
-  const data = response.data;
-
-  if (streaming) {
-    return new Response(JSON.stringify(data), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
-      },
-    });
-  }
-
-  let finalResponse = extractAndValidateAssistantMessage(data, 'Simple Query Initial Response');
-  let toolsUsed: any[] = [];
-
-  // Execute tools if the model chose to use them (log potential overuse)
-  if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
-    console.log('🛠️ AI chose to use tools despite knowledge being available');
-    
-    // Log potential tool overuse for debugging
-    logToolOveruse(
-      message, 
-      relevantKnowledge || [], 
-      data.choices[0].message.tool_calls.map((tc: any) => tc.function?.name || 'unknown')
-    );
-    
-    const { toolResults, toolsUsed: executedTools } = await executeTools(
-      data.choices[0].message.tool_calls,
-      mcps,
-      userId,
-      supabase
-    );
-    
-    toolsUsed = executedTools;
-    
-    // Make synthesis call with tool results
-    const synthesizedResponse = await synthesizeToolResults(
-      message,
-      conversationHistory,
-      toolsUsed,
-      finalResponse,
-      modelSettings,
-      supabase
-    );
-    
-    if (synthesizedResponse) {
-      finalResponse = validateAndEnsureContent(synthesizedResponse, 'Simple Query Synthesized Response');
+    if (mcpError) {
+      throw new Error('Failed to fetch available tools');
     }
-  } else {
-    console.log('✅ AI used knowledge base appropriately - no tools needed');
-  }
 
-  // Final validation before database storage
-  finalResponse = validateAndEnsureContent(finalResponse, 'Simple Query Pre-Database');
+    const tools = convertMCPsToTools(mcps);
+    const systemPrompt = generateSystemPrompt(mcps, relevantKnowledge);
 
-  // Create comprehensive tools list including knowledge retrieval
-  const allToolsUsed = [...toolsUsed];
-  
-  // Add knowledge retrieval as a tool
-  const knowledgeTool = createKnowledgeRetrievalTool(knowledgeTrackingInfo);
-  if (knowledgeTool) {
-    allToolsUsed.unshift(knowledgeTool); // Add at the beginning to show it was used first
-  }
+    // 3. Prepare knowledge-aware messages
+    const messages = createKnowledgeAwareMessages(
+      systemPrompt,
+      conversationHistory,
+      message,
+      relevantKnowledge
+    );
 
-  // Store assistant response in database with comprehensive tool tracking and validation
-  if (userId && sessionId) {
-    const validatedFinalResponse = validateAndEnsureContent(finalResponse, 'Simple Query Database Storage');
-    await supabase.from('agent_conversations').insert({
-      user_id: userId,
-      session_id: sessionId,
-      role: 'assistant',
-      content: validatedFinalResponse,
-      tools_used: allToolsUsed,
-      created_at: new Date().toISOString()
+    const modelRequestBody = {
+      messages,
+      tools: tools.length > 0 ? tools : undefined,
+      tool_choice: 'auto',
+      temperature: 0.7,
+      max_tokens: 2000,
+      stream: streaming,
+      ...(modelSettings && {
+        provider: modelSettings.provider,
+        model: modelSettings.selectedModel,
+        localModelUrl: modelSettings.localModelUrl
+      })
+    };
+
+    const response = await supabase.functions.invoke('ai-model-proxy', {
+      body: modelRequestBody
     });
-  }
 
-  return new Response(
-    JSON.stringify({
-      success: true,
-      message: finalResponse,
-      learningLoopUsed: false,
-      knowledgeUsed: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : [],
-      toolsUsed: allToolsUsed.map(t => ({
-        name: t.name,
-        parameters: t.parameters,
-        success: t.success,
-        result: t.result
-      })),
-      sessionId
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+    if (response.error) {
+      throw new Error(`AI Model Proxy error: ${response.error.message}`);
+    }
+
+    const data = response.data;
+
+    if (streaming) {
+      return new Response(JSON.stringify(data), {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+      });
+    }
+
+    finalResponse = extractAndValidateAssistantMessage(data, 'Simple Query Initial Response');
+    let toolsUsed: any[] = [];
+
+    // Execute tools if the model chose to use them (log potential overuse)
+    if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
+      console.log('🛠️ AI chose to use tools despite knowledge being available');
+      
+      // Log potential tool overuse for debugging
+      logToolOveruse(
+        message, 
+        relevantKnowledge || [], 
+        data.choices[0].message.tool_calls.map((tc: any) => tc.function?.name || 'unknown')
+      );
+      
+      const { toolResults, toolsUsed: executedTools } = await executeTools(
+        data.choices[0].message.tool_calls,
+        mcps,
+        userId,
+        supabase
+      );
+      
+      toolsUsed = executedTools;
+      
+      // Make synthesis call with tool results
+      const synthesizedResponse = await synthesizeToolResults(
+        message,
+        conversationHistory,
+        toolsUsed,
+        finalResponse,
+        modelSettings,
+        supabase
+      );
+      
+      if (synthesizedResponse && synthesizedResponse.trim()) {
+        finalResponse = validateAndEnsureContent(synthesizedResponse, 'Simple Query Synthesized Response');
+      }
+    } else {
+      console.log('✅ AI used knowledge base appropriately - no tools needed');
+    }
+
+    // Enhanced fallback if we still don't have a valid response
+    if (!finalResponse || !finalResponse.trim()) {
+      console.warn('⚠️ No valid response after all processing steps, using enhanced fallback');
+      finalResponse = createEnhancedFallbackResponse(message, toolsUsed, []);
+    }
+
+    // Create comprehensive tools list including knowledge retrieval
+    const allToolsUsed = [...toolsUsed];
+    
+    // Add knowledge retrieval as a tool
+    const knowledgeTool = createKnowledgeRetrievalTool(knowledgeTrackingInfo);
+    if (knowledgeTool) {
+      allToolsUsed.unshift(knowledgeTool); // Add at the beginning to show it was used first
+    }
+
+    // FINAL VALIDATION before database storage
+    finalResponse = finalDatabaseValidation(finalResponse, 'Simple Query Final Database Validation');
+
+    // Store assistant response in database with comprehensive tool tracking and validation
+    if (userId && sessionId) {
+      console.log(`[DB_INSERT] Inserting response for simple query - length: ${finalResponse.length}`);
+      await supabase.from('agent_conversations').insert({
+        user_id: userId,
+        session_id: sessionId,
+        role: 'assistant',
+        content: finalResponse,
+        tools_used: allToolsUsed,
+        created_at: new Date().toISOString()
+      });
+      console.log(`[DB_INSERT] Successfully inserted response to database`);
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: finalResponse,
+        learningLoopUsed: false,
+        knowledgeUsed: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : [],
+        toolsUsed: allToolsUsed.map(t => ({
+          name: t.name,
+          parameters: t.parameters,
+          success: t.success,
+          result: t.result
+        })),
+        sessionId
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('❌ Error in handleSimpleQueryWithKnowledgeFirst:', error);
+    
+    // Emergency fallback response
+    finalResponse = `I apologize, but I encountered an error while processing your message "${message}". Please try again or rephrase your question.`;
+    finalResponse = finalDatabaseValidation(finalResponse, 'Simple Query Error Fallback');
+    
+    // Still try to store the fallback response if possible
+    if (userId && sessionId) {
+      try {
+        console.log(`[DB_INSERT] Inserting error fallback response - length: ${finalResponse.length}`);
+        await supabase.from('agent_conversations').insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'assistant',
+          content: finalResponse,
+          tools_used: [],
+          created_at: new Date().toISOString()
+        });
+        console.log(`[DB_INSERT] Successfully inserted error fallback to database`);
+      } catch (dbError) {
+        console.error('❌ Failed to insert error fallback to database:', dbError);
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true, // Still return success so user sees the message
+        message: finalResponse,
+        learningLoopUsed: false,
+        knowledgeUsed: [],
+        toolsUsed: [],
+        sessionId,
+        error: 'Partial processing completed with fallback response'
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 }
 
 /**
