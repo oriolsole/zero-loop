@@ -12,7 +12,7 @@ export async function persistInsightAsKnowledgeNode(
   userId: string,
   complexityDecision: any,
   supabase: any
-): Promise<boolean> {
+): Promise<{ success: boolean; nodeId?: string; insight?: any }> {
   try {
     console.log('Persisting insights as knowledge node...');
 
@@ -27,14 +27,14 @@ export async function persistInsightAsKnowledgeNode(
 
     if (!insight) {
       console.log('No significant insight generated, skipping persistence');
-      return false;
+      return { success: false };
     }
 
     // Check if similar knowledge already exists
     const existingSimilar = await checkForSimilarKnowledge(insight.title, userId, supabase);
     if (existingSimilar) {
       console.log('Similar knowledge already exists, skipping persistence');
-      return false;
+      return { success: false };
     }
 
     // Create knowledge node
@@ -64,7 +64,7 @@ export async function persistInsightAsKnowledgeNode(
 
     if (nodeError) {
       console.error('Error creating knowledge node:', nodeError);
-      return false;
+      return { success: false };
     }
 
     console.log('Successfully persisted knowledge node:', nodeId);
@@ -78,10 +78,25 @@ export async function persistInsightAsKnowledgeNode(
       supabase
     );
 
-    return true;
+    // Return the full insight object along with success and nodeId
+    return { 
+      success: true, 
+      nodeId,
+      insight: {
+        title: insight.title,
+        description: insight.description,
+        type: insight.type,
+        domain: insight.domain,
+        confidence: insight.confidence,
+        reasoning: insight.reasoning,
+        tags: insight.tags || [],
+        toolsInvolved: insight.toolsInvolved || [],
+        iterations: accumulatedContext.length
+      }
+    };
   } catch (error) {
     console.error('Error persisting insight as knowledge node:', error);
-    return false;
+    return { success: false };
   }
 }
 

@@ -21,6 +21,18 @@ export interface Tool extends BaseToolItem {
   success?: boolean;
 }
 
+export interface LearningInsight {
+  title: string;
+  description: string;
+  type: string;
+  domain: string;
+  confidence: number;
+  reasoning: string;
+  tags: string[];
+  toolsInvolved: string[];
+  iterations: number;
+}
+
 export interface KnowledgeToolResult {
   name: 'knowledge_retrieval' | 'learning_generation';
   parameters: Record<string, any>;
@@ -39,7 +51,7 @@ export interface KnowledgeToolResult {
     returnedResults?: number;
     message?: string;
     nodeId?: string;
-    insights?: string;
+    insight?: LearningInsight;
     complexity?: string;
     iterations?: number;
     persistenceStatus?: 'persisted' | 'failed';

@@ -2,7 +2,7 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Database, Lightbulb, ExternalLink, Copy } from 'lucide-react';
+import { Database, Lightbulb, ExternalLink, Copy, Target, Brain, Tag } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 
 interface KnowledgeSource {
@@ -13,6 +13,18 @@ interface KnowledgeSource {
   sourceType?: string;
   nodeType?: string;
   metadata?: any;
+}
+
+interface LearningInsight {
+  title: string;
+  description: string;
+  type: string;
+  domain: string;
+  confidence: number;
+  reasoning: string;
+  tags: string[];
+  toolsInvolved: string[];
+  iterations: number;
 }
 
 interface KnowledgeToolResultProps {
@@ -115,7 +127,7 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
 
   const renderLearningGenerationResult = () => {
     const nodeId = tool.result?.nodeId;
-    const insights = tool.result?.insights;
+    const insight = tool.result?.insight as LearningInsight;
     const complexity = tool.result?.complexity;
     const iterations = tool.result?.iterations;
     const persistenceStatus = tool.result?.persistenceStatus;
@@ -137,7 +149,7 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
           )}
         </div>
 
-        <div className="bg-secondary/30 p-3 rounded-lg border border-border space-y-2">
+        <div className="bg-secondary/30 p-3 rounded-lg border border-border space-y-3">
           {nodeId && (
             <div className="text-xs">
               <span className="font-medium text-muted-foreground">Node ID: </span>
@@ -152,24 +164,74 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
             </div>
           )}
 
-          {insights && (
-            <div>
-              <div className="text-xs font-medium text-muted-foreground mb-1">Generated Insights:</div>
-              <div className="text-sm text-foreground">
-                {typeof insights === 'string' ? insights : JSON.stringify(insights, null, 2)}
+          {insight ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-base text-foreground">{insight.title}</h4>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={() => copyToClipboard(
+                    `${insight.title}\n\n${insight.description}\n\nReasoning: ${insight.reasoning}`,
+                    'Learning insight'
+                  )}
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 p-1 text-xs mt-2"
-                onClick={() => copyToClipboard(
-                  typeof insights === 'string' ? insights : JSON.stringify(insights, null, 2),
-                  'Learning insights'
-                )}
-              >
-                <Copy className="h-3 w-3 mr-1" />
-                Copy Insights
-              </Button>
+
+              <p className="text-sm text-foreground leading-relaxed">
+                {insight.description}
+              </p>
+
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <Target className="h-3 w-3" />
+                  <span>Domain: {insight.domain}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Brain className="h-3 w-3" />
+                  <span>Confidence: {(insight.confidence * 100).toFixed(0)}%</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span>Type: {insight.type}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">Reasoning:</div>
+                <p className="text-xs text-foreground italic bg-muted/50 p-2 rounded">
+                  {insight.reasoning}
+                </p>
+              </div>
+
+              {insight.tags && insight.tags.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <Tag className="h-3 w-3" />
+                    Tags:
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {insight.tags.map((tag, idx) => (
+                      <Badge key={idx} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {insight.toolsInvolved && insight.toolsInvolved.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  <span className="font-medium">Tools used: </span>
+                  {insight.toolsInvolved.join(', ')}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground italic">
+              No detailed insight data available
             </div>
           )}
         </div>
