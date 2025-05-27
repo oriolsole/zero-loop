@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +29,7 @@ const AIAgentChat: React.FC = () => {
     getConversationHistory
   } = useAgentConversation();
 
+  const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingSteps, setStreamingSteps] = useState<any[]>([]);
@@ -50,11 +52,16 @@ const AIAgentChat: React.FC = () => {
     }
   }, [conversations, streamingSteps, isLoading]);
 
-  const handleSendMessage = async (message: string) => {
-    if (!user || !currentSessionId) {
-      toast.error('Please sign in to continue');
+  const handleSendMessage = async () => {
+    if (!user || !currentSessionId || !input?.trim()) {
+      if (!user) {
+        toast.error('Please sign in to continue');
+      }
       return;
     }
+
+    const message = input.trim();
+    setInput(''); // Clear input immediately
 
     console.log('🚀 Sending message:', message);
     setIsLoading(true);
@@ -79,7 +86,7 @@ const AIAgentChat: React.FC = () => {
       console.log('📡 Starting streaming request...');
       
       // Use Supabase edge function directly
-      const { data, error } = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -95,18 +102,18 @@ const AIAgentChat: React.FC = () => {
         })
       });
 
-      if (!data.ok) {
-        const errorData = await data.json();
-        throw new Error(errorData.error || `Server error: ${data.status}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server error: ${response.status}`);
       }
 
-      if (!data.body) {
+      if (!response.body) {
         throw new Error('No response body received');
       }
 
       console.log('📥 Response received, processing stream...');
       
-      const reader = data.body.getReader();
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let finalMessage = '';
@@ -207,7 +214,8 @@ const AIAgentChat: React.FC = () => {
   };
 
   const handleFollowUpAction = async (action: string) => {
-    await handleSendMessage(action);
+    setInput(action);
+    await handleSendMessage();
   };
 
   if (!user) {
@@ -234,7 +242,6 @@ const AIAgentChat: React.FC = () => {
       
       <div className="flex-1 flex flex-col min-w-0">
         <SimplifiedChatHeader 
-          currentSessionId={currentSessionId}
           modelSettings={modelSettings}
         />
         
@@ -254,9 +261,11 @@ const AIAgentChat: React.FC = () => {
         />
         
         <SimplifiedChatInput
+          input={input}
+          onInputChange={setInput}
           onSendMessage={handleSendMessage}
           isLoading={isLoading}
-          placeholder="Ask me anything..."
+          modelProvider={modelSettings.provider}
         />
       </div>
     </div>

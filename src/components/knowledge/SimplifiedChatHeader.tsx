@@ -1,78 +1,36 @@
 
 import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Bot, MessageSquare, Plus, Settings, Loader2 } from 'lucide-react';
 import { ModelProvider } from '@/services/modelProviderService';
+import { Bot, Settings } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface SimplifiedChatHeaderProps {
   modelSettings: {
     provider: ModelProvider;
-    selectedModel?: string;
+    selectedModel: string;
   };
-  showSessions: boolean;
-  onToggleSessions: () => void;
-  onNewSession: () => void;
-  isLoading: boolean;
 }
 
 const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
-  modelSettings,
-  showSessions,
-  onToggleSessions,
-  onNewSession,
-  isLoading
+  modelSettings
 }) => {
   return (
-    <div className="border-b border-border/50 px-6 py-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex items-center justify-between max-w-6xl mx-auto">
-        <div className="flex items-center gap-4">
+    <div className="border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="max-w-4xl mx-auto px-6 py-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-lg flex items-center justify-center">
-              <Bot className="h-4 w-4 text-primary" />
+            <div className="flex items-center justify-center w-10 h-10 bg-primary/10 rounded-xl">
+              <Bot className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-foreground">AI Assistant</h1>
-              {isLoading && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  <span>Thinking...</span>
-                </div>
-              )}
+              <h1 className="font-semibold text-lg">AI Agent</h1>
+              <p className="text-sm text-muted-foreground">
+                Powered by {modelSettings.provider.toUpperCase()} • {modelSettings.selectedModel}
+              </p>
             </div>
           </div>
-          
-          <Badge variant="outline" className="text-xs font-medium bg-secondary/50 border-border/50">
-            {modelSettings.provider.toUpperCase()}
-            {modelSettings.selectedModel && ` • ${modelSettings.selectedModel}`}
-          </Badge>
-        </div>
-        
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => window.location.href = '/settings'}
-            className="h-8 w-8 p-0 hover:bg-secondary/80"
-          >
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
             <Settings className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleSessions}
-            className="h-8 w-8 p-0 hover:bg-secondary/80"
-          >
-            <MessageSquare className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onNewSession}
-            className="ml-2 h-8 bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary hover:text-primary"
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            New Chat
           </Button>
         </div>
       </div>
