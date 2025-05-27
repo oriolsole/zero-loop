@@ -4,10 +4,11 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Bot, User, ChevronDown, ChevronRight, CheckCircle, XCircle, ArrowRight, Brain, Cog, Target, Copy, Database, Lightbulb, Loader2, Settings } from 'lucide-react';
+import { Bot, User, ChevronDown, ChevronRight, CheckCircle, XCircle, Brain, Cog, Target, Copy, Database, Lightbulb, Loader2, Settings } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import MarkdownRenderer from './MarkdownRenderer';
 import KnowledgeToolResult from './KnowledgeToolResult';
+import FollowUpSnippets from './FollowUpSnippets';
 import { toast } from '@/components/ui/sonner';
 
 interface AIAgentMessageProps {
@@ -27,15 +28,15 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   const getMessageStyle = () => {
     if (message.role === 'user') return 'bg-primary text-primary-foreground ml-16 shadow-sm';
     
-    // Style streaming step messages differently
+    // Style streaming step messages differently with dark theme
     if (message.messageType === 'step-executing') {
-      return 'bg-blue-50 border border-blue-200 dark:bg-blue-950/20 dark:border-blue-800/30 mr-16 shadow-sm';
+      return 'bg-blue-950/20 border border-blue-800/30 mr-16 shadow-sm';
     }
     if (message.messageType === 'step-completed') {
-      return 'bg-green-50 border border-green-200 dark:bg-green-950/20 dark:border-green-800/30 mr-16 shadow-sm';
+      return 'bg-green-950/20 border border-green-800/30 mr-16 shadow-sm';
     }
     if (message.messageType === 'tool-update') {
-      return 'bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800/30 mr-16 shadow-sm';
+      return 'bg-amber-950/20 border border-amber-800/30 mr-16 shadow-sm';
     }
     
     return 'bg-secondary/40 border border-border/50 mr-16 shadow-sm';
@@ -45,13 +46,13 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     if (message.role === 'user') return <User className="h-4 w-4 text-primary" />;
     
     if (message.messageType === 'step-executing') {
-      return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
+      return <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />;
     }
     if (message.messageType === 'step-completed') {
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
+      return <CheckCircle className="h-4 w-4 text-green-400" />;
     }
     if (message.messageType === 'tool-update') {
-      return <Settings className="h-4 w-4 text-amber-500" />;
+      return <Settings className="h-4 w-4 text-amber-400" />;
     }
     
     return <Bot className="h-4 w-4" />;
@@ -96,7 +97,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     <div className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       {message.role !== 'user' && (
         <Avatar className="h-8 w-8 mt-1 flex-shrink-0 shadow-sm">
-          <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20">
+          <AvatarFallback className="bg-secondary/80 border border-border/50">
             {getMessageIcon()}
           </AvatarFallback>
         </Avatar>
@@ -118,7 +119,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-3">
-              <div className="bg-muted/30 p-4 rounded-xl border border-muted/50">
+              <div className="bg-secondary/20 p-4 rounded-xl border border-border/30">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
                     <Brain className="h-3 w-3" />
@@ -127,7 +128,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
                   <Button 
                     variant="ghost" 
                     size="sm" 
-                    className="h-6 w-6 p-0 hover:bg-muted/50"
+                    className="h-6 w-6 p-0 hover:bg-secondary/50"
                     onClick={() => copyToClipboard(message.aiReasoning!, 'AI Reasoning')}
                   >
                     <Copy className="h-3 w-3" />
@@ -152,7 +153,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-3">
-              <div className="bg-muted/30 p-4 rounded-xl border border-muted/50">
+              <div className="bg-secondary/20 p-4 rounded-xl border border-border/30">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     🧩 Tool Decision Process
@@ -193,7 +194,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
 
         {/* Self Reflection */}
         {message.selfReflection && (
-          <div className="mt-4 bg-muted/20 p-3 rounded-xl border border-muted/30">
+          <div className="mt-4 bg-secondary/20 p-3 rounded-xl border border-border/30">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Target className="h-3 w-3" />
               <span className="font-medium">Self Assessment:</span>
@@ -219,26 +220,12 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
         )}
 
         {/* Follow-up Suggestions */}
-        {message.followUpSuggestions && message.followUpSuggestions.length > 0 && (
-          <div className="mt-5 p-4 bg-gradient-to-r from-primary/5 to-primary/10 rounded-xl border border-primary/20">
-            <div className="flex items-center gap-2 mb-3">
-              <ArrowRight className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium text-primary">Continue the conversation</span>
-            </div>
-            <div className="space-y-2">
-              {message.followUpSuggestions.map((suggestion, index) => (
-                <Button
-                  key={index}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onFollowUpAction?.(suggestion)}
-                  className="mr-2 mb-1 text-xs bg-background/80 hover:bg-background border-primary/30 text-primary hover:text-primary/90 shadow-sm"
-                >
-                  {suggestion}
-                </Button>
-              ))}
-            </div>
-          </div>
+        {message.followUpSuggestions && message.followUpSuggestions.length > 0 && onFollowUpAction && (
+          <FollowUpSnippets 
+            snippets={message.followUpSuggestions}
+            onSnippetClick={onFollowUpAction}
+            title="Continue the conversation"
+          />
         )}
 
         {/* Tool Results Details */}

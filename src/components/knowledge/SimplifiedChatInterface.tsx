@@ -2,13 +2,13 @@
 import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Bot, Loader2, Sparkles, Search, Github, Code } from 'lucide-react';
+import { Bot, Sparkles, Search, Github, Code, Database } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
 import AIAgentMessage from './AIAgentMessage';
-import ToolExecutionCard from './ToolExecutionCard';
-import StatusMessage from './StatusMessage';
+import WorkingMessage from './WorkingMessage';
+import ToolExecutionStatus from './ToolExecutionStatus';
 
 interface SimplifiedChatInterfaceProps {
   conversations: ConversationMessage[];
@@ -23,6 +23,9 @@ interface SimplifiedChatInterfaceProps {
   onFollowUpAction?: (action: string) => void;
   streamingSteps?: any[];
   isStreaming?: boolean;
+  workingStatus?: string;
+  currentTool?: string;
+  toolProgress?: number;
 }
 
 const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
@@ -33,7 +36,10 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   toolsActive,
   scrollAreaRef,
   onFollowUpAction,
-  isStreaming = false
+  isStreaming = false,
+  workingStatus = "Processing your request...",
+  currentTool,
+  toolProgress
 }) => {
   const suggestedActions = [
     {
@@ -55,7 +61,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
       action: "Help me review and optimize my React code"
     },
     {
-      icon: <Sparkles className="h-4 w-4" />,
+      icon: <Database className="h-4 w-4" />,
       title: "Knowledge Base",
       description: "Query knowledge base",
       action: "Search my knowledge base for relevant information"
@@ -63,12 +69,12 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   ];
 
   return (
-    <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
+    <div className="flex-1 overflow-hidden bg-background">
       <ScrollArea className="h-full" ref={scrollAreaRef}>
         <div className="max-w-4xl mx-auto px-6 py-8">
-          {conversations.length === 0 && !isStreaming && (
+          {conversations.length === 0 && !isStreaming && !isLoading && (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-              <div className="w-20 h-20 mb-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center shadow-lg">
+              <div className="w-20 h-20 mb-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center shadow-lg border border-border/20">
                 <Bot className="h-10 w-10 text-primary" />
               </div>
               
@@ -90,7 +96,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
                     key={index}
                     variant="outline"
                     onClick={() => onFollowUpAction?.(suggestion.action)}
-                    className="h-auto p-4 text-left justify-start bg-secondary/30 hover:bg-secondary/50 border-border/50 hover:border-primary/30 transition-all duration-200"
+                    className="h-auto p-4 text-left justify-start bg-secondary/20 hover:bg-secondary/30 border-border/50 hover:border-primary/30 transition-all duration-200"
                   >
                     <div className="flex items-start gap-3 w-full">
                       <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -122,31 +128,35 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             ))}
           </div>
           
+          {/* Working Message - Shows during processing */}
+          {(isLoading || isStreaming) && (
+            <div className="mt-6">
+              <WorkingMessage 
+                currentTool={currentTool}
+                progress={toolProgress}
+                status={workingStatus}
+                isAnimated={true}
+              />
+            </div>
+          )}
+          
+          {/* Tool Execution Status - Shows active tools */}
           {toolsActive && tools.length > 0 && (
-            <div className="mt-8 space-y-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Working on your request...</span>
+            <div className="mt-6 space-y-3">
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span>Tools in use</span>
               </div>
               
               <div className="grid gap-3">
                 {tools.map((tool) => (
-                  <ToolExecutionCard 
+                  <ToolExecutionStatus 
                     key={tool.id} 
-                    tool={tool} 
-                    compact={true}
+                    tool={tool}
+                    showResult={tool.status === 'completed'}
                   />
                 ))}
               </div>
-            </div>
-          )}
-          
-          {isLoading && !toolsActive && !isStreaming && (
-            <div className="mt-8">
-              <StatusMessage 
-                content="Processing your request..."
-                type="thinking"
-              />
             </div>
           )}
         </div>

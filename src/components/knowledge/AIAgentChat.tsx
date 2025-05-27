@@ -32,6 +32,9 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
   const [isStreaming, setIsStreaming] = useState(false);
+  const [workingStatus, setWorkingStatus] = useState('Processing your request...');
+  const [currentTool, setCurrentTool] = useState<string | undefined>();
+  const [toolProgress, setToolProgress] = useState<number | undefined>();
 
   const {
     tools,
@@ -79,20 +82,6 @@ const AIAgentChat: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const addStreamingStepAsMessage = (step: any) => {
-    const stepMessage: ConversationMessage = {
-      id: step.id,
-      role: 'assistant',
-      content: step.content,
-      timestamp: new Date(step.timestamp),
-      messageType: step.type === 'step-announcement' ? 'step-executing' : 
-                   step.type === 'partial-result' ? 'step-completed' :
-                   step.type === 'tool-announcement' ? 'tool-update' : 'analysis'
-    };
-    
-    addMessage(stepMessage);
-  };
-
   const handleFollowUpAction = async (action: string) => {
     if (!user || !currentSessionId) return;
 
@@ -117,6 +106,9 @@ const AIAgentChat: React.FC = () => {
 
     setIsLoading(true);
     setIsStreaming(true);
+    setWorkingStatus('Processing your request...');
+    setCurrentTool(undefined);
+    setToolProgress(undefined);
     clearTools();
 
     try {
@@ -142,7 +134,6 @@ const AIAgentChat: React.FC = () => {
       if (data && typeof data === 'string') {
         const lines = data.split('\n').filter(line => line.trim());
         let finalResult: any = null;
-        const allStreamSteps: any[] = [];
 
         for (const line of lines) {
           try {
@@ -151,12 +142,20 @@ const AIAgentChat: React.FC = () => {
             if (parsed.type === 'final-result') {
               finalResult = parsed;
             } else {
-              // Add each streaming step as a permanent message
-              allStreamSteps.push(parsed);
-              addStreamingStepAsMessage(parsed);
+              // Update working status based on streaming data
+              if (parsed.type === 'tool-announcement') {
+                setCurrentTool(parsed.toolName);
+                setWorkingStatus(parsed.content);
+              } else if (parsed.type === 'step-announcement') {
+                setWorkingStatus(parsed.content);
+              } else if (parsed.type === 'partial-result') {
+                setWorkingStatus('Finalizing response...');
+              }
               
-              // Small delay between steps for natural flow
-              await new Promise(resolve => setTimeout(resolve, 300));
+              // Update progress if available
+              if (parsed.progress) {
+                setToolProgress(parsed.progress);
+              }
             }
           } catch (parseError) {
             console.warn('Failed to parse streaming chunk:', line);
@@ -172,7 +171,7 @@ const AIAgentChat: React.FC = () => {
             timestamp: new Date(),
             messageType: 'response',
             toolsUsed: finalResult.toolsUsed || [],
-            streamSteps: allStreamSteps
+            followUpSuggestions: finalResult.followUpSuggestions || []
           };
 
           addMessage(assistantMessage);
@@ -197,7 +196,8 @@ const AIAgentChat: React.FC = () => {
           timestamp: new Date(),
           messageType: 'response',
           toolsUsed: data.toolsUsed || [],
-          aiReasoning: data.aiReasoning || undefined
+          aiReasoning: data.aiReasoning || undefined,
+          followUpSuggestions: data.followUpSuggestions || []
         };
 
         addMessage(assistantMessage);
@@ -229,6 +229,9 @@ const AIAgentChat: React.FC = () => {
     } finally {
       setIsLoading(false);
       setIsStreaming(false);
+      setWorkingStatus('Processing your request...');
+      setCurrentTool(undefined);
+      setToolProgress(undefined);
     }
   };
 
@@ -281,6 +284,9 @@ const AIAgentChat: React.FC = () => {
           onFollowUpAction={handleFollowUpAction}
           streamingSteps={[]}
           isStreaming={isStreaming}
+          workingStatus={workingStatus}
+          currentTool={currentTool}
+          toolProgress={toolProgress}
         />
         
         <SimplifiedChatInput
