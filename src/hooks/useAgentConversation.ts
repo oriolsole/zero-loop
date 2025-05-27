@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -220,6 +221,7 @@ export const useAgentConversation = () => {
           tool_decision: message.toolDecision || null,
           tool_progress: message.toolProgress || null,
           ai_reasoning: message.aiReasoning || null,
+          stream_steps: message.streamSteps || null,
           created_at: message.timestamp.toISOString()
         });
     } catch (error) {
