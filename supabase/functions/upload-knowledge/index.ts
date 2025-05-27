@@ -59,6 +59,7 @@ async function processInBackground(
       status: 'processing',
       progress: 5,
       message: 'Starting background processing...',
+      title: body.title || 'Unknown Upload',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     });
@@ -87,6 +88,7 @@ async function processInBackground(
       status: finalStatus,
       progress: result.ok ? 100 : 0,
       message: finalMessage,
+      completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }).eq('id', uploadId);
 
@@ -100,6 +102,7 @@ async function processInBackground(
       status: 'failed',
       progress: 0,
       message: `Background processing failed: ${error.message}`,
+      error_details: error.message,
       updated_at: new Date().toISOString()
     }).eq('id', uploadId);
   }
@@ -129,9 +132,9 @@ function shouldProcessInBackground(body: any): boolean {
   return false;
 }
 
-// Generate unique upload ID
+// Generate proper UUID for upload tracking
 function generateUploadId(): string {
-  return `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return crypto.randomUUID();
 }
 
 // Serve the edge function
@@ -216,7 +219,7 @@ serve(async (req) => {
     if (useBackgroundProcessing) {
       console.log('Resource-intensive content detected, using background processing');
       
-      // Generate unique upload ID for tracking
+      // Generate proper UUID for tracking
       const uploadId = generateUploadId();
       
       // Start background processing with timeout protection
