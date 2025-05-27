@@ -16,13 +16,29 @@ export async function persistInsightAsKnowledgeNode(
   try {
     console.log('Persisting insights as knowledge node...');
 
-    // Generate insight summary
+    // Check tool execution success before proceeding with learning
+    const toolExecutionResults = accumulatedContext.flatMap(ctx => ctx.toolsUsed || []);
+    const hasValidToolResults = validateToolExecutionForLearning(toolExecutionResults);
+    
+    if (!hasValidToolResults.shouldLearn) {
+      console.log('Skipping knowledge persistence:', hasValidToolResults.reason);
+      return {
+        success: false,
+        insights: hasValidToolResults.reason,
+        nodeId: null,
+        skipped: true,
+        reason: hasValidToolResults.reason
+      };
+    }
+
+    // Generate insight summary with tool execution context
     const insight = await generateInsightSummary(
       originalMessage,
       finalResponse,
       accumulatedContext,
       complexityDecision,
-      supabase
+      supabase,
+      hasValidToolResults
     );
 
     if (!insight) {
@@ -46,7 +62,7 @@ export async function persistInsightAsKnowledgeNode(
       };
     }
 
-    // Create knowledge node
+    // Create knowledge node with enhanced metadata
     const nodeId = crypto.randomUUID();
     const { error: nodeError } = await supabase
       .from('knowledge_nodes')
@@ -67,7 +83,13 @@ export async function persistInsightAsKnowledgeNode(
           iterations_used: accumulatedContext.length,
           tools_involved: insight.toolsInvolved,
           created_by: 'unified-ai-agent',
-          tags: insight.tags || []
+          tags: insight.tags || [],
+          // Enhanced metadata for tool execution context
+          tool_execution_context: hasValidToolResults.context,
+          learning_confidence: hasValidToolResults.confidence,
+          knowledge_quality: hasValidToolResults.quality,
+          is_tentative: hasValidToolResults.tentative || false,
+          validation_status: 'unverified'
         }
       });
 
@@ -96,7 +118,9 @@ export async function persistInsightAsKnowledgeNode(
       success: true,
       insights: insight,
       nodeId: nodeId,
-      toolsInvolved: insight.toolsInvolved
+      toolsInvolved: insight.toolsInvolved,
+      confidence: hasValidToolResults.confidence,
+      quality: hasValidToolResults.quality
     };
   } catch (error) {
     console.error('Error persisting insight as knowledge node:', error);
@@ -107,6 +131,109 @@ export async function persistInsightAsKnowledgeNode(
       error: error.message
     };
   }
+}
+
+/**
+ * Validate tool execution results to determine if learning should proceed
+ */
+function validateToolExecutionForLearning(toolResults: any[]): {
+  shouldLearn: boolean;
+  reason?: string;
+  confidence: number;
+  quality: 'high' | 'medium' | 'low' | 'tentative';
+  tentative: boolean;
+  context: any;
+} {
+  if (!toolResults || toolResults.length === 0) {
+    return {
+      shouldLearn: true,
+      confidence: 0.8,
+      quality: 'medium',
+      tentative: false,
+      context: { type: 'no_tools_used', tool_count: 0 }
+    };
+  }
+
+  const failedTools = toolResults.filter(tool => !tool.success);
+  const successfulTools = toolResults.filter(tool => tool.success);
+  
+  // If all tools failed, don't learn
+  if (failedTools.length === toolResults.length) {
+    return {
+      shouldLearn: false,
+      reason: 'All tool executions failed - preventing false negative learning',
+      confidence: 0.0,
+      quality: 'low',
+      tentative: true,
+      context: {
+        type: 'all_tools_failed',
+        tool_count: toolResults.length,
+        failed_tools: failedTools.map(t => t.name)
+      }
+    };
+  }
+
+  // Check for empty results that might indicate false negatives
+  const emptyResults = successfulTools.filter(tool => {
+    const result = tool.result;
+    if (!result) return true;
+    
+    // Check for common empty result patterns
+    if (typeof result === 'object') {
+      if (result.total === 0) return true;
+      if (result.issues && result.issues.length === 0) return true;
+      if (result.results && result.results.length === 0) return true;
+      if (Array.isArray(result) && result.length === 0) return true;
+    }
+    
+    return false;
+  });
+
+  // If majority of successful tools returned empty results, mark as tentative
+  if (emptyResults.length > successfulTools.length / 2) {
+    return {
+      shouldLearn: true,
+      confidence: 0.4,
+      quality: 'tentative',
+      tentative: true,
+      context: {
+        type: 'empty_results_majority',
+        tool_count: toolResults.length,
+        successful_tools: successfulTools.length,
+        empty_results: emptyResults.length,
+        tools_with_empty_results: emptyResults.map(t => t.name)
+      }
+    };
+  }
+
+  // If some tools failed but others succeeded with data, proceed with medium confidence
+  if (failedTools.length > 0) {
+    return {
+      shouldLearn: true,
+      confidence: 0.6,
+      quality: 'medium',
+      tentative: false,
+      context: {
+        type: 'mixed_results',
+        tool_count: toolResults.length,
+        successful_tools: successfulTools.length,
+        failed_tools: failedTools.length
+      }
+    };
+  }
+
+  // All tools succeeded with data
+  return {
+    shouldLearn: true,
+    confidence: 0.9,
+    quality: 'high',
+    tentative: false,
+    context: {
+      type: 'all_tools_successful',
+      tool_count: toolResults.length,
+      successful_tools: successfulTools.length
+    }
+  };
 }
 
 /**
@@ -189,14 +316,15 @@ function validateInsight(insight: any): boolean {
 }
 
 /**
- * Generate insight summary from learning loop results
+ * Generate insight summary from learning loop results with tool execution context
  */
 async function generateInsightSummary(
   originalMessage: string,
   finalResponse: string,
   accumulatedContext: any[],
   complexityAnalysis: any,
-  supabase: any
+  supabase: any,
+  toolContext: any
 ): Promise<any | null> {
   try {
     const contextSummary = accumulatedContext.map(ctx => 
@@ -207,22 +335,40 @@ async function generateInsightSummary(
       accumulatedContext.flatMap(ctx => ctx.toolsUsed?.map(t => t.name) || [])
     ));
 
+    // Enhanced system prompt with tool execution awareness
     const insightMessages = [
       {
         role: 'system',
         content: `Generate a structured insight summary for a knowledge base. Extract the key learnings, patterns, and reusable knowledge from this research session.
 
+        IMPORTANT: Be aware of tool execution context:
+        - Tool Quality: ${toolContext.quality}
+        - Confidence: ${toolContext.confidence}
+        - Tentative: ${toolContext.tentative}
+        - Context: ${JSON.stringify(toolContext.context)}
+
+        If tools failed or returned empty results, DO NOT create insights that state definitive facts about data absence.
+        Instead, focus on process insights, methodology learnings, or clearly mark data-related insights as tentative.
+
         Respond with ONLY a JSON object in this exact format:
         {
           "title": "Concise, searchable title (max 100 chars)",
           "description": "Detailed description of the insight (max 500 chars)",
-          "type": "insight|concept|process|fact|strategy",
+          "type": "insight|concept|process|fact|strategy|tentative_fact",
           "confidence": 0.0-1.0,
           "domain": "relevant domain or category",
           "tags": ["tag1", "tag2", "tag3"],
           "isSignificant": true/false,
-          "reasoning": "Why this insight is valuable for future reference"
+          "reasoning": "Why this insight is valuable for future reference",
+          "data_quality": "${toolContext.quality}",
+          "is_tentative": ${toolContext.tentative}
         }
+
+        For tentative insights or those based on tool failures/empty results:
+        - Use type "tentative_fact" for data-related insights
+        - Lower the confidence score
+        - Include disclaimers in description
+        - Add "tentative", "unverified", or "tool_limited" tags
 
         Only mark as significant if it contains reusable knowledge, patterns, or insights that would be valuable for future queries.
         Do NOT wrap the JSON in markdown code blocks or add any other text.`
@@ -238,8 +384,9 @@ async function generateInsightSummary(
 
         Tools used: ${toolsInvolved.join(', ')}
         Query complexity: ${complexityAnalysis.complexity}
+        Tool execution quality: ${toolContext.quality}
 
-        Extract the key insight for the knowledge base.`
+        Extract the key insight for the knowledge base, being mindful of tool execution context.`
       }
     ];
 
@@ -280,8 +427,9 @@ async function generateInsightSummary(
 
     console.log('Successfully parsed and validated insight:', insight.title);
 
-    // Add tools involved
+    // Add tools involved and context
     insight.toolsInvolved = toolsInvolved;
+    insight.toolExecutionContext = toolContext;
     
     return insight;
 
@@ -352,7 +500,9 @@ async function createSearchableKnowledgeChunk(
           confidence: insight.confidence,
           domain: insight.domain,
           tags: insight.tags,
-          tools_used: insight.toolsInvolved
+          tools_used: insight.toolsInvolved,
+          data_quality: insight.data_quality,
+          is_tentative: insight.is_tentative
         }
       });
 
@@ -363,5 +513,41 @@ async function createSearchableKnowledgeChunk(
     }
   } catch (error) {
     console.error('Error in createSearchableKnowledgeChunk:', error);
+  }
+}
+
+/**
+ * Deprecate or correct existing knowledge nodes
+ */
+export async function deprecateKnowledgeNode(
+  nodeId: string,
+  reason: string,
+  userId: string,
+  supabase: any
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('knowledge_nodes')
+      .update({
+        metadata: supabase.rpc('jsonb_set', {
+          target: 'metadata',
+          path: ['validation_status'],
+          new_value: '"deprecated"'
+        }),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', nodeId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error deprecating knowledge node:', error);
+      return false;
+    }
+
+    console.log('Successfully deprecated knowledge node:', nodeId, 'Reason:', reason);
+    return true;
+  } catch (error) {
+    console.error('Error in deprecateKnowledgeNode:', error);
+    return false;
   }
 }

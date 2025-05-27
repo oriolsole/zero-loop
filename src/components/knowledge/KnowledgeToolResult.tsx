@@ -2,7 +2,7 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Database, Lightbulb, ExternalLink, Copy } from 'lucide-react';
+import { Database, Lightbulb, ExternalLink, Copy, AlertTriangle, CheckCircle } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 
 interface KnowledgeSource {
@@ -67,11 +67,31 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1">
                     <div className="font-medium text-sm">{source.title}</div>
-                    {source.sourceType && (
-                      <Badge variant="outline" className="text-xs mt-1">
-                        {source.sourceType} {source.nodeType && `(${source.nodeType})`}
-                      </Badge>
-                    )}
+                    <div className="flex items-center gap-2 mt-1">
+                      {source.sourceType && (
+                        <Badge variant="outline" className="text-xs">
+                          {source.sourceType} {source.nodeType && `(${source.nodeType})`}
+                        </Badge>
+                      )}
+                      {/* Enhanced quality indicators */}
+                      {source.metadata?.is_tentative && (
+                        <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Tentative
+                        </Badge>
+                      )}
+                      {source.metadata?.data_quality === 'high' && (
+                        <Badge variant="outline" className="text-xs text-green-600 border-green-300">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Verified
+                        </Badge>
+                      )}
+                      {source.metadata?.validation_status === 'deprecated' && (
+                        <Badge variant="destructive" className="text-xs">
+                          Deprecated
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-1">
                     {source.relevanceScore && (
@@ -92,6 +112,15 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
                 <div className="text-sm text-foreground">
                   {source.snippet}
                 </div>
+                {/* Enhanced metadata display */}
+                {source.metadata?.tool_execution_context && (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    <span className="font-medium">Context: </span>
+                    {source.metadata.tool_execution_context.type} 
+                    {source.metadata.tool_execution_context.tool_count && 
+                      ` (${source.metadata.tool_execution_context.tool_count} tools)`}
+                  </div>
+                )}
                 {source.metadata?.fileUrl && (
                   <div className="mt-2">
                     <Button
@@ -119,6 +148,10 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
     const persistenceStatus = result.persistenceStatus || (result.success ? 'persisted' : 'failed');
     const originalQuery = tool.parameters?.query || tool.parameters?.originalMessage;
     
+    // Check if learning was skipped due to tool failures
+    const wasSkipped = result.skipped || false;
+    const skipReason = result.reason;
+    
     // Extract insight data - handle both string and object formats
     let insightData = null;
     let insightText = '';
@@ -141,9 +174,11 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
     const complexity = result.complexity || tool.parameters?.complexity || 'unknown';
     const iterations = result.iterations || result.iterationCount || 1;
     const toolsUsed = result.toolsUsed || result.toolsInvolved || [];
-    const confidence = insightData?.confidence;
+    const confidence = insightData?.confidence || result.confidence;
     const insightType = insightData?.type;
     const domain = insightData?.domain || result.domain;
+    const quality = result.quality || insightData?.data_quality;
+    const isTentative = result.tentative || insightData?.is_tentative;
 
     return (
       <div className="space-y-3">
@@ -151,11 +186,31 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
           <div className="flex items-center gap-2">
             <Lightbulb className="h-4 w-4 text-yellow-500" />
             <span className="font-medium text-sm">Learning Generation</span>
-            <Badge variant={persistenceStatus === 'persisted' ? 'default' : 'destructive'} className="text-xs">
-              {persistenceStatus}
-            </Badge>
+            {wasSkipped ? (
+              <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                Skipped
+              </Badge>
+            ) : (
+              <Badge variant={persistenceStatus === 'persisted' ? 'default' : 'destructive'} className="text-xs">
+                {persistenceStatus}
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            {quality && (
+              <Badge variant={
+                quality === 'high' ? 'default' : 
+                quality === 'tentative' ? 'outline' : 'secondary'
+              } className="text-xs">
+                {quality.toUpperCase()}
+              </Badge>
+            )}
+            {isTentative && (
+              <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">
+                Tentative
+              </Badge>
+            )}
             {insightType && (
               <Badge variant="outline" className="text-xs">
                 {insightType}
@@ -168,6 +223,14 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
         </div>
 
         <div className="bg-secondary/30 p-3 rounded-lg border border-border space-y-3">
+          {/* Skip Reason */}
+          {wasSkipped && skipReason && (
+            <div className="bg-orange-50 border border-orange-200 p-2 rounded">
+              <div className="text-xs font-medium text-orange-800 mb-1">Learning Skipped:</div>
+              <div className="text-sm text-orange-700">{skipReason}</div>
+            </div>
+          )}
+
           {/* Original Query */}
           {originalQuery && (
             <div>
@@ -190,6 +253,30 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
             </div>
           </div>
 
+          {/* Quality Indicators */}
+          {(confidence || quality) && (
+            <div className="flex items-center gap-4">
+              {confidence && (
+                <div className="text-xs">
+                  <span className="font-medium text-muted-foreground">Confidence: </span>
+                  <Badge variant="secondary" className="text-xs">
+                    {Math.round(confidence * 100)}%
+                  </Badge>
+                </div>
+              )}
+              {quality && (
+                <div className="text-xs">
+                  <span className="font-medium text-muted-foreground">Quality: </span>
+                  <span className={`font-medium ${
+                    quality === 'high' ? 'text-green-600' :
+                    quality === 'tentative' ? 'text-yellow-600' :
+                    'text-blue-600'
+                  }`}>{quality}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Insight Details */}
           {insightData && (
             <div className="space-y-2">
@@ -207,22 +294,12 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
                 </div>
               )}
 
-              <div className="flex items-center gap-4">
-                {confidence && (
-                  <div className="text-xs">
-                    <span className="font-medium text-muted-foreground">Confidence: </span>
-                    <Badge variant="secondary" className="text-xs">
-                      {Math.round(confidence * 100)}%
-                    </Badge>
-                  </div>
-                )}
-                {domain && (
-                  <div className="text-xs">
-                    <span className="font-medium text-muted-foreground">Domain: </span>
-                    <span>{domain}</span>
-                  </div>
-                )}
-              </div>
+              {domain && (
+                <div className="text-xs">
+                  <span className="font-medium text-muted-foreground">Domain: </span>
+                  <span>{domain}</span>
+                </div>
+              )}
 
               {insightData.tags && insightData.tags.length > 0 && (
                 <div>
@@ -261,30 +338,32 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
           )}
 
           {/* Copy Actions */}
-          <div className="flex gap-2 pt-2 border-t border-border">
-            {insightText && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 p-1 text-xs"
-                onClick={() => copyToClipboard(insightText, 'Learning insights')}
-              >
-                <Copy className="h-3 w-3 mr-1" />
-                Copy Insights
-              </Button>
-            )}
-            {originalQuery && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 p-1 text-xs"
-                onClick={() => copyToClipboard(originalQuery, 'Original query')}
-              >
-                <Copy className="h-3 w-3 mr-1" />
-                Copy Query
-              </Button>
-            )}
-          </div>
+          {!wasSkipped && (
+            <div className="flex gap-2 pt-2 border-t border-border">
+              {insightText && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 p-1 text-xs"
+                  onClick={() => copyToClipboard(insightText, 'Learning insights')}
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  Copy Insights
+                </Button>
+              )}
+              {originalQuery && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 p-1 text-xs"
+                  onClick={() => copyToClipboard(originalQuery, 'Original query')}
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  Copy Query
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
