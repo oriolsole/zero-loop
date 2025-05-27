@@ -114,11 +114,36 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
   };
 
   const renderLearningGenerationResult = () => {
-    const nodeId = tool.result?.nodeId;
-    const insights = tool.result?.insights;
-    const complexity = tool.result?.complexity;
-    const iterations = tool.result?.iterations;
-    const persistenceStatus = tool.result?.persistenceStatus;
+    const result = tool.result || {};
+    const nodeId = result.nodeId;
+    const persistenceStatus = result.persistenceStatus || (result.success ? 'persisted' : 'failed');
+    const originalQuery = tool.parameters?.query || tool.parameters?.originalMessage;
+    
+    // Extract insight data - handle both string and object formats
+    let insightData = null;
+    let insightText = '';
+    
+    if (result.insights) {
+      if (typeof result.insights === 'string') {
+        try {
+          insightData = JSON.parse(result.insights);
+          insightText = result.insights;
+        } catch {
+          insightText = result.insights;
+        }
+      } else if (typeof result.insights === 'object') {
+        insightData = result.insights;
+        insightText = JSON.stringify(result.insights, null, 2);
+      }
+    }
+    
+    // Extract metadata
+    const complexity = result.complexity || tool.parameters?.complexity || 'unknown';
+    const iterations = result.iterations || result.iterationCount || 1;
+    const toolsUsed = result.toolsUsed || result.toolsInvolved || [];
+    const confidence = insightData?.confidence;
+    const insightType = insightData?.type;
+    const domain = insightData?.domain || result.domain;
 
     return (
       <div className="space-y-3">
@@ -130,48 +155,136 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
               {persistenceStatus}
             </Badge>
           </div>
-          {complexity && (
+          <div className="flex items-center gap-2">
+            {insightType && (
+              <Badge variant="outline" className="text-xs">
+                {insightType}
+              </Badge>
+            )}
             <Badge variant="secondary" className="text-xs">
               {complexity} complexity
             </Badge>
-          )}
+          </div>
         </div>
 
-        <div className="bg-secondary/30 p-3 rounded-lg border border-border space-y-2">
-          {nodeId && (
-            <div className="text-xs">
-              <span className="font-medium text-muted-foreground">Node ID: </span>
-              <span className="font-mono">{nodeId}</span>
+        <div className="bg-secondary/30 p-3 rounded-lg border border-border space-y-3">
+          {/* Original Query */}
+          {originalQuery && (
+            <div>
+              <div className="text-xs font-medium text-muted-foreground mb-1">Original Query:</div>
+              <div className="text-sm text-foreground bg-background/50 p-2 rounded border">
+                {originalQuery}
+              </div>
             </div>
           )}
-          
-          {iterations && (
+
+          {/* Node Information */}
+          <div className="flex items-center justify-between">
+            <div className="text-xs">
+              <span className="font-medium text-muted-foreground">Node ID: </span>
+              <span className="font-mono">{nodeId || 'Not generated'}</span>
+            </div>
             <div className="text-xs">
               <span className="font-medium text-muted-foreground">Iterations: </span>
               <span>{iterations}</span>
             </div>
+          </div>
+
+          {/* Insight Details */}
+          {insightData && (
+            <div className="space-y-2">
+              {insightData.title && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Insight Title:</div>
+                  <div className="text-sm font-medium text-foreground">{insightData.title}</div>
+                </div>
+              )}
+              
+              {insightData.description && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Description:</div>
+                  <div className="text-sm text-foreground">{insightData.description}</div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-4">
+                {confidence && (
+                  <div className="text-xs">
+                    <span className="font-medium text-muted-foreground">Confidence: </span>
+                    <Badge variant="secondary" className="text-xs">
+                      {Math.round(confidence * 100)}%
+                    </Badge>
+                  </div>
+                )}
+                {domain && (
+                  <div className="text-xs">
+                    <span className="font-medium text-muted-foreground">Domain: </span>
+                    <span>{domain}</span>
+                  </div>
+                )}
+              </div>
+
+              {insightData.tags && insightData.tags.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Tags:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {insightData.tags.map((tag: string, idx: number) => (
+                      <Badge key={idx} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {insightData.reasoning && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Reasoning:</div>
+                  <div className="text-sm text-foreground italic">{insightData.reasoning}</div>
+                </div>
+              )}
+            </div>
           )}
 
-          {insights && (
+          {/* Tools Used */}
+          {toolsUsed.length > 0 && (
             <div>
-              <div className="text-xs font-medium text-muted-foreground mb-1">Generated Insights:</div>
-              <div className="text-sm text-foreground">
-                {typeof insights === 'string' ? insights : JSON.stringify(insights, null, 2)}
+              <div className="text-xs font-medium text-muted-foreground mb-1">Tools Used:</div>
+              <div className="flex flex-wrap gap-1">
+                {toolsUsed.map((tool: string, idx: number) => (
+                  <Badge key={idx} variant="outline" className="text-xs">
+                    {tool}
+                  </Badge>
+                ))}
               </div>
+            </div>
+          )}
+
+          {/* Copy Actions */}
+          <div className="flex gap-2 pt-2 border-t border-border">
+            {insightText && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 p-1 text-xs mt-2"
-                onClick={() => copyToClipboard(
-                  typeof insights === 'string' ? insights : JSON.stringify(insights, null, 2),
-                  'Learning insights'
-                )}
+                className="h-6 p-1 text-xs"
+                onClick={() => copyToClipboard(insightText, 'Learning insights')}
               >
                 <Copy className="h-3 w-3 mr-1" />
                 Copy Insights
               </Button>
-            </div>
-          )}
+            )}
+            {originalQuery && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 p-1 text-xs"
+                onClick={() => copyToClipboard(originalQuery, 'Original query')}
+              >
+                <Copy className="h-3 w-3 mr-1" />
+                Copy Query
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );
