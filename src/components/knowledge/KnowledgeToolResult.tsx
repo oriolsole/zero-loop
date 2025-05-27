@@ -162,7 +162,7 @@ const KnowledgeToolResult: React.FC<KnowledgeToolResultProps> = ({ tool }) => {
               </Badge>
             )}
             <Badge variant="secondary" className="text-xs">
-              {complexity} complexity
+              {complexity.toUpperCase()}
             </Badge>
           </div>
         </div>
