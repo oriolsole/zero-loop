@@ -124,7 +124,7 @@ const SupabaseControl = () => {
       await clearAllTrackedData();
       // Reset local sync status when clearing all data
       setLastSyncStatus(null);
-      toast.success('All sync data has been reset');
+      toast.success('All sync data and statistics have been reset');
       setIsResetDialogOpen(false);
     } catch (error) {
       console.error('Error resetting all data:', error);
@@ -327,17 +327,17 @@ const SupabaseControl = () => {
       <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reset All Sync Data</AlertDialogTitle>
+            <AlertDialogTitle>Reset All Sync Data & Statistics</AlertDialogTitle>
             <AlertDialogDescription>
-              This will clear all pending items AND reset the processed items tracking system.
-              This is useful if you're experiencing sync issues or queue warnings.
-              Any unsynced data will be permanently lost. This action cannot be undone.
+              This will clear all pending items, reset processed items tracking, AND reset all sync statistics 
+              (total synced count, failed attempts, etc.). This is useful if you're experiencing persistent sync issues 
+              or want a completely fresh start. Any unsynced data will be permanently lost. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleResetAllData} className="bg-red-500 hover:bg-red-600">
-              Yes, reset all data
+              Yes, reset everything
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

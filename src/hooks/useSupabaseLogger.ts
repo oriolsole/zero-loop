@@ -506,7 +506,7 @@ export function useSupabaseLogger() {
     return Promise.resolve();
   };
   
-  // Clear all tracked data (queue and processed items)
+  // Clear all tracked data (queue, processed items, AND sync statistics)
   const clearAllTrackedData = async (): Promise<void> => {
     // Clear queue
     setQueue({
@@ -519,10 +519,22 @@ export function useSupabaseLogger() {
     // Clear processed items
     setProcessedItems({});
     
+    // Reset sync state to initial values
+    setState({
+      isRemoteEnabled: state.isRemoteEnabled, // Keep the remote logging setting
+      lastSyncTime: null,
+      syncStats: {
+        totalSynced: 0,
+        failedSyncs: 0
+      },
+      lastSyncAttempt: 0
+    });
+    
     try {
       localStorage.removeItem(LOCAL_STORAGE_KEY);
       localStorage.removeItem(PROCESSED_ITEMS_KEY);
-      console.log('All tracking data cleared');
+      localStorage.removeItem(LOCAL_STORAGE_STATE_KEY); // This is the key fix - also clear sync state
+      console.log('All tracking data and sync statistics cleared');
     } catch (error) {
       console.error('Error clearing tracked data:', error);
     }
