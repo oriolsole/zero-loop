@@ -2,13 +2,12 @@
 import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Bot, Loader2, Sparkles, Search, Github, Code } from 'lucide-react';
+import { Bot, Sparkles, Search, Github, Code } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
 import AIAgentMessage from './AIAgentMessage';
-import ToolExecutionCard from './ToolExecutionCard';
-import StatusMessage from './StatusMessage';
+import WorkingMessage from './WorkingMessage';
 
 interface SimplifiedChatInterfaceProps {
   conversations: ConversationMessage[];
@@ -21,7 +20,11 @@ interface SimplifiedChatInterfaceProps {
   toolsActive: boolean;
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   onFollowUpAction?: (action: string) => void;
-  streamingSteps?: any[];
+  workingMessage?: {
+    step: string;
+    tools: string[];
+    progress: number;
+  } | null;
   isStreaming?: boolean;
 }
 
@@ -33,6 +36,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   toolsActive,
   scrollAreaRef,
   onFollowUpAction,
+  workingMessage,
   isStreaming = false
 }) => {
   const suggestedActions = [
@@ -66,7 +70,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
     <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
       <ScrollArea className="h-full" ref={scrollAreaRef}>
         <div className="max-w-4xl mx-auto px-6 py-8">
-          {conversations.length === 0 && !isStreaming && (
+          {conversations.length === 0 && !workingMessage && (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
               <div className="w-20 h-20 mb-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center shadow-lg">
                 <Bot className="h-10 w-10 text-primary" />
@@ -120,35 +124,15 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
                 />
               </div>
             ))}
-          </div>
-          
-          {toolsActive && tools.length > 0 && (
-            <div className="mt-8 space-y-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Working on your request...</span>
-              </div>
-              
-              <div className="grid gap-3">
-                {tools.map((tool) => (
-                  <ToolExecutionCard 
-                    key={tool.id} 
-                    tool={tool} 
-                    compact={true}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {isLoading && !toolsActive && !isStreaming && (
-            <div className="mt-8">
-              <StatusMessage 
-                content="Processing your request..."
-                type="thinking"
+            
+            {workingMessage && (
+              <WorkingMessage
+                currentStep={workingMessage.step}
+                toolsUsed={workingMessage.tools}
+                progress={workingMessage.progress}
               />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </ScrollArea>
     </div>
