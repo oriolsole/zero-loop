@@ -1,6 +1,4 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { Card, CardHeader } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
@@ -8,9 +6,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
 import { useConversationContext } from '@/hooks/useConversationContext';
-import AIAgentHeader from './AIAgentHeader';
-import AIAgentChatInterface from './AIAgentChatInterface';
-import AIAgentInput from './AIAgentInput';
+import SimplifiedChatInterface from './SimplifiedChatInterface';
+import SimplifiedChatInput from './SimplifiedChatInput';
+import SimplifiedChatHeader from './SimplifiedChatHeader';
 import SessionsSidebar from './SessionsSidebar';
 
 const AIAgentChat: React.FC = () => {
@@ -92,8 +90,6 @@ const AIAgentChat: React.FC = () => {
   };
 
   const removeStatusMessage = (messageId: string) => {
-    // In a real implementation, you'd want to remove the message from the conversations array
-    // For now, we'll just replace it with a completion indicator
     updateMessage(messageId, { 
       content: '✓ Processing complete',
       messageType: 'status' as any
@@ -125,13 +121,11 @@ const AIAgentChat: React.FC = () => {
     setIsLoading(true);
     clearTools();
 
-    // Add progressive status messages
     const statusId = addStatusMessage("Analyzing your request...");
 
     try {
       const conversationHistory = getConversationHistory();
 
-      // Update status message
       setTimeout(() => {
         updateMessage(statusId, { content: "Determining complexity and tool requirements..." });
       }, 800);
@@ -155,7 +149,6 @@ const AIAgentChat: React.FC = () => {
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
-      // Remove status message and add final response
       removeStatusMessage(statusId);
 
       const assistantMessage: ConversationMessage = {
@@ -221,7 +214,7 @@ const AIAgentChat: React.FC = () => {
   };
 
   return (
-    <div className="flex h-[700px] gap-4">
+    <div className="flex h-full">
       {showSessions && (
         <SessionsSidebar
           sessions={sessions}
@@ -233,37 +226,33 @@ const AIAgentChat: React.FC = () => {
         />
       )}
 
-      <Card className="flex-1 flex flex-col">
-        <CardHeader className="pb-3">
-          <AIAgentHeader
-            modelSettings={modelSettings}
-            showSessions={showSessions}
-            onToggleSessions={() => setShowSessions(!showSessions)}
-            onNewSession={startNewSession}
-            isLoading={isLoading}
-          />
-        </CardHeader>
+      <div className="flex-1 flex flex-col bg-background">
+        <SimplifiedChatHeader
+          modelSettings={modelSettings}
+          showSessions={showSessions}
+          onToggleSessions={() => setShowSessions(!showSessions)}
+          onNewSession={startNewSession}
+          isLoading={isLoading}
+        />
         
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <AIAgentChatInterface
-            conversations={conversations}
-            isLoading={isLoading}
-            modelSettings={modelSettings}
-            tools={tools}
-            toolsActive={toolsActive}
-            scrollAreaRef={scrollAreaRef}
-            onFollowUpAction={handleFollowUpAction}
-          />
-        </div>
+        <SimplifiedChatInterface
+          conversations={conversations}
+          isLoading={isLoading}
+          modelSettings={modelSettings}
+          tools={tools}
+          toolsActive={toolsActive}
+          scrollAreaRef={scrollAreaRef}
+          onFollowUpAction={handleFollowUpAction}
+        />
         
-        <AIAgentInput
+        <SimplifiedChatInput
           input={input}
           onInputChange={setInput}
           onSendMessage={sendMessage}
           isLoading={isLoading}
           modelProvider={modelSettings.provider}
         />
-      </Card>
+      </div>
     </div>
   );
 };
