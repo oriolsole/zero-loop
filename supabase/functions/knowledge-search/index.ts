@@ -10,58 +10,6 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-/**
- * Enhanced query cleaning that handles company names and meeting-specific terms
- */
-function cleanSearchQuery(query: string): string {
-  if (!query) return '';
-  
-  let cleaned = query.toLowerCase().trim();
-  
-  // Preserve important company names and meeting terms
-  const preserveTerms = ['npaw', 'adsmurai', 'meeting', 'discussed', 'reunión', 'discutido'];
-  const preservedWords: string[] = [];
-  
-  // Extract preserved terms first
-  for (const term of preserveTerms) {
-    if (cleaned.includes(term)) {
-      preservedWords.push(term);
-    }
-  }
-  
-  // Remove common search prefixes that interfere with semantic matching
-  const searchPrefixes = [
-    'what was discussed in',
-    'what happened in',
-    'tell me about',
-    'search for',
-    'search',
-    'find',
-    'look for',
-    'lookup',
-    'get information about',
-    'information about',
-    'what is',
-    'who is',
-    'about'
-  ];
-  
-  for (const prefix of searchPrefixes) {
-    const pattern = new RegExp(`^${prefix}\\s+`, 'i');
-    cleaned = cleaned.replace(pattern, '');
-  }
-  
-  // Combine preserved terms with cleaned query
-  const finalTerms = [...preservedWords];
-  const remainingWords = cleaned.split(/\s+/).filter(word => 
-    word.length > 2 && !preserveTerms.includes(word)
-  );
-  
-  finalTerms.push(...remainingWords);
-  
-  return finalTerms.join(' ').trim();
-}
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -100,12 +48,12 @@ serve(async (req) => {
 
     console.log('Knowledge search request:', { parameters });
 
-    // Extract parameters with better defaults
+    // Extract parameters with defaults
     const { 
       query, 
       limit = 5,
       includeNodes = true,
-      matchThreshold = 0.3, // Lower threshold for better recall
+      matchThreshold = 0.3,
       useEmbeddings = true
     } = parameters;
     
@@ -123,25 +71,21 @@ serve(async (req) => {
       );
     }
 
-    // Clean the query before processing
-    const originalQuery = query.trim();
-    const cleanedQuery = cleanSearchQuery(originalQuery);
-    console.log(`Original query: "${originalQuery}" -> Cleaned query: "${cleanedQuery}"`);
-    
-    // Use the best available query
-    const queryToUse = cleanedQuery || originalQuery;
+    // Use the query as-is - let semantic search do the work
+    const cleanQuery = query.trim();
+    console.log(`Processing query: "${cleanQuery}"`);
     
     try {
-      // Use our local processQuery function with enhanced parameters
+      // Use our local processQuery function
       const results = await processQuery({
-        query: queryToUse,
-        limit: Math.max(1, Math.min(50, Number(limit))), // Ensure reasonable limits
+        query: cleanQuery,
+        limit: Math.max(1, Math.min(50, Number(limit))),
         useEmbeddings: Boolean(useEmbeddings),
-        matchThreshold: Math.max(0.1, Math.min(1.0, Number(matchThreshold))), // Ensure valid threshold
+        matchThreshold: Math.max(0.1, Math.min(1.0, Number(matchThreshold))),
         includeNodes: Boolean(includeNodes)
       });
       
-      console.log(`Found ${results.length} results for query: "${queryToUse}"`);
+      console.log(`Found ${results.length} results for query: "${cleanQuery}"`);
       
       // Record this execution for analytics if execution ID is provided
       const executionId = req.headers.get('x-execution-id');
@@ -150,7 +94,7 @@ serve(async (req) => {
           await supabase.from('mcp_executions')
             .update({
               status: 'completed',
-              result: { results, query: queryToUse, originalQuery },
+              result: { results, query: cleanQuery },
               execution_time: Date.now()
             })
             .eq('id', executionId);
@@ -163,8 +107,7 @@ serve(async (req) => {
         JSON.stringify({ 
           success: true, 
           results: results,
-          query: queryToUse,
-          originalQuery
+          query: cleanQuery
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -177,10 +120,10 @@ serve(async (req) => {
           success: false,
           error: 'Error processing knowledge search',
           details: processingError.message,
-          results: [] // Return empty results instead of failing completely
+          results: []
         }),
         { 
-          status: 200, // Use 200 to avoid breaking the flow
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -193,7 +136,7 @@ serve(async (req) => {
         success: false,
         error: 'Failed to process knowledge search request',
         details: error.message,
-        results: [] // Return empty results
+        results: []
       }),
       { 
         status: 500,

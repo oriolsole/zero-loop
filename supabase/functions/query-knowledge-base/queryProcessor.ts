@@ -54,117 +54,15 @@ export interface FormattedResult {
 }
 
 /**
- * Enhanced search term extraction for multilingual content and company names
- */
-function extractSearchTerms(query: string): string {
-  if (!query || typeof query !== 'string') {
-    return '';
-  }
-  
-  let cleaned = query.toLowerCase().trim();
-  
-  // Preserve important company names and meeting terms (multilingual)
-  const preserveTerms = [
-    'npaw', 'adsmurai', 'meeting', 'discussed', 'reunión', 'discutido',
-    'partnership', 'collaboration', 'strategy', 'estrategia', 'colaboración'
-  ];
-  
-  // Extract preserved terms
-  const preservedWords: string[] = [];
-  for (const term of preserveTerms) {
-    if (cleaned.includes(term)) {
-      preservedWords.push(term);
-    }
-  }
-  
-  // Remove conversational prefixes (multilingual)
-  const conversationalPrefixes = [
-    'what was discussed in',
-    'qué se discutió en',
-    'what happened in',
-    'qué pasó en',
-    'tell me about',
-    'cuéntame sobre',
-    'háblame de',
-    'search for',
-    'buscar',
-    'find',
-    'encontrar',
-    'look for',
-    'buscar por'
-  ];
-  
-  for (const prefix of conversationalPrefixes) {
-    const pattern = new RegExp(`^${prefix}\\s+`, 'i');
-    cleaned = cleaned.replace(pattern, '');
-  }
-  
-  // Remove question words and common suffixes
-  cleaned = cleaned.replace(/^(what|qué|cuál|who|quién|when|cuándo|where|dónde|why|por qué)\s+/i, '');
-  cleaned = cleaned.replace(/[?!.]+$/, '').trim();
-  
-  // Combine preserved terms with remaining meaningful words
-  const stopWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'our', 'can', 'you', 'el', 'la', 'los', 'las', 'en', 'de', 'con', 'por', 'para', 'y', 'o'];
-  const remainingWords = cleaned.split(/\s+/).filter(word => 
-    word.length > 2 && !stopWords.includes(word) && !preserveTerms.includes(word)
-  );
-  
-  const finalTerms = [...preservedWords, ...remainingWords];
-  return finalTerms.join(' ').trim();
-}
-
-/**
- * Enhanced query cleaning for better multilingual matching
- */
-function cleanSearchQuery(query: string): string {
-  if (!query || query.trim() === '') {
-    return '';
-  }
-  
-  // First try to extract the actual search terms
-  const extractedTerms = extractSearchTerms(query);
-  if (extractedTerms && extractedTerms.trim()) {
-    return extractedTerms.trim();
-  }
-  
-  // Fallback to basic cleaning
-  let cleaned = query.toLowerCase().trim();
-  
-  const searchPrefixes = [
-    'what was discussed in',
-    'qué se discutió en',
-    'search for',
-    'buscar',
-    'find',
-    'encontrar',
-    'tell me about',
-    'cuéntame sobre'
-  ];
-  
-  for (const prefix of searchPrefixes) {
-    const pattern = new RegExp(`^${prefix}\\s+`, 'i');
-    cleaned = cleaned.replace(pattern, '');
-  }
-  
-  return cleaned.trim();
-}
-
-/**
- * Enhanced text query sanitization for PostgreSQL with multilingual support
+ * Simple text query sanitization for PostgreSQL
  */
 function sanitizeTextQuery(query: string): string {
   if (!query || query.trim() === '') {
     return '';
   }
   
-  // Clean the query first
-  const cleanedQuery = cleanSearchQuery(query);
-  if (!cleanedQuery) {
-    return '';
-  }
-  
-  // Remove special characters that might break tsquery
-  let sanitized = cleanedQuery
+  // Simple sanitization for PostgreSQL full-text search
+  let sanitized = query
     .replace(/['\\:&|!()]/g, ' ')
     .trim()
     .replace(/\s+/g, ' ');
@@ -173,26 +71,21 @@ function sanitizeTextQuery(query: string): string {
     return '';
   }
   
-  // Split into words and filter stop words (multilingual)
-  const stopWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'el', 'la', 'los', 'las', 'en', 'de', 'con', 'por', 'para', 'y', 'o'];
-  const words = sanitized.split(' ')
-    .filter(word => word.length > 2 && !stopWords.includes(word.toLowerCase()));
+  const words = sanitized.split(' ').filter(word => word.length > 0);
   
   if (words.length === 0) {
     return '';
   }
   
-  // For single words, add :* for prefix matching
   if (words.length === 1) {
     return `${words[0]}:*`;
   }
   
-  // For multiple words, connect with & and add :* to each
   return words.map(word => `${word}:*`).join(' & ');
 }
 
 /**
- * Enhanced knowledge nodes search with better company name matching
+ * Simple knowledge nodes search
  */
 async function searchKnowledgeNodes(
   supabase: any, 
@@ -200,20 +93,12 @@ async function searchKnowledgeNodes(
   limit: number
 ): Promise<FormattedResult[]> {
   try {
-    // Clean the query before searching
-    const cleanedQuery = cleanSearchQuery(query);
-    if (!cleanedQuery) {
-      console.log("Query was cleaned to empty string, skipping node search");
-      return [];
-    }
+    const sanitizedQuery = sanitizeTextQuery(query);
     
-    const sanitizedQuery = sanitizeTextQuery(cleanedQuery);
     if (!sanitizedQuery) {
       console.log("Query was sanitized to empty string, skipping node search");
       return [];
     }
-    
-    console.log(`Searching nodes with cleaned query: "${cleanedQuery}" -> sanitized: "${sanitizedQuery}"`);
     
     const { data: nodes, error } = await supabase
       .from('knowledge_nodes')
@@ -277,14 +162,14 @@ async function searchKnowledgeNodes(
 }
 
 /**
- * Enhanced query processing with better multilingual support and company name recognition
+ * Simplified query processing - let semantic search do the heavy lifting
  */
 export async function processQuery(options: QueryOptions): Promise<FormattedResult[]> {
   const { 
     query, 
     limit = 5, 
     useEmbeddings = true,
-    matchThreshold = 0.3, // Lower threshold for better recall
+    matchThreshold = 0.3,
     includeNodes = false
   } = options;
   
@@ -295,35 +180,22 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
   let chunkResults: FormattedResult[] = [];
   let nodeResults: FormattedResult[] = [];
   
-  // Extract search terms with enhanced multilingual support
-  const extractedTerms = extractSearchTerms(query);
-  console.log(`Extracted search terms: "${extractedTerms}"`);
-  
-  // Clean the extracted terms for better matching
-  const cleanedQuery = cleanSearchQuery(extractedTerms || query);
-  console.log(`Cleaned query: "${cleanedQuery}"`);
-  
-  // Use the best available query
-  const queryToUse = cleanedQuery || extractedTerms || query;
-  console.log(`Using query: "${queryToUse}"`);
-  
   // Get results from knowledge chunks
   try {
     let chunksData: KnowledgeChunk[] = [];
     
     if (useEmbeddings) {
       try {
-        // Get embeddings for the processed query
-        const embedding = await generateQueryEmbedding(queryToUse);
-        console.log(`Generated embedding for: "${queryToUse}"`);
+        // Use semantic search with embeddings
+        const embedding = await generateQueryEmbedding(query);
+        console.log(`Generated embedding for: "${query}"`);
     
-        // Query using vector similarity search with lower threshold
         const { data: vectorResults, error: vectorError } = await supabase.rpc(
           'match_knowledge_chunks',
           {
             query_embedding: embedding,
             match_threshold: matchThreshold,
-            match_count: limit * 2 // Get more results to filter better
+            match_count: limit * 2
           }
         );
     
@@ -335,31 +207,11 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
         chunksData = vectorResults || [];
         console.log(`Vector search found ${chunksData.length} results`);
         
-        // If no results with processed query and it's different from original, try original
-        if (chunksData.length === 0 && queryToUse !== query && query.trim()) {
-          console.log(`No results with processed query, trying original: "${query}"`);
-          
-          const originalEmbedding = await generateQueryEmbedding(query);
-          const { data: originalResults, error: originalError } = await supabase.rpc(
-            'match_knowledge_chunks',
-            {
-              query_embedding: originalEmbedding,
-              match_threshold: matchThreshold,
-              match_count: limit * 2
-            }
-          );
-          
-          if (!originalError && originalResults?.length > 0) {
-            chunksData = originalResults;
-            console.log(`Found ${chunksData.length} results with original query`);
-          }
-        }
-        
       } catch (error) {
         console.error("Error in vector search:", error);
         
         // Fallback to text search
-        const sanitizedQuery = sanitizeTextQuery(queryToUse);
+        const sanitizedQuery = sanitizeTextQuery(query);
         if (sanitizedQuery) {
           try {
             const { data: textResults, error: textError } = await supabase
@@ -379,7 +231,7 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
       }
     } else {
       // Text search only
-      const sanitizedQuery = sanitizeTextQuery(queryToUse);
+      const sanitizedQuery = sanitizeTextQuery(query);
       if (sanitizedQuery) {
         try {
           const { data: textResults, error: textError } = await supabase
@@ -443,7 +295,7 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
   // Combine and sort results
   const combinedResults = [...chunkResults, ...nodeResults]
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
-    .slice(0, limit * 2); // Return more results for better context
+    .slice(0, limit * 2);
 
   console.log(`Returning ${combinedResults.length} total results`);
   return combinedResults;

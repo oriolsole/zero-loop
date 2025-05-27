@@ -58,6 +58,7 @@ function sanitizeTextQuery(query: string): string {
     return '';
   }
   
+  // Simple sanitization for PostgreSQL full-text search
   let sanitized = query
     .replace(/['\\:&|!()]/g, ' ')
     .trim()
@@ -159,7 +160,7 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
     query, 
     limit = 5, 
     useEmbeddings = true,
-    matchThreshold = 0.5,
+    matchThreshold = 0.3,
     includeNodes = false
   } = options;
   
@@ -191,13 +192,11 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
         chunksData = vectorResults || [];
         
         if (chunksData.length === 0) {
-          console.log(`No vector results found, falling back to text search for: ${query}`);
+          console.log(`No vector results found, falling back to text search`);
           
           const sanitizedQuery = sanitizeTextQuery(query);
           
-          if (!sanitizedQuery) {
-            console.log("Query was sanitized to empty string, skipping text search");
-          } else {
+          if (sanitizedQuery) {
             try {
               const { data: textResults, error: textError } = await supabase
                 .from('knowledge_chunks')
@@ -205,12 +204,9 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
                 .textSearch('content', sanitizedQuery)
                 .limit(limit);
           
-              if (textError) {
-                console.error("Text search error:", textError);
-                throw textError;
+              if (!textError) {
+                chunksData = textResults || [];
               }
-          
-              chunksData = textResults || [];
             } catch (textSearchError) {
               console.error("Failed to perform text search:", textSearchError);
             }
@@ -221,9 +217,7 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
         
         const sanitizedQuery = sanitizeTextQuery(query);
         
-        if (!sanitizedQuery) {
-          console.log("Query was sanitized to empty string, skipping text search");
-        } else {
+        if (sanitizedQuery) {
           try {
             const { data: textResults, error: textError } = await supabase
               .from('knowledge_chunks')
@@ -231,12 +225,9 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
               .textSearch('content', sanitizedQuery)
               .limit(limit);
 
-            if (textError) {
-              console.error("Text search error:", textError);
-              throw textError;
+            if (!textError) {
+              chunksData = textResults || [];
             }
-
-            chunksData = textResults || [];
           } catch (textSearchError) {
             console.error("Failed to perform text search as fallback:", textSearchError);
           }
@@ -245,9 +236,7 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
     } else {
       const sanitizedQuery = sanitizeTextQuery(query);
       
-      if (!sanitizedQuery) {
-        console.log("Query was sanitized to empty string, skipping text search");
-      } else {
+      if (sanitizedQuery) {
         try {
           const { data: textResults, error: textError } = await supabase
             .from('knowledge_chunks')
@@ -255,12 +244,9 @@ export async function processQuery(options: QueryOptions): Promise<FormattedResu
             .textSearch('content', sanitizedQuery)
             .limit(limit);
 
-          if (textError) {
-            console.error("Text search error:", textError);
-            throw textError;
+          if (!textError) {
+            chunksData = textResults || [];
           }
-
-          chunksData = textResults || [];
         } catch (textSearchError) {
           console.error("Failed to perform text search:", textSearchError);
         }
