@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -115,6 +116,54 @@ serve(async (req) => {
     );
   }
 });
+
+/**
+ * Create knowledge retrieval tool entry
+ */
+function createKnowledgeRetrievalTool(knowledgeTrackingInfo: any): any {
+  if (!knowledgeTrackingInfo) return null;
+  
+  return {
+    name: 'knowledge_retrieval',
+    parameters: {
+      query: knowledgeTrackingInfo.result?.query || 'Unknown query',
+      searchMode: knowledgeTrackingInfo.searchMode || 'semantic',
+      resultsCount: knowledgeTrackingInfo.result?.returnedResults || 0
+    },
+    result: {
+      sources: knowledgeTrackingInfo.sources || [],
+      searchType: knowledgeTrackingInfo.result?.searchType || 'unknown',
+      totalResults: knowledgeTrackingInfo.result?.totalResults || 0,
+      returnedResults: knowledgeTrackingInfo.result?.returnedResults || 0,
+      message: knowledgeTrackingInfo.result?.message || null
+    },
+    success: knowledgeTrackingInfo.success
+  };
+}
+
+/**
+ * Create learning generation tool entry
+ */
+function createLearningGenerationTool(learningTrackingInfo: any): any {
+  if (!learningTrackingInfo) return null;
+  
+  return {
+    name: 'learning_generation',
+    parameters: {
+      query: 'Generated learning insights from complex query',
+      complexity: learningTrackingInfo.result?.complexity || 'unknown',
+      iterations: learningTrackingInfo.result?.iterations || 1
+    },
+    result: {
+      nodeId: learningTrackingInfo.result?.nodeId,
+      insights: learningTrackingInfo.result?.insights,
+      complexity: learningTrackingInfo.result?.complexity,
+      iterations: learningTrackingInfo.result?.iterations,
+      persistenceStatus: learningTrackingInfo.success ? 'persisted' : 'failed'
+    },
+    success: learningTrackingInfo.success
+  };
+}
 
 /**
  * Handle complex queries using learning loop integration with knowledge-first approach
@@ -355,16 +404,29 @@ Continue until you have enough information for a complete answer, but prioritize
     }
   }
 
-  // 6. Store final response with knowledge and learning tracking
+  // 6. Create tool entries for knowledge and learning operations
+  const allToolsUsed = [...finalToolsUsed];
+  
+  // Add knowledge retrieval as a tool
+  const knowledgeTool = createKnowledgeRetrievalTool(knowledgeTrackingInfo);
+  if (knowledgeTool) {
+    allToolsUsed.unshift(knowledgeTool); // Add at the beginning to show it was used first
+  }
+  
+  // Add learning generation as a tool
+  const learningTool = createLearningGenerationTool(learningTrackingInfo);
+  if (learningTool) {
+    allToolsUsed.push(learningTool); // Add at the end to show it was done last
+  }
+
+  // 7. Store final response with comprehensive tool tracking
   if (userId && sessionId) {
     await supabase.from('agent_conversations').insert({
       user_id: userId,
       session_id: sessionId,
       role: 'assistant',
       content: finalResponse,
-      tools_used: finalToolsUsed,
-      knowledge_used: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : null,
-      learning_insights: learningTrackingInfo ? [learningTrackingInfo] : null,
+      tools_used: allToolsUsed,
       ai_reasoning: complexityDecision.reasoning,
       created_at: new Date().toISOString()
     });
@@ -382,7 +444,7 @@ Continue until you have enough information for a complete answer, but prioritize
       knowledgeUsed: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : [],
       learningInsights: learningTrackingInfo ? [learningTrackingInfo] : [],
       accumulatedContext: accumulatedContext.length,
-      toolsUsed: finalToolsUsed,
+      toolsUsed: allToolsUsed,
       aiReasoning: complexityDecision.reasoning,
       sessionId
     }),
@@ -577,15 +639,23 @@ async function handleSimpleQueryWithKnowledgeFirst(
     console.log('✅ AI used knowledge base appropriately - no tools needed');
   }
 
-  // Store assistant response in database with knowledge tracking
+  // Create comprehensive tools list including knowledge retrieval
+  const allToolsUsed = [...toolsUsed];
+  
+  // Add knowledge retrieval as a tool
+  const knowledgeTool = createKnowledgeRetrievalTool(knowledgeTrackingInfo);
+  if (knowledgeTool) {
+    allToolsUsed.unshift(knowledgeTool); // Add at the beginning to show it was used first
+  }
+
+  // Store assistant response in database with comprehensive tool tracking
   if (userId && sessionId) {
     await supabase.from('agent_conversations').insert({
       user_id: userId,
       session_id: sessionId,
       role: 'assistant',
       content: finalResponse,
-      tools_used: toolsUsed,
-      knowledge_used: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : null,
+      tools_used: allToolsUsed,
       created_at: new Date().toISOString()
     });
   }
@@ -596,7 +666,7 @@ async function handleSimpleQueryWithKnowledgeFirst(
       message: finalResponse,
       learningLoopUsed: false,
       knowledgeUsed: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : [],
-      toolsUsed: toolsUsed.map(t => ({
+      toolsUsed: allToolsUsed.map(t => ({
         name: t.name,
         parameters: t.parameters,
         success: t.success,
