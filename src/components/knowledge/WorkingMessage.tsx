@@ -2,7 +2,7 @@
 import React from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
-import { Bot, Loader2, Search, Database, Github, Globe, Code } from 'lucide-react';
+import { Bot, Loader2, Settings, Search, Database, Github, Globe, Code } from 'lucide-react';
 
 interface WorkingMessageProps {
   currentTool?: string;
@@ -14,14 +14,14 @@ interface WorkingMessageProps {
 const WorkingMessage: React.FC<WorkingMessageProps> = ({ 
   currentTool, 
   progress, 
-  status,
+  status, 
   isAnimated = true 
 }) => {
   const getToolIcon = (toolName?: string) => {
     switch (toolName) {
       case 'web-search':
       case 'execute_web-search':
-        return <Search className="h-4 w-4 text-orange-400" />;
+        return <Search className="h-4 w-4 text-blue-400" />;
       case 'knowledge-search':
       case 'knowledge_retrieval':
         return <Database className="h-4 w-4 text-purple-400" />;
@@ -34,49 +34,59 @@ const WorkingMessage: React.FC<WorkingMessageProps> = ({
       case 'code-analysis':
         return <Code className="h-4 w-4 text-orange-400" />;
       default:
-        return <Bot className="h-4 w-4 text-primary" />;
+        return <Settings className="h-4 w-4 text-gray-400" />;
+    }
+  };
+
+  const getToolDisplayName = (toolName?: string) => {
+    switch (toolName) {
+      case 'web-search':
+      case 'execute_web-search':
+        return 'Web Search';
+      case 'knowledge-search':
+      case 'knowledge_retrieval':
+        return 'Knowledge Search';
+      case 'github-tools':
+      case 'execute_github-tools':
+        return 'GitHub Analysis';
+      case 'web-scraper':
+      case 'execute_web-scraper':
+        return 'Web Scraping';
+      case 'code-analysis':
+        return 'Code Analysis';
+      default:
+        return toolName ? toolName.replace(/_/g, ' ').replace(/^execute[_-]/, '') : 'Processing';
     }
   };
 
   return (
     <div className="flex gap-3 justify-start animate-fade-in">
-      <Avatar className="h-8 w-8 mt-1 flex-shrink-0">
-        <AvatarFallback className="bg-secondary/60 border border-border/30">
-          {isAnimated ? (
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          ) : (
-            <Bot className="h-4 w-4 text-primary" />
-          )}
+      <Avatar className="h-8 w-8 mt-0.5 flex-shrink-0">
+        <AvatarFallback className="bg-muted/80 border border-border/50">
+          <Bot className="h-4 w-4 text-muted-foreground" />
         </AvatarFallback>
       </Avatar>
       
-      <div className="bg-secondary/40 border border-border/30 rounded-lg px-4 py-3 max-w-[75%] min-w-[200px]">
-        <div className="flex items-center gap-2 mb-2">
-          {getToolIcon(currentTool)}
-          <span className="text-sm font-medium text-foreground">
-            {status}
-          </span>
-        </div>
-        
-        {currentTool && (
-          <div className="text-xs text-muted-foreground mb-2">
-            Using: {currentTool.replace('execute_', '').replace(/_/g, ' ')}
-          </div>
-        )}
-        
-        {progress !== undefined && (
-          <div className="space-y-1">
-            <Progress value={progress} className="h-2" />
-            <div className="text-xs text-muted-foreground text-right">
-              {progress}%
+      <div className="bg-muted/40 border border-border/50 rounded-xl px-4 py-3 max-w-[80%] shadow-sm">
+        <div className="flex items-center gap-3">
+          {currentTool && getToolIcon(currentTool)}
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              {isAnimated && <Loader2 className="h-3 w-3 text-blue-400 animate-spin" />}
+              <span className="text-sm text-foreground font-medium">
+                {currentTool ? getToolDisplayName(currentTool) : 'Working'}
+              </span>
             </div>
+            <p className="text-xs text-muted-foreground italic">
+              {status}
+            </p>
+            {progress !== undefined && progress > 0 && (
+              <div className="mt-2">
+                <Progress value={progress} className="w-32 h-1.5" />
+                <span className="text-xs text-muted-foreground mt-1">{progress}%</span>
+              </div>
+            )}
           </div>
-        )}
-        
-        <div className="flex items-center gap-1 mt-2">
-          <div className="w-1 h-1 bg-primary rounded-full animate-pulse" />
-          <div className="w-1 h-1 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-          <div className="w-1 h-1 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
         </div>
       </div>
     </div>

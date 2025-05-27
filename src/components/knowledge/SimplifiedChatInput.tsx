@@ -11,7 +11,6 @@ interface SimplifiedChatInputProps {
   onSendMessage: () => void;
   isLoading: boolean;
   modelProvider: ModelProvider;
-  placeholder?: string;
 }
 
 const SimplifiedChatInput: React.FC<SimplifiedChatInputProps> = ({
@@ -19,15 +18,12 @@ const SimplifiedChatInput: React.FC<SimplifiedChatInputProps> = ({
   onInputChange,
   onSendMessage,
   isLoading,
-  modelProvider,
-  placeholder = "Ask me anything..."
+  modelProvider
 }) => {
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (input && input.trim() && !isLoading) {
-        onSendMessage();
-      }
+      onSendMessage();
     }
   };
 
@@ -40,8 +36,8 @@ const SimplifiedChatInput: React.FC<SimplifiedChatInputProps> = ({
               <Sparkles className="h-4 w-4 text-primary" />
             </div>
             <Input
-              placeholder={placeholder}
-              value={input || ''}
+              placeholder="Ask me anything..."
+              value={input}
               onChange={(e) => onInputChange(e.target.value)}
               onKeyDown={handleKeyPress}
               disabled={isLoading}
@@ -49,7 +45,7 @@ const SimplifiedChatInput: React.FC<SimplifiedChatInputProps> = ({
             />
             <Button 
               onClick={onSendMessage} 
-              disabled={isLoading || !input || !input.trim()}
+              disabled={isLoading || !input.trim()}
               size="sm"
               className="h-8 w-8 p-0 bg-primary hover:bg-primary/90 shadow-sm"
             >
