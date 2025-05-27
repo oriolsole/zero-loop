@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
 import { useConversationContext } from '@/hooks/useConversationContext';
+import { KnowledgeToolResult } from '@/types/tools';
 import AIAgentHeader from './AIAgentHeader';
 import AIAgentChatInterface from './AIAgentChatInterface';
 import AIAgentInput from './AIAgentInput';
@@ -158,6 +159,27 @@ const AIAgentChat: React.FC = () => {
       // Remove status message and add final response
       removeStatusMessage(statusId);
 
+      // Transform knowledge persistence data into learning insights format
+      let learningInsights: KnowledgeToolResult[] = [];
+      if (data.knowledgePersistence && data.knowledgePersistence.success) {
+        learningInsights = [{
+          name: 'learning_generation',
+          parameters: {
+            query: message,
+            complexity: data.complexity || 'COMPLEX'
+          },
+          result: {
+            nodeId: data.knowledgePersistence.nodeId,
+            insight: data.knowledgePersistence.insight,
+            complexity: data.complexity || 'COMPLEX',
+            iterations: data.iterations || 1,
+            persistenceStatus: 'persisted' as const,
+            message: 'Learning insight generated and persisted successfully'
+          },
+          success: true
+        }];
+      }
+
       const assistantMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -165,6 +187,7 @@ const AIAgentChat: React.FC = () => {
         timestamp: new Date(),
         messageType: 'response',
         toolsUsed: data.toolsUsed || [],
+        learningInsights: learningInsights,
         aiReasoning: data.aiReasoning || undefined
       };
 
@@ -175,6 +198,10 @@ const AIAgentChat: React.FC = () => {
         if (successCount > 0) {
           toast.success(`Used ${successCount} tool(s) successfully`);
         }
+      }
+
+      if (learningInsights.length > 0) {
+        toast.success('Learning insight generated and persisted');
       }
 
     } catch (error) {

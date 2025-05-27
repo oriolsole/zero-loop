@@ -1,330 +1,180 @@
-
-import { useState, useCallback, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { KnowledgeToolResult } from '@/types/tools';
 
 export interface ConversationMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed';
-  isStreaming?: boolean;
-  toolsUsed?: Array<{
-    name: string;
-    success: boolean;
-    result?: any;
-    error?: string;
-  }>;
-  knowledgeUsed?: Array<{
-    name: string;
-    success: boolean;
-    result?: any;
-    sources?: any[];
-    searchMode?: 'semantic' | 'text';
-  }>;
-  learningInsights?: Array<{
-    name: string;
-    success: boolean;
-    result?: any;
-    insight?: any;
-  }>;
-  toolProgress?: Array<{
-    name: string;
-    status: 'pending' | 'executing' | 'completed' | 'failed';
-    displayName?: string;
-  }>;
-  selfReflection?: string;
-  toolDecision?: {
-    reasoning: string;
-    selectedTools: string[];
-  };
-  executionPlan?: any;
+  messageType?: 'status' | 'response' | 'error';
+  toolsUsed?: any[];
+  learningInsights?: KnowledgeToolResult[];
   aiReasoning?: string;
-  stepDetails?: {
-    tool: string;
-    result: any;
-    status: string;
-    progressUpdate?: string;
-  };
-  followUpSuggestions?: string[];
 }
 
-export interface ConversationSession {
+export interface Session {
   id: string;
   title: string;
-  created_at: Date;
-  updated_at: Date;
-  lastMessage?: string;
-  messageCount?: number;
+  created_at: string;
+  updated_at: string;
 }
 
-export const useAgentConversation = () => {
+export function useAgentConversation() {
   const { user } = useAuth();
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationMessage[]>([]);
-  const [sessions, setSessions] = useState<ConversationSession[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
 
-  const generateSessionTitle = (firstMessage: string): string => {
-    const truncated = firstMessage.length > 50 
-      ? firstMessage.substring(0, 50) + '...' 
-      : firstMessage;
-    return truncated;
-  };
+  useEffect(() => {
+    if (user) {
+      loadSessions();
+    }
+  }, [user]);
 
-  const loadExistingSessions = useCallback(async () => {
-    if (!user || isLoadingSessions) return;
-
+  const loadSessions = async () => {
     setIsLoadingSessions(true);
-    
     try {
-      // Get distinct sessions with metadata
-      const { data: sessionData, error } = await supabase
-        .from('agent_conversations')
-        .select('session_id, created_at, content, role')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
+      const { data, error } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
 
-      if (error) throw error;
-
-      if (sessionData && sessionData.length > 0) {
-        // Group messages by session_id and create session metadata
-        const sessionMap = new Map<string, {
-          id: string;
-          firstMessage: string;
-          lastMessage: string;
-          messageCount: number;
-          created_at: Date;
-          updated_at: Date;
-        }>();
-
-        sessionData.forEach((row) => {
-          const sessionId = row.session_id;
-          const createdAt = new Date(row.created_at);
-          
-          if (!sessionMap.has(sessionId)) {
-            sessionMap.set(sessionId, {
-              id: sessionId,
-              firstMessage: row.role === 'user' ? row.content : '',
-              lastMessage: row.content,
-              messageCount: 0,
-              created_at: createdAt,
-              updated_at: createdAt
-            });
-          }
-          
-          const session = sessionMap.get(sessionId)!;
-          session.messageCount++;
-          session.updated_at = createdAt > session.updated_at ? createdAt : session.updated_at;
-          session.lastMessage = row.content;
-          
-          // Set first user message as the session title source
-          if (row.role === 'user' && !session.firstMessage) {
-            session.firstMessage = row.content;
-          }
-        });
-
-        // Convert to sessions array
-        const sessionsArray: ConversationSession[] = Array.from(sessionMap.values())
-          .map(session => ({
-            id: session.id,
-            title: generateSessionTitle(session.firstMessage || session.lastMessage),
-            created_at: session.created_at,
-            updated_at: session.updated_at,
-            lastMessage: session.lastMessage,
-            messageCount: session.messageCount
-          }))
-          .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
-
-        setSessions(sessionsArray);
-        console.log(`Loaded ${sessionsArray.length} existing sessions`);
+      if (error) {
+        console.error('Error loading sessions:', error);
+      } else {
+        setSessions(data || []);
       }
-    } catch (error) {
-      console.error('Error loading existing sessions:', error);
     } finally {
       setIsLoadingSessions(false);
     }
-  }, [user, isLoadingSessions]);
+  };
 
-  const startNewSession = useCallback(async () => {
+  useEffect(() => {
+    if (currentSessionId) {
+      loadConversationHistory(currentSessionId);
+    }
+  }, [currentSessionId]);
+
+  const loadConversationHistory = async (sessionId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('timestamp', { ascending: true });
+
+      if (error) {
+        console.error('Error loading conversation history:', error);
+      } else {
+        setConversations(data.map(msg => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        })));
+      }
+    } catch (error) {
+      console.error('Error loading conversation history:', error);
+    }
+  };
+
+  const startNewSession = async () => {
     if (!user) return;
 
-    const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    setCurrentSessionId(sessionId);
-    setConversations([]);
-    
-    const newSession: ConversationSession = {
-      id: sessionId,
-      title: 'New Conversation',
-      created_at: new Date(),
-      updated_at: new Date(),
-      messageCount: 0
-    };
-    
-    setSessions(prev => [newSession, ...prev]);
-  }, [user]);
+    const newSessionTitle = `Session ${sessions.length + 1}`;
 
-  const addMessage = useCallback(async (message: ConversationMessage) => {
-    if (!currentSessionId || !user) return;
+    const { data, error } = await supabase
+      .from('sessions')
+      .insert([{ user_id: user.id, title: newSessionTitle }])
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Error creating new session:', error);
+    } else {
+      setSessions(prevSessions => [data, ...prevSessions]);
+      setCurrentSessionId(data.id);
+      setConversations([]);
+    }
+  };
+
+  const loadSession = (sessionId: string) => {
+    setCurrentSessionId(sessionId);
+  };
+
+  const addMessage = async (message: ConversationMessage) => {
+    if (!user || !currentSessionId) return;
 
     setConversations(prev => [...prev, message]);
 
-    // Update session title if this is the first user message
-    if (message.role === 'user' && conversations.length === 0) {
-      const title = generateSessionTitle(message.content);
-      setSessions(prev => prev.map(session => 
-        session.id === currentSessionId 
-          ? { 
-              ...session, 
-              title, 
-              updated_at: new Date(),
-              messageCount: (session.messageCount || 0) + 1
-            }
-          : session
-      ));
-    } else {
-      // Update session metadata
-      setSessions(prev => prev.map(session => 
-        session.id === currentSessionId 
-          ? { 
-              ...session, 
-              updated_at: new Date(),
-              messageCount: (session.messageCount || 0) + 1,
-              lastMessage: message.content
-            }
-          : session
-      ));
-    }
+    const { error } = await supabase
+      .from('messages')
+      .insert([{
+        session_id: currentSessionId,
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp.toISOString(),
+        messageType: message.messageType,
+        toolsUsed: message.toolsUsed,
+        aiReasoning: message.aiReasoning
+      }]);
 
-    try {
-      await supabase
-        .from('agent_conversations')
-        .insert({
-          session_id: currentSessionId,
-          user_id: user.id,
-          role: message.role,
-          content: message.content,
-          message_type: message.messageType || null,
-          tools_used: message.toolsUsed || null,
-          knowledge_used: message.knowledgeUsed || null,
-          learning_insights: message.learningInsights || null,
-          self_reflection: message.selfReflection || null,
-          tool_decision: message.toolDecision || null,
-          tool_progress: message.toolProgress || null,
-          ai_reasoning: message.aiReasoning || null,
-          created_at: message.timestamp.toISOString()
-        });
-    } catch (error) {
+    if (error) {
       console.error('Error saving message:', error);
     }
-  }, [currentSessionId, user, conversations.length]);
+  };
 
-  const updateMessage = useCallback((messageId: string, updates: Partial<ConversationMessage>) => {
-    setConversations(prev => prev.map(msg => 
-      msg.id === messageId ? { ...msg, ...updates } : msg
-    ));
-  }, []);
+  const updateMessage = async (messageId: string, updates: Partial<ConversationMessage>) => {
+    setConversations(prev => {
+      return prev.map(msg => {
+        if (msg.id === messageId) {
+          return { ...msg, ...updates };
+        }
+        return msg;
+      });
+    });
 
-  const loadSession = useCallback(async (sessionId: string) => {
-    if (!user) return;
+    const { error } = await supabase
+      .from('messages')
+      .update(updates)
+      .eq('id', messageId);
 
-    setCurrentSessionId(sessionId);
-    
-    try {
-      const { data, error } = await supabase
-        .from('agent_conversations')
-        .select('*')
-        .eq('session_id', sessionId)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-
-      const messages: ConversationMessage[] = data.map(row => ({
-        id: row.id.toString(),
-        role: row.role as ConversationMessage['role'],
-        content: row.content,
-        timestamp: new Date(row.created_at),
-        messageType: row.message_type as ConversationMessage['messageType'] || undefined,
-        toolsUsed: Array.isArray(row.tools_used) ? row.tools_used as Array<{
-          name: string;
-          success: boolean;
-          result?: any;
-          error?: string;
-        }> : undefined,
-        knowledgeUsed: Array.isArray((row as any).knowledge_used) ? (row as any).knowledge_used as Array<{
-          name: string;
-          success: boolean;
-          result?: any;
-          sources?: any[];
-          searchMode?: 'semantic' | 'text';
-        }> : undefined,
-        learningInsights: Array.isArray((row as any).learning_insights) ? (row as any).learning_insights as Array<{
-          name: string;
-          success: boolean;
-          result?: any;
-          insight?: any;
-        }> : undefined,
-        selfReflection: row.self_reflection || undefined,
-        toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 
-          row.tool_decision as { reasoning: string; selectedTools: string[]; } : undefined,
-        toolProgress: Array.isArray(row.tool_progress) ? row.tool_progress as Array<{
-          name: string;
-          status: 'pending' | 'executing' | 'completed' | 'failed';
-          displayName?: string;
-        }> : undefined,
-        aiReasoning: row.ai_reasoning || undefined
-      }));
-
-      setConversations(messages);
-      console.log(`Loaded ${messages.length} messages for session ${sessionId}`);
-    } catch (error) {
-      console.error('Error loading session:', error);
+    if (error) {
+      console.error('Error updating message:', error);
     }
-  }, [user]);
+  };
 
-  const deleteSession = useCallback(async (sessionId: string) => {
-    if (!user) return;
-
-    try {
-      await supabase
-        .from('agent_conversations')
-        .delete()
-        .eq('session_id', sessionId)
-        .eq('user_id', user.id);
-
-      setSessions(prev => prev.filter(session => session.id !== sessionId));
-      
-      if (currentSessionId === sessionId) {
-        setCurrentSessionId(null);
-        setConversations([]);
-      }
-    } catch (error) {
-      console.error('Error deleting session:', error);
-    }
-  }, [user, currentSessionId]);
-
-  const getConversationHistory = useCallback(() => {
-    return conversations.filter(msg => msg.role === 'user' || msg.role === 'assistant').map(msg => ({
-      role: msg.role,
-      content: msg.content
+  const getConversationHistory = () => {
+    return conversations.map(message => ({
+      role: message.role,
+      content: message.content
     }));
-  }, [conversations]);
+  };
 
-  // Load existing sessions when user becomes available
-  useEffect(() => {
-    if (user && sessions.length === 0 && !isLoadingSessions) {
-      loadExistingSessions();
+  const deleteSession = async (sessionId: string) => {
+    if (!user) return;
+  
+    // Optimistically update the UI
+    setSessions(prevSessions => prevSessions.filter(session => session.id !== sessionId));
+    if (currentSessionId === sessionId) {
+      setCurrentSessionId(null);
+      setConversations([]);
     }
-  }, [user, sessions.length, loadExistingSessions, isLoadingSessions]);
-
-  // Initialize with a new session if none exists and no sessions are loading
-  useEffect(() => {
-    if (user && !currentSessionId && sessions.length === 0 && !isLoadingSessions) {
-      startNewSession();
+  
+    const { error } = await supabase
+      .from('sessions')
+      .delete()
+      .eq('id', sessionId)
+      .eq('user_id', user.id);
+  
+    if (error) {
+      console.error('Error deleting session:', error);
+      // Revert the UI update if the deletion failed
+      loadSessions();
     }
-  }, [user, currentSessionId, sessions.length, startNewSession, isLoadingSessions]);
+  };
 
   return {
     currentSessionId,
@@ -335,8 +185,7 @@ export const useAgentConversation = () => {
     loadSession,
     addMessage,
     updateMessage,
-    deleteSession,
     getConversationHistory,
-    loadExistingSessions
+    deleteSession
   };
-};
+}
