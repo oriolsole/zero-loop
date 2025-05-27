@@ -3,6 +3,7 @@ import { corsHeaders } from "./cors.ts";
 import { generateEmbeddings } from "./embeddings.ts";
 import { chunkText } from "./textChunker.ts";
 import { extractTextFromImage } from "./imageProcessor.ts";
+import { extractTextFromPDF, analyzePDFContent } from "./pdfProcessor.ts";
 import { isValidUUID } from "./utils.ts";
 
 /**
@@ -44,21 +45,42 @@ export async function handleFileContent(body: any, supabase: any) {
   const filePath = `${timestamp}_${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
   
   let extractedText = '';
+  let processingMethod = 'unknown';
   
   // Extract text according to file type
   if (fileType.includes('pdf')) {
-    // For PDFs, we'll use a placeholder approach since pdfjs isn't available
-    extractedText = `[PDF file content: ${fileName}]. This is a placeholder text. In production, this would be the actual content extracted from the PDF file.`;
-    console.log(`Set placeholder for PDF text extraction`);
+    try {
+      console.log(`Processing PDF: ${fileName}`);
+      
+      // Analyze PDF content to determine processing strategy
+      const analysis = analyzePDFContent(binaryData);
+      console.log(`PDF analysis for ${fileName}:`, analysis);
+      
+      extractedText = await extractTextFromPDF(fileBase64, fileName);
+      processingMethod = analysis.hasText ? 'pdf-text-extraction' : 'pdf-ocr';
+      
+      if (!extractedText || extractedText.trim().length === 0) {
+        extractedText = `[PDF file: ${fileName}. No readable content could be extracted.]`;
+        processingMethod = 'pdf-failed';
+      }
+    } catch (error) {
+      console.error('Error processing PDF:', error);
+      extractedText = `[PDF file: ${fileName}. Processing failed: ${error.message}]`;
+      processingMethod = 'pdf-error';
+    }
   } else if (fileType.includes('image')) {
     try {
+      console.log(`Processing image: ${fileName}`);
       extractedText = await extractTextFromImage(fileBase64);
+      processingMethod = 'image-ocr';
     } catch (error) {
       console.error('Error analyzing image with OpenAI:', error);
       extractedText = `[Image file: ${fileName}. Analysis failed: ${error.message}]`;
+      processingMethod = 'image-error';
     }
   } else {
-    extractedText = `[Non-extractable file: ${fileName}]`;
+    extractedText = `[File: ${fileName}. File type not supported for text extraction.]`;
+    processingMethod = 'unsupported';
   }
 
   // Upload file to storage
@@ -92,7 +114,7 @@ export async function handleFileContent(body: any, supabase: any) {
   // Split extracted text into chunks
   const chunks = extractedText ? chunkText(extractedText, chunk_size, overlap) : [];
   
-  console.log(`Split extracted content into ${chunks.length} chunks`);
+  console.log(`Split extracted content into ${chunks.length} chunks using ${processingMethod}`);
   
   // Get embeddings for all chunks
   let embeddings: number[][] = [];
@@ -122,12 +144,14 @@ export async function handleFileContent(body: any, supabase: any) {
     file_path: filePath,
     original_file_type: fileType,
     file_size: fileSize,
-    ocr_processed: true,
+    ocr_processed: processingMethod.includes('ocr') || processingMethod.includes('pdf'),
     source_url,
     metadata: {
       ...metadata,
       file_name: fileName,
-      public_url: publicUrl
+      public_url: publicUrl,
+      processing_method: processingMethod,
+      extraction_length: extractedText ? extractedText.length : 0
     }
   };
   
@@ -154,11 +178,11 @@ export async function handleFileContent(body: any, supabase: any) {
     return supabase.from('knowledge_chunks').insert(insertObject);
   });
   
-  // If no chunks were created (e.g., empty PDF), create a placeholder entry
+  // If no chunks were created (e.g., empty file), create a placeholder entry
   if (chunks.length === 0) {
     const placeholderInsertObject = {
       ...baseInsertObject,
-      content: `[File: ${fileName}]`,
+      content: extractedText || `[File: ${fileName}]`,
     };
     
     insertPromises.push(
@@ -186,13 +210,15 @@ export async function handleFileContent(body: any, supabase: any) {
     );
   }
   
-  console.log(`Successfully processed file ${fileName} and inserted ${chunks.length} chunks`);
+  console.log(`Successfully processed file ${fileName} using ${processingMethod} and inserted ${chunks.length} chunks`);
   
   return new Response(
     JSON.stringify({ 
       success: true, 
       message: `Uploaded file ${fileName} and processed ${chunks.length} chunks successfully`,
-      publicUrl
+      publicUrl,
+      processingMethod,
+      extractedLength: extractedText ? extractedText.length : 0
     }),
     { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

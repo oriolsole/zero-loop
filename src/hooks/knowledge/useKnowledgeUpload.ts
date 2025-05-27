@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -33,7 +32,7 @@ export function useKnowledgeUpload() {
         }
         
         setUploadProgress({
-          fileName: file.name, // Add fileName property
+          fileName: file.name,
           status: 'processing',
           progress: 10,
           message: 'Reading file...'
@@ -47,11 +46,13 @@ export function useKnowledgeUpload() {
           reader.readAsDataURL(file);
         });
         
+        // Update progress based on file type
+        const isPDF = file.type.includes('pdf');
         setUploadProgress({
-          fileName: file.name, // Add fileName property
+          fileName: file.name,
           status: 'processing',
           progress: 30,
-          message: 'Extracting content...'
+          message: isPDF ? 'Extracting text from PDF...' : 'Processing content...'
         });
         
         // Upload file and get it processed
@@ -64,7 +65,7 @@ export function useKnowledgeUpload() {
             fileName: file.name,
             fileSize: file.size,
             metadata: options.metadata || {},
-            domain_id: options.domainId, // No need for "no-domain" check here as it's already handled in form
+            domain_id: options.domainId,
             source_url: options.sourceUrl,
             chunk_size: options.chunkSize || 1000,
             overlap: options.overlap || 100
@@ -84,13 +85,30 @@ export function useKnowledgeUpload() {
           return false;
         }
         
-        toast.success('File uploaded and processed successfully');
+        // Show success message with processing details
+        const processingMethod = data.processingMethod || 'unknown';
+        const extractedLength = data.extractedLength || 0;
+        
+        let successMessage = 'File uploaded and processed successfully';
+        if (isPDF) {
+          if (processingMethod.includes('ocr')) {
+            successMessage += ' using OCR';
+          } else if (processingMethod.includes('text')) {
+            successMessage += ' with text extraction';
+          }
+        }
+        
+        if (extractedLength > 0) {
+          successMessage += ` (${Math.round(extractedLength / 1000)}k characters extracted)`;
+        }
+        
+        toast.success(successMessage);
         return true;
       }
       // Handle text content upload
       else if (options.content) {
         setUploadProgress({
-          fileName: options.title, // Use title as fileName for text uploads
+          fileName: options.title,
           status: 'processing',
           progress: 30,
           message: 'Processing text content...'

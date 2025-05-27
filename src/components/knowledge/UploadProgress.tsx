@@ -8,10 +8,19 @@ interface UploadProgressProps {
 }
 
 export const UploadProgress: React.FC<UploadProgressProps> = ({ progress }) => {
+  const getStatusColor = () => {
+    switch (progress.status) {
+      case 'processing': return 'text-blue-600';
+      case 'success': return 'text-green-600';
+      case 'error': return 'text-red-600';
+      default: return 'text-gray-600';
+    }
+  };
+
   return (
     <div className="space-y-2 mt-4">
       <div className="flex justify-between text-xs">
-        <span>{progress.status}</span>
+        <span className={getStatusColor()}>{progress.status}</span>
         <span>{Math.round(progress.progress)}%</span>
       </div>
       <Progress value={progress.progress} className="h-2" />
