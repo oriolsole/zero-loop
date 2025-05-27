@@ -20,14 +20,16 @@ const WorkingMessage: React.FC<WorkingMessageProps> = ({
   const getToolIcon = (toolName?: string) => {
     switch (toolName) {
       case 'web-search':
-      case 'execute_web_search':
+      case 'execute_web-search':
         return <Search className="h-4 w-4 text-blue-400" />;
       case 'knowledge-search':
       case 'knowledge_retrieval':
         return <Database className="h-4 w-4 text-purple-400" />;
       case 'github-tools':
+      case 'execute_github-tools':
         return <Github className="h-4 w-4 text-gray-400" />;
       case 'web-scraper':
+      case 'execute_web-scraper':
         return <Globe className="h-4 w-4 text-green-400" />;
       case 'code-analysis':
         return <Code className="h-4 w-4 text-orange-400" />;
@@ -39,31 +41,33 @@ const WorkingMessage: React.FC<WorkingMessageProps> = ({
   const getToolDisplayName = (toolName?: string) => {
     switch (toolName) {
       case 'web-search':
-      case 'execute_web_search':
+      case 'execute_web-search':
         return 'Web Search';
       case 'knowledge-search':
       case 'knowledge_retrieval':
         return 'Knowledge Search';
       case 'github-tools':
+      case 'execute_github-tools':
         return 'GitHub Analysis';
       case 'web-scraper':
+      case 'execute_web-scraper':
         return 'Web Scraping';
       case 'code-analysis':
         return 'Code Analysis';
       default:
-        return toolName ? toolName.replace(/_/g, ' ').replace(/^execute /, '') : 'Processing';
+        return toolName ? toolName.replace(/_/g, ' ').replace(/^execute[_-]/, '') : 'Processing';
     }
   };
 
   return (
     <div className="flex gap-3 justify-start animate-fade-in">
       <Avatar className="h-8 w-8 mt-0.5 flex-shrink-0">
-        <AvatarFallback className="bg-secondary/80 border border-border/50">
+        <AvatarFallback className="bg-muted/80 border border-border/50">
           <Bot className="h-4 w-4 text-muted-foreground" />
         </AvatarFallback>
       </Avatar>
       
-      <div className="bg-secondary/40 border border-border/50 rounded-xl px-4 py-3 max-w-[80%] shadow-sm">
+      <div className="bg-muted/40 border border-border/50 rounded-xl px-4 py-3 max-w-[80%] shadow-sm">
         <div className="flex items-center gap-3">
           {currentTool && getToolIcon(currentTool)}
           <div className="flex-1">

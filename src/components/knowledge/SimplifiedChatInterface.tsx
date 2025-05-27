@@ -130,7 +130,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
           
           {/* Working Message - Shows during processing */}
           {(isLoading || isStreaming) && (
-            <div className="mt-6">
+            <div className="mt-6 animate-fade-in">
               <WorkingMessage 
                 currentTool={currentTool}
                 progress={toolProgress}
@@ -140,12 +140,12 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             </div>
           )}
           
-          {/* Tool Execution Status - Shows active tools */}
-          {toolsActive && tools.length > 0 && (
-            <div className="mt-6 space-y-3">
+          {/* Tool Execution Status - Shows active and completed tools */}
+          {tools.length > 0 && (
+            <div className="mt-6 space-y-4 animate-fade-in">
               <div className="text-sm text-muted-foreground flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
-                <span>Tools in use</span>
+                <span>Tools & Analysis</span>
               </div>
               
               <div className="grid gap-3">

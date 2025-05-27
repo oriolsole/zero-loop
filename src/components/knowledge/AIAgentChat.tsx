@@ -43,7 +43,8 @@ const AIAgentChat: React.FC = () => {
     updateTool,
     completeTool,
     failTool,
-    clearTools
+    clearTools,
+    setToolProgress: updateToolProgress
   } = useToolProgress();
 
   const {
@@ -98,6 +99,80 @@ const AIAgentChat: React.FC = () => {
     await processMessage(action);
   };
 
+  const parseStreamingChunk = (line: string) => {
+    try {
+      const parsed = JSON.parse(line);
+      console.log('Parsed streaming chunk:', parsed);
+      
+      // Handle tool announcements
+      if (parsed.type === 'tool-announcement') {
+        console.log('Tool announced:', parsed.toolName);
+        const toolId = startTool(
+          parsed.toolName || 'unknown',
+          getToolDisplayName(parsed.toolName || 'unknown'),
+          {}
+        );
+        setCurrentTool(parsed.toolName);
+        setWorkingStatus(parsed.content || `Using ${getToolDisplayName(parsed.toolName || 'unknown')}...`);
+        return { type: 'tool-start', toolId, toolName: parsed.toolName };
+      }
+      
+      // Handle step announcements
+      if (parsed.type === 'step-announcement') {
+        console.log('Step announced:', parsed.content);
+        setWorkingStatus(parsed.content);
+        return { type: 'step-update', content: parsed.content };
+      }
+      
+      // Handle partial results
+      if (parsed.type === 'partial-result') {
+        console.log('Partial result:', parsed.content);
+        setWorkingStatus(parsed.content);
+        return { type: 'partial-result', content: parsed.content };
+      }
+      
+      // Handle progress updates
+      if (parsed.progress !== undefined) {
+        console.log('Progress update:', parsed.progress);
+        setToolProgress(parsed.progress);
+        // Update tool progress if we have an active tool
+        const activeTool = tools.find(t => t.status === 'executing');
+        if (activeTool) {
+          updateToolProgress(activeTool.id, parsed.progress);
+        }
+        return { type: 'progress', progress: parsed.progress };
+      }
+      
+      // Handle final results
+      if (parsed.type === 'final-result') {
+        console.log('Final result received:', parsed);
+        return { type: 'final-result', data: parsed };
+      }
+      
+      return parsed;
+    } catch (parseError) {
+      console.warn('Failed to parse streaming chunk:', line);
+      return null;
+    }
+  };
+
+  const getToolDisplayName = (toolName: string) => {
+    const displayNames: Record<string, string> = {
+      'web-search': 'Web Search',
+      'execute_web-search': 'Web Search',
+      'knowledge-search': 'Knowledge Search',
+      'execute_knowledge-search': 'Knowledge Search',
+      'github-tools': 'GitHub Analysis',
+      'execute_github-tools': 'GitHub Analysis',
+      'web-scraper': 'Web Scraper',
+      'execute_web-scraper': 'Web Scraper',
+      'jira-tools': 'Jira Tools',
+      'execute_jira-tools': 'Jira Tools'
+    };
+    
+    return displayNames[toolName] || toolName.replace('execute_', '').replace(/_/g, ' ');
+  };
+
   const processMessage = async (message: string) => {
     if (!user || !currentSessionId) return;
 
@@ -106,10 +181,12 @@ const AIAgentChat: React.FC = () => {
 
     setIsLoading(true);
     setIsStreaming(true);
-    setWorkingStatus('Processing your request...');
+    setWorkingStatus('Analyzing your request...');
     setCurrentTool(undefined);
     setToolProgress(undefined);
     clearTools();
+
+    console.log('Starting message processing:', { message, enhancedMessage });
 
     try {
       const conversationHistory = getConversationHistory();
@@ -130,40 +207,46 @@ const AIAgentChat: React.FC = () => {
         throw new Error(error.message);
       }
 
+      console.log('AI Agent response received:', data);
+
       // Handle streaming response
       if (data && typeof data === 'string') {
         const lines = data.split('\n').filter(line => line.trim());
         let finalResult: any = null;
+        let currentToolId: string | null = null;
+
+        console.log('Processing streaming lines:', lines.length);
 
         for (const line of lines) {
-          try {
-            const parsed = JSON.parse(line);
-            
-            if (parsed.type === 'final-result') {
-              finalResult = parsed;
-            } else {
-              // Update working status based on streaming data
-              if (parsed.type === 'tool-announcement') {
-                setCurrentTool(parsed.toolName);
-                setWorkingStatus(parsed.content);
-              } else if (parsed.type === 'step-announcement') {
-                setWorkingStatus(parsed.content);
-              } else if (parsed.type === 'partial-result') {
-                setWorkingStatus('Finalizing response...');
+          const parsed = parseStreamingChunk(line);
+          
+          if (parsed) {
+            if (parsed.type === 'tool-start') {
+              currentToolId = parsed.toolId;
+              console.log('Tool started with ID:', currentToolId);
+            } else if (parsed.type === 'final-result') {
+              finalResult = parsed.data;
+              console.log('Final result captured:', finalResult);
+              
+              // Complete any active tools
+              if (currentToolId) {
+                completeTool(currentToolId, finalResult.toolsUsed);
+                console.log('Tool completed:', currentToolId);
               }
               
-              // Update progress if available
-              if (parsed.progress) {
-                setToolProgress(parsed.progress);
-              }
+              // Mark all executing tools as completed
+              tools.forEach(tool => {
+                if (tool.status === 'executing') {
+                  completeTool(tool.id, finalResult.toolsUsed);
+                }
+              });
             }
-          } catch (parseError) {
-            console.warn('Failed to parse streaming chunk:', line);
           }
         }
 
         // Add final assistant message
         if (finalResult && finalResult.success) {
+          console.log('Adding final assistant message');
           const assistantMessage: ConversationMessage = {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
@@ -182,9 +265,12 @@ const AIAgentChat: React.FC = () => {
               toast.success(`Used ${successCount} tool(s) successfully`);
             }
           }
+        } else {
+          console.warn('No final result found in streaming response');
         }
       } else {
         // Fallback to non-streaming response
+        console.log('Using non-streaming fallback');
         if (!data || !data.success) {
           throw new Error(data?.error || 'Failed to get response from AI agent');
         }
@@ -212,6 +298,13 @@ const AIAgentChat: React.FC = () => {
 
     } catch (error) {
       console.error('Error sending message:', error);
+      
+      // Mark any executing tools as failed
+      tools.forEach(tool => {
+        if (tool.status === 'executing') {
+          failTool(tool.id, error.message);
+        }
+      });
       
       toast.error('Failed to send message', {
         description: error.message || 'Please try again.',
