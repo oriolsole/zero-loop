@@ -24,7 +24,8 @@ const SessionsSidebar: React.FC<SessionsSidebarProps> = ({
   onDeleteSession,
   isLoading = false
 }) => {
-  const formatDate = (date: Date) => {
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
     const now = new Date();
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
     
@@ -83,7 +84,7 @@ const SessionsSidebar: React.FC<SessionsSidebarProps> = ({
                         <Badge variant="outline" className="text-xs">
                           {formatDate(session.updated_at)}
                         </Badge>
-                        {session.messageCount && session.messageCount > 0 && (
+                        {session.messageCount !== undefined && session.messageCount > 0 && (
                           <Badge variant="secondary" className="text-xs">
                             {session.messageCount} msgs
                           </Badge>
