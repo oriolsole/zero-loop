@@ -146,19 +146,19 @@ export function useAgentConversation() {
 
     const { error } = await supabase
       .from('agent_conversations')
-      .insert([{
+      .insert({
         session_id: currentSessionId,
         role: message.role,
         content: message.content,
         created_at: message.timestamp.toISOString(),
         message_type: message.messageType,
         tools_used: message.toolsUsed || [],
-        learning_insights: message.learningInsights || [],
+        learning_insights: message.learningInsights as any || [],
         ai_reasoning: message.aiReasoning,
-        tool_decision: message.toolDecision,
+        tool_decision: message.toolDecision as any,
         self_reflection: message.selfReflection,
         user_id: user.id
-      }]);
+      });
 
     if (error) {
       console.error('Error saving message:', error);
@@ -180,10 +180,10 @@ export function useAgentConversation() {
       .update({
         content: updates.content,
         message_type: updates.messageType,
-        tools_used: updates.toolsUsed,
-        learning_insights: updates.learningInsights,
+        tools_used: updates.toolsUsed as any,
+        learning_insights: updates.learningInsights as any,
         ai_reasoning: updates.aiReasoning,
-        tool_decision: updates.toolDecision,
+        tool_decision: updates.toolDecision as any,
         self_reflection: updates.selfReflection
       })
       .eq('id', messageId);
