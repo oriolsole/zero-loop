@@ -1,19 +1,18 @@
-
 /**
  * Knowledge Retrieval for Knowledge-First AI Responses
  */
 
 /**
- * Retrieve relevant existing knowledge for a query with enhanced formatting
+ * Retrieve relevant existing knowledge for a query with enhanced formatting and tracking
  */
 export async function getRelevantKnowledge(
   message: string,
   userId: string | null,
   supabase: any
-): Promise<any[] | null> {
+): Promise<{ knowledge: any[] | null, trackingInfo: any | null }> {
   if (!userId) {
     console.log('No userId provided for knowledge retrieval');
-    return null;
+    return { knowledge: null, trackingInfo: null };
   }
 
   try {
@@ -53,8 +52,30 @@ export async function getRelevantKnowledge(
         .sort((a, b) => b.relevanceScore - a.relevanceScore)
         .slice(0, 5);
       
-      console.log('✅ Returning', sortedResults.length, 'formatted knowledge results');
-      return sortedResults;
+      // Create tracking info for visibility
+      const trackingInfo = {
+        name: 'Knowledge Base Search',
+        success: true,
+        searchMode: 'semantic',
+        sources: sortedResults,
+        result: {
+          query: message,
+          totalResults: semanticResults.length,
+          returnedResults: sortedResults.length,
+          searchType: 'semantic_embedding',
+          sources: sortedResults.map(result => ({
+            id: result.id,
+            title: result.title,
+            snippet: result.snippet,
+            relevanceScore: result.relevanceScore,
+            sourceType: result.sourceType,
+            metadata: result.metadata
+          }))
+        }
+      };
+      
+      console.log('✅ Returning', sortedResults.length, 'formatted knowledge results with tracking');
+      return { knowledge: sortedResults, trackingInfo };
     }
 
     // Fallback: Search knowledge nodes directly with better formatting
@@ -68,7 +89,15 @@ export async function getRelevantKnowledge(
 
     if (nodesError) {
       console.error('❌ Error fetching knowledge nodes:', nodesError);
-      return null;
+      return { 
+        knowledge: null, 
+        trackingInfo: {
+          name: 'Knowledge Base Search',
+          success: false,
+          error: nodesError.message,
+          result: null
+        }
+      };
     }
 
     if (relevantNodes && relevantNodes.length > 0) {
@@ -89,16 +118,58 @@ export async function getRelevantKnowledge(
         }
       }));
 
-      console.log('📝 Found', formattedNodes.length, 'relevant knowledge nodes');
-      return formattedNodes.slice(0, 3);
+      const trackingInfo = {
+        name: 'Knowledge Base Search',
+        success: true,
+        searchMode: 'direct_node_query',
+        sources: formattedNodes.slice(0, 3),
+        result: {
+          query: message,
+          totalResults: formattedNodes.length,
+          returnedResults: Math.min(formattedNodes.length, 3),
+          searchType: 'direct_node_query',
+          sources: formattedNodes.slice(0, 3).map(node => ({
+            id: node.id,
+            title: node.title,
+            snippet: node.snippet,
+            confidence: node.confidence,
+            type: node.type,
+            metadata: node.metadata
+          }))
+        }
+      };
+
+      console.log('📝 Found', formattedNodes.length, 'relevant knowledge nodes with tracking');
+      return { knowledge: formattedNodes.slice(0, 3), trackingInfo };
     }
 
     console.log('ℹ️ No relevant knowledge found in database');
-    return null;
+    const trackingInfo = {
+      name: 'Knowledge Base Search',
+      success: true,
+      searchMode: 'no_results',
+      sources: [],
+      result: {
+        query: message,
+        totalResults: 0,
+        returnedResults: 0,
+        searchType: 'comprehensive_search',
+        message: 'No relevant knowledge found in database'
+      }
+    };
+
+    return { knowledge: null, trackingInfo };
 
   } catch (error) {
     console.error('❌ Error retrieving relevant knowledge:', error);
-    return null;
+    const trackingInfo = {
+      name: 'Knowledge Base Search',
+      success: false,
+      error: error.message || 'Unknown error occurred',
+      result: null
+    };
+    
+    return { knowledge: null, trackingInfo };
   }
 }
 

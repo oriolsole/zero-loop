@@ -16,6 +16,19 @@ export interface ConversationMessage {
     result?: any;
     error?: string;
   }>;
+  knowledgeUsed?: Array<{
+    name: string;
+    success: boolean;
+    result?: any;
+    sources?: any[];
+    searchMode?: 'semantic' | 'text';
+  }>;
+  learningInsights?: Array<{
+    name: string;
+    success: boolean;
+    result?: any;
+    insight?: any;
+  }>;
   toolProgress?: Array<{
     name: string;
     status: 'pending' | 'executing' | 'completed' | 'failed';
@@ -194,6 +207,8 @@ export const useAgentConversation = () => {
           content: message.content,
           message_type: message.messageType || null,
           tools_used: message.toolsUsed || null,
+          knowledge_used: message.knowledgeUsed || null,
+          learning_insights: message.learningInsights || null,
           self_reflection: message.selfReflection || null,
           tool_decision: message.toolDecision || null,
           tool_progress: message.toolProgress || null,
@@ -237,6 +252,19 @@ export const useAgentConversation = () => {
           success: boolean;
           result?: any;
           error?: string;
+        }> : undefined,
+        knowledgeUsed: Array.isArray(row.knowledge_used) ? row.knowledge_used as Array<{
+          name: string;
+          success: boolean;
+          result?: any;
+          sources?: any[];
+          searchMode?: 'semantic' | 'text';
+        }> : undefined,
+        learningInsights: Array.isArray(row.learning_insights) ? row.learning_insights as Array<{
+          name: string;
+          success: boolean;
+          result?: any;
+          insight?: any;
         }> : undefined,
         selfReflection: row.self_reflection || undefined,
         toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 

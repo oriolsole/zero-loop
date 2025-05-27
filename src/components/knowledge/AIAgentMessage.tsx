@@ -4,7 +4,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Bot, User, ChevronDown, ChevronRight, CheckCircle, XCircle, ArrowRight, Brain, Cog, Target, Copy } from 'lucide-react';
+import { Bot, User, ChevronDown, ChevronRight, CheckCircle, XCircle, ArrowRight, Brain, Cog, Target, Copy, Database, Lightbulb } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import MarkdownRenderer from './MarkdownRenderer';
 import { toast } from '@/components/ui/sonner';
@@ -18,6 +18,8 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   const [showDetails, setShowDetails] = useState(false);
   const [showReasoning, setShowReasoning] = useState(false);
   const [showToolDecision, setShowToolDecision] = useState(false);
+  const [showKnowledgeUsed, setShowKnowledgeUsed] = useState(false);
+  const [showLearningInsights, setShowLearningInsights] = useState(false);
 
   const formatTimestamp = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -46,6 +48,52 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     }
   };
 
+  const renderKnowledgeResult = (knowledgeItem: any) => {
+    return (
+      <div className="space-y-2">
+        <div className="text-xs font-medium text-muted-foreground mb-2">
+          {knowledgeItem.name} ({knowledgeItem.searchMode || 'unknown'} search):
+        </div>
+        <div className="max-h-48 overflow-y-auto">
+          {knowledgeItem.result && (
+            <pre className="text-sm text-foreground whitespace-pre-wrap bg-secondary/20 p-2 rounded">
+              {JSON.stringify(knowledgeItem.result, null, 2)}
+            </pre>
+          )}
+          {knowledgeItem.sources && knowledgeItem.sources.length > 0 && (
+            <div className="mt-2 space-y-1">
+              <div className="text-xs font-medium text-muted-foreground">Sources:</div>
+              {knowledgeItem.sources.map((source: any, idx: number) => (
+                <div key={idx} className="text-xs bg-secondary/30 p-2 rounded">
+                  <div className="font-medium">{source.title}</div>
+                  <div className="text-muted-foreground">{source.snippet}</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Relevance: {(source.relevanceScore * 100).toFixed(1)}% | Type: {source.sourceType}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderLearningInsight = (insight: any) => {
+    return (
+      <div className="space-y-2">
+        <div className="text-xs font-medium text-muted-foreground mb-2">
+          {insight.name}:
+        </div>
+        <div className="max-h-48 overflow-y-auto">
+          <pre className="text-sm text-foreground whitespace-pre-wrap bg-secondary/20 p-2 rounded">
+            {JSON.stringify(insight.result, null, 2)}
+          </pre>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
       {message.role !== 'user' && (
@@ -62,6 +110,38 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
           <MarkdownRenderer content={message.content} />
         </div>
         
+        {/* Knowledge Sources Used Display */}
+        {message.knowledgeUsed && message.knowledgeUsed.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {message.knowledgeUsed.map((knowledge, index) => (
+              <Badge 
+                key={index} 
+                variant={knowledge.success ? "default" : "destructive"}
+                className="text-xs"
+              >
+                {knowledge.success ? <Database className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
+                Knowledge Retrieved
+              </Badge>
+            ))}
+          </div>
+        )}
+
+        {/* Learning Insights Display */}
+        {message.learningInsights && message.learningInsights.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {message.learningInsights.map((insight, index) => (
+              <Badge 
+                key={index} 
+                variant={insight.success ? "secondary" : "destructive"}
+                className="text-xs"
+              >
+                {insight.success ? <Lightbulb className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
+                Learning Generated
+              </Badge>
+            ))}
+          </div>
+        )}
+
         {/* Reasoning Trail Sections */}
         {message.aiReasoning && (
           <Collapsible open={showReasoning} onOpenChange={setShowReasoning} className="mt-3">
@@ -191,6 +271,46 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
               ))}
             </div>
           </div>
+        )}
+
+        {/* Knowledge Sources Used Details */}
+        {message.knowledgeUsed && message.knowledgeUsed.length > 0 && (
+          <Collapsible open={showKnowledgeUsed} onOpenChange={setShowKnowledgeUsed} className="mt-3">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-muted-foreground hover:text-foreground">
+                {showKnowledgeUsed ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
+                <Database className="h-3 w-3 mr-1" />
+                Knowledge Sources Used
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 space-y-2">
+              {message.knowledgeUsed.map((knowledge, index) => (
+                <div key={index} className="p-3 bg-secondary/30 rounded-lg border border-border">
+                  {renderKnowledgeResult(knowledge)}
+                </div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+
+        {/* Learning Insights Details */}
+        {message.learningInsights && message.learningInsights.length > 0 && (
+          <Collapsible open={showLearningInsights} onOpenChange={setShowLearningInsights} className="mt-3">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-muted-foreground hover:text-foreground">
+                {showLearningInsights ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
+                <Lightbulb className="h-3 w-3 mr-1" />
+                Learning Insights Generated
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 space-y-2">
+              {message.learningInsights.map((insight, index) => (
+                <div key={index} className="p-3 bg-secondary/30 rounded-lg border border-border">
+                  {renderLearningInsight(insight)}
+                </div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
         )}
 
         {/* Tool Results Details (if any) */}

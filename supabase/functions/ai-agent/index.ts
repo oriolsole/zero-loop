@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -132,7 +133,7 @@ async function handleComplexQueryWithLearningLoop(
   console.log('🧠 AI reasoning:', complexityDecision.reasoning);
   
   // 1. Retrieve relevant existing knowledge FIRST
-  const relevantKnowledge = await getRelevantKnowledge(message, userId, supabase);
+  const { knowledge: relevantKnowledge, trackingInfo: knowledgeTrackingInfo } = await getRelevantKnowledge(message, userId, supabase);
   console.log('📚 Retrieved relevant knowledge:', relevantKnowledge?.length || 0, 'nodes');
 
   // 2. Get available tools (updated to use new knowledge-search key)
@@ -297,18 +298,38 @@ Continue until you have enough information for a complete answer, but prioritize
   }
 
   // 5. Persist valuable insights as knowledge nodes
+  let learningTrackingInfo = null;
   if (userId && accumulatedContext.length > 0) {
-    await persistInsightAsKnowledgeNode(
-      message,
-      finalResponse,
-      accumulatedContext,
-      userId,
-      complexityDecision,
-      supabase
-    );
+    try {
+      const persistResult = await persistInsightAsKnowledgeNode(
+        message,
+        finalResponse,
+        accumulatedContext,
+        userId,
+        complexityDecision,
+        supabase
+      );
+      
+      learningTrackingInfo = {
+        name: 'Learning Generation',
+        success: true,
+        result: {
+          nodeId: persistResult?.nodeId || 'unknown',
+          insights: persistResult?.insights || 'Generated learning insights from complex query',
+          complexity: complexityDecision.classification,
+          iterations: iteration
+        }
+      };
+    } catch (error) {
+      learningTrackingInfo = {
+        name: 'Learning Generation',
+        success: false,
+        error: error.message || 'Failed to persist learning insights'
+      };
+    }
   }
 
-  // 6. Store final response
+  // 6. Store final response with knowledge and learning tracking
   if (userId && sessionId) {
     await supabase.from('agent_conversations').insert({
       user_id: userId,
@@ -316,6 +337,8 @@ Continue until you have enough information for a complete answer, but prioritize
       role: 'assistant',
       content: finalResponse,
       tools_used: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
+      knowledge_used: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : null,
+      learning_insights: learningTrackingInfo ? [learningTrackingInfo] : null,
       ai_reasoning: complexityDecision.reasoning,
       created_at: new Date().toISOString()
     });
@@ -330,7 +353,8 @@ Continue until you have enough information for a complete answer, but prioritize
       message: finalResponse,
       learningLoopUsed: true,
       iterations: iteration,
-      knowledgeUsed: relevantKnowledge?.length || 0,
+      knowledgeUsed: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : [],
+      learningInsights: learningTrackingInfo ? [learningTrackingInfo] : [],
       accumulatedContext: accumulatedContext.length,
       toolsUsed: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
       aiReasoning: complexityDecision.reasoning,
@@ -354,8 +378,8 @@ async function handleSimpleQueryWithKnowledgeFirst(
 ): Promise<Response> {
   console.log('📝 Handling simple query with knowledge-first approach');
 
-  // 1. FIRST: Retrieve relevant knowledge
-  const relevantKnowledge = await getRelevantKnowledge(message, userId, supabase);
+  // 1. FIRST: Retrieve relevant knowledge with tracking
+  const { knowledge: relevantKnowledge, trackingInfo: knowledgeTrackingInfo } = await getRelevantKnowledge(message, userId, supabase);
   console.log('📚 Retrieved knowledge for simple query:', relevantKnowledge?.length || 0, 'items');
 
   // 2. Fetch available MCPs 
@@ -458,7 +482,7 @@ async function handleSimpleQueryWithKnowledgeFirst(
     console.log('✅ AI used knowledge base appropriately - no tools needed');
   }
 
-  // Store assistant response in database
+  // Store assistant response in database with knowledge tracking
   if (userId && sessionId) {
     await supabase.from('agent_conversations').insert({
       user_id: userId,
@@ -466,6 +490,7 @@ async function handleSimpleQueryWithKnowledgeFirst(
       role: 'assistant',
       content: finalResponse,
       tools_used: toolsUsed,
+      knowledge_used: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : null,
       created_at: new Date().toISOString()
     });
   }
@@ -475,7 +500,7 @@ async function handleSimpleQueryWithKnowledgeFirst(
       success: true,
       message: finalResponse,
       learningLoopUsed: false,
-      knowledgeUsed: relevantKnowledge?.length || 0,
+      knowledgeUsed: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : [],
       toolsUsed: toolsUsed.map(t => ({
         name: t.name,
         parameters: t.parameters,
