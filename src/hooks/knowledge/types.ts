@@ -37,11 +37,11 @@ export interface ExternalSource {
  * Progress information for file uploads
  */
 export interface FileUploadProgress {
-  fileName?: string; // Changed to optional
+  fileName?: string;
   progress: number;
-  status: 'uploading' | 'processing' | 'complete' | 'error';
+  status: 'uploading' | 'processing' | 'complete' | 'success' | 'error';
   error?: string;
-  message?: string; // Added the missing message property
+  message?: string;
   id?: string;
 }
 
@@ -55,6 +55,6 @@ export interface KnowledgeUploadOptions {
   sourceUrl?: string;
   domainId?: string;
   metadata?: Record<string, any>;
-  chunkSize?: number; // Added missing property
-  overlap?: number;   // Added missing property
+  chunkSize?: number;
+  overlap?: number;
 }
