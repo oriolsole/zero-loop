@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -10,7 +11,6 @@ import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
 import SessionsSidebar from './SessionsSidebar';
-import StreamingMessage from './StreamingMessage';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
@@ -31,7 +31,6 @@ const AIAgentChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
-  const [streamingSteps, setStreamingSteps] = useState<any[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
   const {
@@ -80,23 +79,18 @@ const AIAgentChat: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const addStatusMessage = (content: string, type: 'thinking' | 'success' | 'error' = 'thinking') => {
-    const statusMessage: ConversationMessage = {
-      id: `status-${Date.now()}`,
+  const addStreamingStepAsMessage = (step: any) => {
+    const stepMessage: ConversationMessage = {
+      id: step.id,
       role: 'assistant',
-      content,
-      timestamp: new Date(),
-      messageType: 'status' as any
+      content: step.content,
+      timestamp: new Date(step.timestamp),
+      messageType: step.type === 'step-announcement' ? 'step-executing' : 
+                   step.type === 'partial-result' ? 'step-completed' :
+                   step.type === 'tool-announcement' ? 'tool-update' : 'analysis'
     };
-    addMessage(statusMessage);
-    return statusMessage.id;
-  };
-
-  const removeStatusMessage = (messageId: string) => {
-    updateMessage(messageId, { 
-      content: '✓ Processing complete',
-      messageType: 'status' as any
-    });
+    
+    addMessage(stepMessage);
   };
 
   const handleFollowUpAction = async (action: string) => {
@@ -123,7 +117,6 @@ const AIAgentChat: React.FC = () => {
 
     setIsLoading(true);
     setIsStreaming(true);
-    setStreamingSteps([]);
     clearTools();
 
     try {
@@ -149,7 +142,7 @@ const AIAgentChat: React.FC = () => {
       if (data && typeof data === 'string') {
         const lines = data.split('\n').filter(line => line.trim());
         let finalResult: any = null;
-        const steps: any[] = [];
+        const allStreamSteps: any[] = [];
 
         for (const line of lines) {
           try {
@@ -158,11 +151,12 @@ const AIAgentChat: React.FC = () => {
             if (parsed.type === 'final-result') {
               finalResult = parsed;
             } else {
-              steps.push(parsed);
-              setStreamingSteps(prev => [...prev, parsed]);
+              // Add each streaming step as a permanent message
+              allStreamSteps.push(parsed);
+              addStreamingStepAsMessage(parsed);
               
               // Small delay between steps for natural flow
-              await new Promise(resolve => setTimeout(resolve, 200));
+              await new Promise(resolve => setTimeout(resolve, 300));
             }
           } catch (parseError) {
             console.warn('Failed to parse streaming chunk:', line);
@@ -178,7 +172,7 @@ const AIAgentChat: React.FC = () => {
             timestamp: new Date(),
             messageType: 'response',
             toolsUsed: finalResult.toolsUsed || [],
-            streamSteps: steps
+            streamSteps: allStreamSteps
           };
 
           addMessage(assistantMessage);
@@ -235,7 +229,6 @@ const AIAgentChat: React.FC = () => {
     } finally {
       setIsLoading(false);
       setIsStreaming(false);
-      setStreamingSteps([]);
     }
   };
 
@@ -286,7 +279,7 @@ const AIAgentChat: React.FC = () => {
           toolsActive={toolsActive}
           scrollAreaRef={scrollAreaRef}
           onFollowUpAction={handleFollowUpAction}
-          streamingSteps={streamingSteps}
+          streamingSteps={[]}
           isStreaming={isStreaming}
         />
         

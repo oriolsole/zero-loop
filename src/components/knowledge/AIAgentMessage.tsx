@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Bot, User, ChevronDown, ChevronRight, CheckCircle, XCircle, ArrowRight, Brain, Cog, Target, Copy, Database, Lightbulb } from 'lucide-react';
+import { Bot, User, ChevronDown, ChevronRight, CheckCircle, XCircle, ArrowRight, Brain, Cog, Target, Copy, Database, Lightbulb, Loader2, Settings } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import MarkdownRenderer from './MarkdownRenderer';
 import KnowledgeToolResult from './KnowledgeToolResult';
@@ -25,7 +26,35 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
 
   const getMessageStyle = () => {
     if (message.role === 'user') return 'bg-primary text-primary-foreground ml-16 shadow-sm';
+    
+    // Style streaming step messages differently
+    if (message.messageType === 'step-executing') {
+      return 'bg-blue-50 border border-blue-200 dark:bg-blue-950/20 dark:border-blue-800/30 mr-16 shadow-sm';
+    }
+    if (message.messageType === 'step-completed') {
+      return 'bg-green-50 border border-green-200 dark:bg-green-950/20 dark:border-green-800/30 mr-16 shadow-sm';
+    }
+    if (message.messageType === 'tool-update') {
+      return 'bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800/30 mr-16 shadow-sm';
+    }
+    
     return 'bg-secondary/40 border border-border/50 mr-16 shadow-sm';
+  };
+
+  const getMessageIcon = () => {
+    if (message.role === 'user') return <User className="h-4 w-4 text-primary" />;
+    
+    if (message.messageType === 'step-executing') {
+      return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
+    }
+    if (message.messageType === 'step-completed') {
+      return <CheckCircle className="h-4 w-4 text-green-500" />;
+    }
+    if (message.messageType === 'tool-update') {
+      return <Settings className="h-4 w-4 text-amber-500" />;
+    }
+    
+    return <Bot className="h-4 w-4" />;
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -64,11 +93,11 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   };
 
   return (
-    <div className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
+    <div className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       {message.role !== 'user' && (
         <Avatar className="h-8 w-8 mt-1 flex-shrink-0 shadow-sm">
           <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20">
-            <Bot className="h-4 w-4 text-primary" />
+            {getMessageIcon()}
           </AvatarFallback>
         </Avatar>
       )}

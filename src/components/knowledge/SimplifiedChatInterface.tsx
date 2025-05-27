@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,6 @@ import { ToolProgressItem } from '@/types/tools';
 import AIAgentMessage from './AIAgentMessage';
 import ToolExecutionCard from './ToolExecutionCard';
 import StatusMessage from './StatusMessage';
-import StreamingMessage from './StreamingMessage';
 
 interface SimplifiedChatInterfaceProps {
   conversations: ConversationMessage[];
@@ -33,7 +33,6 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   toolsActive,
   scrollAreaRef,
   onFollowUpAction,
-  streamingSteps = [],
   isStreaming = false
 }) => {
   const suggestedActions = [
@@ -112,28 +111,16 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             </div>
           )}
 
-          <div className="space-y-8">
+          <div className="space-y-6">
             {conversations.map((message) => (
-              <AIAgentMessage 
-                key={message.id}
-                message={message}
-                onFollowUpAction={onFollowUpAction}
-              />
+              <div key={message.id} className="animate-fade-in">
+                <AIAgentMessage 
+                  message={message}
+                  onFollowUpAction={onFollowUpAction}
+                />
+              </div>
             ))}
           </div>
-          
-          {/* Show streaming steps */}
-          {isStreaming && streamingSteps.length > 0 && (
-            <div className="mt-8 space-y-4">
-              {streamingSteps.map((step, index) => (
-                <StreamingMessage 
-                  key={`${step.id}-${index}`}
-                  step={step}
-                  isAnimated={true}
-                />
-              ))}
-            </div>
-          )}
           
           {toolsActive && tools.length > 0 && (
             <div className="mt-8 space-y-4">
