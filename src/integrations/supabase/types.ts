@@ -15,6 +15,8 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          knowledge_used: Json | null
+          learning_insights: Json | null
           message_type: string | null
           role: string
           self_reflection: string | null
@@ -29,6 +31,8 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          knowledge_used?: Json | null
+          learning_insights?: Json | null
           message_type?: string | null
           role: string
           self_reflection?: string | null
@@ -43,6 +47,8 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          knowledge_used?: Json | null
+          learning_insights?: Json | null
           message_type?: string | null
           role?: string
           self_reflection?: string | null

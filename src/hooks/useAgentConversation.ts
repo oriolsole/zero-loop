@@ -253,14 +253,14 @@ export const useAgentConversation = () => {
           result?: any;
           error?: string;
         }> : undefined,
-        knowledgeUsed: Array.isArray(row.knowledge_used) ? row.knowledge_used as Array<{
+        knowledgeUsed: Array.isArray((row as any).knowledge_used) ? (row as any).knowledge_used as Array<{
           name: string;
           success: boolean;
           result?: any;
           sources?: any[];
           searchMode?: 'semantic' | 'text';
         }> : undefined,
-        learningInsights: Array.isArray(row.learning_insights) ? row.learning_insights as Array<{
+        learningInsights: Array.isArray((row as any).learning_insights) ? (row as any).learning_insights as Array<{
           name: string;
           success: boolean;
           result?: any;
