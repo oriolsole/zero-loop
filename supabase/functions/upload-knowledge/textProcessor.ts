@@ -7,7 +7,7 @@ import { isValidUUID } from "./utils.ts";
 /**
  * Process text content upload with user authentication
  */
-export async function handleTextContent(body: any, supabase: any) {
+export async function handleTextContent(body: any, supabase: any, user: { id: string; email?: string }) {
   const {
     title,
     content,
@@ -32,22 +32,7 @@ export async function handleTextContent(body: any, supabase: any) {
     );
   }
 
-  // Get user from auth context
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
-  if (userError || !user) {
-    console.error('Authentication error:', userError);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: 'Authentication required' 
-      }),
-      { 
-        status: 401, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
-  }
+  console.log(`Processing text content for user: ${user.id}`);
 
   // Split content into smaller chunks
   const chunks = chunkText(content, chunk_size, overlap);

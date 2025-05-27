@@ -9,7 +9,7 @@ import { isValidUUID } from "./utils.ts";
 /**
  * Process file upload (PDF, images, etc) with improved user handling
  */
-export async function handleFileContent(body: any, supabase: any) {
+export async function handleFileContent(body: any, supabase: any, user: { id: string; email?: string }) {
   const {
     title,
     fileBase64,
@@ -37,22 +37,7 @@ export async function handleFileContent(body: any, supabase: any) {
     );
   }
   
-  // Get user from auth context
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
-  if (userError || !user) {
-    console.error('Authentication error:', userError);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: 'Authentication required' 
-      }),
-      { 
-        status: 401, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
-  }
+  console.log(`Processing file content for user: ${user.id}`);
 
   // Decode the base64 file
   const binaryData = Uint8Array.from(atob(fileBase64.split(',')[1]), c => c.charCodeAt(0));
