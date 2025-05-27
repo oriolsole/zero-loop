@@ -4,9 +4,31 @@ import React from 'react';
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  onBracketLinkClick?: (text: string) => void;
 }
 
-const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = "" }) => {
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ 
+  content, 
+  className = "",
+  onBracketLinkClick 
+}) => {
+  const handleBracketClick = (text: string) => {
+    if (onBracketLinkClick) {
+      onBracketLinkClick(text);
+    } else {
+      // Default behavior: try to open as URL or search
+      if (text.match(/^[A-Z]+-\d+$/)) {
+        // Looks like a JIRA ticket (e.g., AMPCM-131)
+        console.log(`Bracket link clicked: ${text} (JIRA ticket)`);
+        // Could integrate with JIRA here
+      } else {
+        // General search or navigation
+        console.log(`Bracket link clicked: ${text} (general)`);
+        // Could trigger a search here
+      }
+    }
+  };
+
   const renderContent = (text: string) => {
     if (!text) return text;
 
@@ -24,6 +46,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
       .replace(/^### (.*$)/gm, '<h3 class="text-lg font-semibold mt-4 mb-2">$1</h3>')
       .replace(/^## (.*$)/gm, '<h2 class="text-xl font-semibold mt-4 mb-2">$1</h2>')
       .replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mt-4 mb-2">$1</h1>')
+      // Bracket links [text] - but not markdown links [text](url)
+      .replace(/\[([^\]]+)\](?!\()/g, '<button class="text-blue-400 hover:text-blue-300 underline cursor-pointer font-medium" onclick="window.handleBracketClick(\'$1\')">[$1]</button>')
       // URLs (make them clickable)
       .replace(/(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline break-all">$1</a>')
       // Bullet lists (- item or * item)
@@ -41,6 +65,14 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
 
     return html;
   };
+
+  // Set up global click handler for bracket links
+  React.useEffect(() => {
+    (window as any).handleBracketClick = handleBracketClick;
+    return () => {
+      delete (window as any).handleBracketClick;
+    };
+  }, [onBracketLinkClick]);
 
   return (
     <div 
