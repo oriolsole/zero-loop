@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, FileText, File, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import { X, FileText, File, Clock, CheckCircle, AlertCircle, StopCircle } from "lucide-react";
 import { useUploadProgress, UploadProgressData } from "@/hooks/knowledge/useUploadProgress";
 
 interface UploadProgressTrackerProps {
@@ -13,7 +13,7 @@ interface UploadProgressTrackerProps {
 }
 
 const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({ className }) => {
-  const { activeUploads, removeUpload } = useUploadProgress();
+  const { activeUploads, stopTracking } = useUploadProgress();
 
   if (activeUploads.length === 0) {
     return null;
@@ -45,6 +45,17 @@ const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({ className
     }
   };
 
+  const isStalled = (upload: UploadProgressData): boolean => {
+    if (upload.status !== 'processing') return false;
+    
+    const lastUpdate = new Date(upload.updated_at || upload.created_at);
+    const now = new Date();
+    const timeDiff = now.getTime() - lastUpdate.getTime();
+    const twoMinutes = 2 * 60 * 1000;
+    
+    return timeDiff > twoMinutes;
+  };
+
   return (
     <Card className={className}>
       <CardHeader className="pb-3">
@@ -65,6 +76,11 @@ const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({ className
                     <span className="text-sm font-medium truncate">
                       {upload.title}
                     </span>
+                    {isStalled(upload) && upload.status === 'processing' && (
+                      <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
+                        stalled
+                      </Badge>
+                    )}
                   </div>
                   
                   <div className="flex items-center gap-2">
@@ -75,11 +91,23 @@ const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({ className
                       {upload.status}
                     </Badge>
                     
+                    {upload.status === 'processing' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => stopTracking(upload.id)}
+                        title="Stop tracking this upload"
+                      >
+                        <StopCircle className="h-3 w-3 text-orange-500" />
+                      </Button>
+                    )}
+                    
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      onClick={() => removeUpload(upload.id)}
+                      onClick={() => stopTracking(upload.id)}
                     >
                       <X className="h-3 w-3" />
                     </Button>
@@ -91,6 +119,7 @@ const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({ className
                     <Progress value={upload.progress} className="h-2" />
                     <p className="text-xs text-muted-foreground">
                       {upload.message || 'Processing...'}
+                      {isStalled(upload) && ' (may be stalled)'}
                     </p>
                   </div>
                 )}

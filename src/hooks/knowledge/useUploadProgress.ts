@@ -12,6 +12,7 @@ export interface UploadProgressData {
   error_details?: string;
   created_at: string;
   completed_at?: string;
+  updated_at: string;
 }
 
 export const useUploadProgress = () => {
@@ -25,7 +26,8 @@ export const useUploadProgress = () => {
       status: 'processing',
       progress: 0,
       title,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }));
   }, []);
 
@@ -68,6 +70,36 @@ export const useUploadProgress = () => {
     }
   }, []);
 
+  // Check if an upload is stalled (no updates for 5+ minutes)
+  const isUploadStalled = useCallback((upload: UploadProgressData): boolean => {
+    if (upload.status !== 'processing') return false;
+    
+    const lastUpdate = new Date(upload.updated_at || upload.created_at);
+    const now = new Date();
+    const timeDiff = now.getTime() - lastUpdate.getTime();
+    const fiveMinutes = 5 * 60 * 1000;
+    
+    return timeDiff > fiveMinutes;
+  }, []);
+
+  // Mark a stalled upload as failed
+  const markUploadAsFailed = useCallback(async (uploadId: string, reason: string = 'Upload stalled - no progress for 5+ minutes') => {
+    try {
+      await supabase
+        .from('upload_progress')
+        .update({
+          status: 'failed',
+          error_details: reason,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', uploadId);
+      
+      console.log(`Marked stalled upload ${uploadId} as failed`);
+    } catch (error) {
+      console.error('Error marking upload as failed:', error);
+    }
+  }, []);
+
   const startPollingForUpload = useCallback((uploadId: string, title: string) => {
     // Clear any existing interval for this upload
     const existingInterval = pollIntervals.get(uploadId);
@@ -77,10 +109,36 @@ export const useUploadProgress = () => {
 
     addUpload(uploadId, title);
 
+    let stallCheckCount = 0;
+    const maxStallChecks = 5; // Allow 5 stall checks before giving up
+
     const interval = setInterval(async () => {
       const progress = await pollUploadProgress(uploadId);
       
       if (progress) {
+        // Check if upload is stalled
+        if (isUploadStalled(progress)) {
+          stallCheckCount++;
+          console.log(`Upload ${uploadId} appears stalled (check ${stallCheckCount}/${maxStallChecks})`);
+          
+          if (stallCheckCount >= maxStallChecks) {
+            // Mark as failed and stop polling
+            await markUploadAsFailed(uploadId);
+            clearInterval(interval);
+            setPollIntervals(prev => {
+              const newIntervals = new Map(prev);
+              newIntervals.delete(uploadId);
+              return newIntervals;
+            });
+            toast.error(`Upload "${title}" failed - stalled for too long`);
+            setTimeout(() => removeUpload(uploadId), 3000);
+            return;
+          }
+        } else {
+          // Reset stall counter if we got an update
+          stallCheckCount = 0;
+        }
+
         setActiveUploads(prev => new Map(prev).set(uploadId, progress));
 
         if (progress.status === 'completed') {
@@ -108,6 +166,19 @@ export const useUploadProgress = () => {
           // Remove after a delay to show error
           setTimeout(() => removeUpload(uploadId), 5000);
         }
+      } else {
+        // If we can't fetch progress, increment stall counter
+        stallCheckCount++;
+        if (stallCheckCount >= maxStallChecks) {
+          clearInterval(interval);
+          setPollIntervals(prev => {
+            const newIntervals = new Map(prev);
+            newIntervals.delete(uploadId);
+            return newIntervals;
+          });
+          toast.error(`Upload "${title}" failed - unable to track progress`);
+          setTimeout(() => removeUpload(uploadId), 3000);
+        }
       }
     }, 2000); // Poll every 2 seconds
 
@@ -124,11 +195,20 @@ export const useUploadProgress = () => {
       });
       removeUpload(uploadId);
     }, 10 * 60 * 1000);
-  }, [addUpload, removeUpload, pollUploadProgress, pollIntervals]);
+  }, [addUpload, removeUpload, pollUploadProgress, pollIntervals, isUploadStalled, markUploadAsFailed]);
 
   const startPolling = useCallback((uploadId: string, title: string) => {
     startPollingForUpload(uploadId, title);
   }, [startPollingForUpload]);
+
+  // Manual stop function for users
+  const stopTracking = useCallback((uploadId: string) => {
+    const upload = activeUploads.get(uploadId);
+    if (upload) {
+      toast.info(`Stopped tracking: ${upload.title}`);
+    }
+    removeUpload(uploadId);
+  }, [activeUploads, removeUpload]);
 
   // Fetch existing active uploads on mount
   const fetchActiveUploads = useCallback(async () => {
@@ -149,30 +229,40 @@ export const useUploadProgress = () => {
       }
 
       if (data && data.length > 0) {
-        console.log(`Found ${data.length} active uploads, resuming polling...`);
+        console.log(`Found ${data.length} active uploads, checking for stalled ones...`);
         
-        // Resume polling for each active upload
-        data.forEach((upload) => {
-          // Check if upload is not too old (less than 10 minutes)
+        let resumedCount = 0;
+        let stalledCount = 0;
+
+        // Check each upload and resume or mark as failed
+        for (const upload of data) {
+          // Check if upload is too old (more than 10 minutes)
           const uploadTime = new Date(upload.created_at).getTime();
           const now = Date.now();
           const tenMinutesAgo = now - (10 * 60 * 1000);
           
-          if (uploadTime > tenMinutesAgo) {
-            startPollingForUpload(upload.id, upload.title);
+          if (uploadTime < tenMinutesAgo || isUploadStalled(upload)) {
+            // Mark old or stalled uploads as failed
+            await markUploadAsFailed(upload.id, 'Upload timed out or stalled');
+            stalledCount++;
           } else {
-            console.log(`Skipping old upload: ${upload.title}`);
+            // Resume polling for recent uploads
+            startPollingForUpload(upload.id, upload.title);
+            resumedCount++;
           }
-        });
+        }
 
-        if (data.length > 0) {
-          toast.info(`Resumed tracking ${data.length} background upload(s)`);
+        if (resumedCount > 0) {
+          toast.info(`Resumed tracking ${resumedCount} background upload(s)`);
+        }
+        if (stalledCount > 0) {
+          toast.warning(`Stopped tracking ${stalledCount} stalled upload(s)`);
         }
       }
     } catch (error) {
       console.error('Error fetching active uploads:', error);
     }
-  }, [startPollingForUpload]);
+  }, [startPollingForUpload, isUploadStalled, markUploadAsFailed]);
 
   // Initialize by fetching active uploads on mount
   useEffect(() => {
@@ -197,6 +287,7 @@ export const useUploadProgress = () => {
     activeUploads: Array.from(activeUploads.values()),
     isPolling,
     startPolling,
-    removeUpload
+    removeUpload,
+    stopTracking
   };
 };
