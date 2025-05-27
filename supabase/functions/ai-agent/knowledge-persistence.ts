@@ -12,7 +12,7 @@ export async function persistInsightAsKnowledgeNode(
   userId: string,
   complexityDecision: any,
   supabase: any
-): Promise<{ success: boolean; nodeId?: string; insight?: any }> {
+): Promise<boolean> {
   try {
     console.log('Persisting insights as knowledge node...');
 
@@ -27,14 +27,14 @@ export async function persistInsightAsKnowledgeNode(
 
     if (!insight) {
       console.log('No significant insight generated, skipping persistence');
-      return { success: false };
+      return false;
     }
 
     // Check if similar knowledge already exists
     const existingSimilar = await checkForSimilarKnowledge(insight.title, userId, supabase);
     if (existingSimilar) {
       console.log('Similar knowledge already exists, skipping persistence');
-      return { success: false };
+      return false;
     }
 
     // Create knowledge node
@@ -64,7 +64,7 @@ export async function persistInsightAsKnowledgeNode(
 
     if (nodeError) {
       console.error('Error creating knowledge node:', nodeError);
-      return { success: false };
+      return false;
     }
 
     console.log('Successfully persisted knowledge node:', nodeId);
@@ -78,25 +78,10 @@ export async function persistInsightAsKnowledgeNode(
       supabase
     );
 
-    // Return the full insight object along with success and nodeId
-    return { 
-      success: true, 
-      nodeId,
-      insight: {
-        title: insight.title,
-        description: insight.description,
-        type: insight.type,
-        domain: insight.domain,
-        confidence: insight.confidence,
-        reasoning: insight.reasoning,
-        tags: insight.tags || [],
-        toolsInvolved: insight.toolsInvolved || [],
-        iterations: accumulatedContext.length
-      }
-    };
+    return true;
   } catch (error) {
     console.error('Error persisting insight as knowledge node:', error);
-    return { success: false };
+    return false;
   }
 }
 
@@ -201,47 +186,36 @@ async function generateInsightSummary(
     const insightMessages = [
       {
         role: 'system',
-        content: `Generate a structured insight summary for a knowledge base. Focus on extracting reusable knowledge that would help with similar future queries.
-
-        Consider:
-        - Intent vs. data mismatches and how they were resolved
-        - Patterns in tool usage and data retrieval
-        - Cross-project or cross-domain insights
-        - Process improvements or learnings
+        content: `Generate a structured insight summary for a knowledge base. Extract the key learnings, patterns, and reusable knowledge from this research session.
 
         Respond with ONLY a JSON object in this exact format:
         {
           "title": "Concise, searchable title (max 100 chars)",
-          "description": "Detailed description focusing on reusable insights (max 500 chars)",
-          "type": "insight|pattern|process|gap-analysis|cross-reference",
+          "description": "Detailed description of the insight (max 500 chars)",
+          "type": "insight|concept|process|fact|strategy",
           "confidence": 0.0-1.0,
           "domain": "relevant domain or category",
-          "tags": ["intent-mismatch", "data-pattern", "synthesis", "tool-usage"],
+          "tags": ["tag1", "tag2", "tag3"],
           "isSignificant": true/false,
-          "reasoning": "Why this insight is valuable for future similar queries"
+          "reasoning": "Why this insight is valuable for future reference"
         }
 
-        Mark as significant if it contains:
-        - Patterns in how users search vs. what data is available
-        - Insights about data relationships across tools
-        - Process learnings about handling intent mismatches
-        - Reusable synthesis strategies
-
-        Do NOT wrap the JSON in markdown code blocks.`
+        Only mark as significant if it contains reusable knowledge, patterns, or insights that would be valuable for future queries.
+        Do NOT wrap the JSON in markdown code blocks or add any other text.`
       },
       {
         role: 'user',
         content: `Original query: "${originalMessage}"
 
-        Research process and context:
+        Research process:
         ${contextSummary}
 
-        Final synthesized answer: "${finalResponse}"
+        Final answer: "${finalResponse}"
 
         Tools used: ${toolsInvolved.join(', ')}
         Query complexity: ${complexityAnalysis.complexity}
 
-        Extract insights about query patterns, data relationships, and synthesis strategies.`
+        Extract the key insight for the knowledge base.`
       }
     ];
 

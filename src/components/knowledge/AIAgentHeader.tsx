@@ -3,7 +3,7 @@ import React from 'react';
 import { CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Bot, Cloud, HardDrive, Zap, Settings, MessageSquare, Plus, Loader2 } from 'lucide-react';
+import { Bot, Cloud, HardDrive, Zap, Settings, MessageSquare, Plus } from 'lucide-react';
 import { ModelProvider } from '@/services/modelProviderService';
 
 interface AIAgentHeaderProps {
@@ -15,7 +15,6 @@ interface AIAgentHeaderProps {
   onToggleSessions: () => void;
   onNewSession: () => void;
   isLoading: boolean;
-  isCreatingSession?: boolean;
 }
 
 const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
@@ -23,8 +22,7 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
   showSessions,
   onToggleSessions,
   onNewSession,
-  isLoading,
-  isCreatingSession = false
+  isLoading
 }) => {
   const getProviderIcon = (provider: ModelProvider) => {
     switch (provider) {
@@ -49,24 +47,6 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
         return 'bg-purple-500';
       default:
         return 'bg-gray-500';
-    }
-  };
-
-  const handleNewSessionClick = () => {
-    console.log('New Session button clicked');
-    try {
-      onNewSession();
-    } catch (error) {
-      console.error('Error creating new session:', error);
-    }
-  };
-
-  const handleToggleSessionsClick = () => {
-    console.log('Toggle Sessions button clicked');
-    try {
-      onToggleSessions();
-    } catch (error) {
-      console.error('Error toggling sessions:', error);
     }
   };
 
@@ -105,7 +85,7 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
         <Button
           variant="outline"
           size="sm"
-          onClick={handleToggleSessionsClick}
+          onClick={onToggleSessions}
         >
           <MessageSquare className="h-4 w-4 mr-2" />
           {showSessions ? 'Hide' : 'Show'} History
@@ -113,14 +93,9 @@ const AIAgentHeader: React.FC<AIAgentHeaderProps> = ({
         <Button
           variant="outline"
           size="sm"
-          onClick={handleNewSessionClick}
-          disabled={isCreatingSession || isLoading}
+          onClick={onNewSession}
         >
-          {isCreatingSession ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4 mr-2" />
-          )}
+          <Plus className="h-4 w-4 mr-2" />
           New Chat
         </Button>
       </div>
