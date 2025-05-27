@@ -1,6 +1,6 @@
 import { corsHeaders } from './_shared/cors.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { OpenAI } from "https://deno.land/x/openai@v1.0.0/mod.ts";
+import OpenAI from "https://deno.land/x/openai@v4.24.0/mod.ts";
 import { analyzeComplexity } from './complexity-analysis.ts';
 import { executeLearningLoop } from './learning-loop.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
@@ -28,7 +28,9 @@ if (!openAIKey) {
   Deno.exit(1);
 }
 
-const openai = new OpenAI(openAIKey);
+const openai = new OpenAI({
+  apiKey: openAIKey,
+});
 
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
