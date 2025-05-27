@@ -53,13 +53,15 @@ export const useAgentConversation = () => {
     setConversations([]);
 
     try {
-      // Use raw SQL query to insert into agent_sessions since it's not in the generated types yet
-      const { error } = await supabase.rpc('exec_sql', {
-        query: `
-          INSERT INTO agent_sessions (id, user_id, title, messages)
-          VALUES ($1, $2, $3, $4)
-        `,
-        params: [newSessionId, user.id, 'New Conversation', JSON.stringify([])]
+      // Use edge function to insert into agent_sessions
+      const { error } = await supabase.functions.invoke('exec-sql', {
+        body: {
+          query: `
+            INSERT INTO agent_sessions (id, user_id, title, messages)
+            VALUES ($1, $2, $3, $4)
+          `,
+          params: [newSessionId, user.id, 'New Conversation', JSON.stringify([])]
+        }
       });
 
       if (error) {
@@ -81,16 +83,18 @@ export const useAgentConversation = () => {
 
     setIsLoadingSessions(true);
     try {
-      // Use raw SQL query since agent_sessions is not in the generated types yet
-      const { data, error } = await supabase.rpc('exec_sql', {
-        query: `
-          SELECT id, title, created_at, updated_at,
-                 jsonb_array_length(messages) as message_count
-          FROM agent_sessions 
-          WHERE user_id = $1 
-          ORDER BY updated_at DESC
-        `,
-        params: [user.id]
+      // Use edge function to query agent_sessions
+      const { data, error } = await supabase.functions.invoke('exec-sql', {
+        body: {
+          query: `
+            SELECT id, title, created_at, updated_at,
+                   jsonb_array_length(messages) as message_count
+            FROM agent_sessions 
+            WHERE user_id = $1 
+            ORDER BY updated_at DESC
+          `,
+          params: [user.id]
+        }
       });
 
       if (error) {
@@ -100,7 +104,8 @@ export const useAgentConversation = () => {
       }
 
       // Transform the data to match our interface
-      const transformedSessions = (data || []).map((session: any) => ({
+      const sessionsData = data?.data || [];
+      const transformedSessions: ConversationSession[] = sessionsData.map((session: any) => ({
         id: session.id,
         title: session.title,
         created_at: session.created_at,
@@ -122,21 +127,23 @@ export const useAgentConversation = () => {
     if (!user) return;
 
     try {
-      // Use raw SQL query since agent_sessions is not in the generated types yet
-      const { data, error } = await supabase.rpc('exec_sql', {
-        query: `
-          SELECT * FROM agent_sessions 
-          WHERE id = $1 AND user_id = $2
-        `,
-        params: [sessionId, user.id]
+      // Use edge function to query specific session
+      const { data, error } = await supabase.functions.invoke('exec-sql', {
+        body: {
+          query: `
+            SELECT * FROM agent_sessions 
+            WHERE id = $1 AND user_id = $2
+          `,
+          params: [sessionId, user.id]
+        }
       });
 
-      if (error || !data || data.length === 0) {
+      if (error || !data?.data || data.data.length === 0) {
         console.error('Error loading session:', error);
         return;
       }
 
-      const sessionData = data[0];
+      const sessionData = data.data[0];
       setCurrentSessionId(sessionId);
       
       const messages = sessionData.messages || [];
@@ -156,13 +163,15 @@ export const useAgentConversation = () => {
     if (!user) return;
 
     try {
-      // Use raw SQL query since agent_sessions is not in the generated types yet
-      const { error } = await supabase.rpc('exec_sql', {
-        query: `
-          DELETE FROM agent_sessions 
-          WHERE id = $1 AND user_id = $2
-        `,
-        params: [sessionId, user.id]
+      // Use edge function to delete session
+      const { error } = await supabase.functions.invoke('exec-sql', {
+        body: {
+          query: `
+            DELETE FROM agent_sessions 
+            WHERE id = $1 AND user_id = $2
+          `,
+          params: [sessionId, user.id]
+        }
       });
 
       if (error) {
@@ -192,21 +201,23 @@ export const useAgentConversation = () => {
     setConversations(newConversations);
 
     try {
-      // Update the session with the new message using raw SQL
-      const { error } = await supabase.rpc('exec_sql', {
-        query: `
-          UPDATE agent_sessions 
-          SET messages = $1, updated_at = now()
-          WHERE id = $2 AND user_id = $3
-        `,
-        params: [
-          JSON.stringify(newConversations.map(msg => ({
-            ...msg,
-            timestamp: msg.timestamp.toISOString()
-          }))),
-          currentSessionId,
-          user.id
-        ]
+      // Update the session with the new message using edge function
+      const { error } = await supabase.functions.invoke('exec-sql', {
+        body: {
+          query: `
+            UPDATE agent_sessions 
+            SET messages = $1, updated_at = now()
+            WHERE id = $2 AND user_id = $3
+          `,
+          params: [
+            JSON.stringify(newConversations.map(msg => ({
+              ...msg,
+              timestamp: msg.timestamp.toISOString()
+            }))),
+            currentSessionId,
+            user.id
+          ]
+        }
       });
 
       if (error) {
@@ -219,13 +230,15 @@ export const useAgentConversation = () => {
           ? message.content.substring(0, 47) + '...'
           : message.content;
         
-        await supabase.rpc('exec_sql', {
-          query: `
-            UPDATE agent_sessions 
-            SET title = $1
-            WHERE id = $2 AND user_id = $3
-          `,
-          params: [title, currentSessionId, user.id]
+        await supabase.functions.invoke('exec-sql', {
+          body: {
+            query: `
+              UPDATE agent_sessions 
+              SET title = $1
+              WHERE id = $2 AND user_id = $3
+            `,
+            params: [title, currentSessionId, user.id]
+          }
         });
       }
     } catch (error) {
@@ -242,20 +255,22 @@ export const useAgentConversation = () => {
 
     if (currentSessionId && user) {
       try {
-        await supabase.rpc('exec_sql', {
-          query: `
-            UPDATE agent_sessions 
-            SET messages = $1, updated_at = now()
-            WHERE id = $2 AND user_id = $3
-          `,
-          params: [
-            JSON.stringify(updatedConversations.map(msg => ({
-              ...msg,
-              timestamp: msg.timestamp.toISOString()
-            }))),
-            currentSessionId,
-            user.id
-          ]
+        await supabase.functions.invoke('exec-sql', {
+          body: {
+            query: `
+              UPDATE agent_sessions 
+              SET messages = $1, updated_at = now()
+              WHERE id = $2 AND user_id = $3
+            `,
+            params: [
+              JSON.stringify(updatedConversations.map(msg => ({
+                ...msg,
+                timestamp: msg.timestamp.toISOString()
+              }))),
+              currentSessionId,
+              user.id
+            ]
+          }
         });
       } catch (error) {
         console.error('Error updating message:', error);
