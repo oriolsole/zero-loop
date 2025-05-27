@@ -1,19 +1,19 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/components/ui/sonner';
-import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
+import { Card } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { getModelSettings } from '@/services/modelProviderService';
-import { useToolProgress } from '@/hooks/useToolProgress';
-import { useConversationContext } from '@/hooks/useConversationContext';
+import { useAgentConversation } from '@/hooks/useAgentConversation';
+import SessionsSidebar from './SessionsSidebar';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
-import SessionsSidebar from './SessionsSidebar';
+import { ModelProvider } from '@/services/modelProviderService';
+import { ToolProgressItem } from '@/types/tools';
+import { toast } from '@/components/ui/sonner';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  
   const {
     currentSessionId,
     conversations,
@@ -21,356 +21,221 @@ const AIAgentChat: React.FC = () => {
     isLoadingSessions,
     startNewSession,
     loadSession,
+    loadSessions,
+    deleteSession,
     addMessage,
     updateMessage,
-    getConversationHistory,
-    deleteSession
+    getConversationHistory
   } = useAgentConversation();
 
-  const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showSessions, setShowSessions] = useState(false);
-  const [modelSettings, setModelSettings] = useState(getModelSettings());
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingSteps, setStreamingSteps] = useState<any[]>([]);
   const [workingStatus, setWorkingStatus] = useState('Processing your request...');
   const [currentTool, setCurrentTool] = useState<string | undefined>();
-
-  const {
-    tools,
-    isActive: toolsActive,
-    startTool,
-    updateTool,
-    completeTool,
-    failTool,
-    clearTools,
-    setToolProgress: updateToolProgress
-  } = useToolProgress();
-
-  const {
-    context,
-    updateGitHubContext,
-    updateSearchContext,
-    storeToolResult,
-    getContextForMessage
-  } = useConversationContext();
-  
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [toolProgress, setToolProgress] = useState<number | undefined>();
+  const [tools, setTools] = useState<ToolProgressItem[]>([]);
+  const [modelSettings] = useState({
+    provider: 'openai' as ModelProvider,
+    selectedModel: 'gpt-4o-mini'
+  });
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-    }
-  }, [conversations, tools]);
-
-  // Load model settings on component mount and when they change
-  useEffect(() => {
-    const loadSettings = () => {
-      const settings = getModelSettings();
-      setModelSettings(settings);
-    };
-
-    loadSettings();
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'modelSettings') {
-        loadSettings();
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
-    };
+    }
+  }, [conversations, streamingSteps, isLoading]);
 
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  const handleSendMessage = async (message: string) => {
+    if (!user || !currentSessionId) {
+      toast.error('Please sign in to continue');
+      return;
+    }
 
-  const handleFollowUpAction = async (action: string) => {
-    if (!user || !currentSessionId) return;
+    console.log('🚀 Sending message:', message);
+    setIsLoading(true);
+    setIsStreaming(true);
+    setStreamingSteps([]);
+    setWorkingStatus('Analyzing your request...');
+    setCurrentTool(undefined);
+    setToolProgress(undefined);
+    setTools([]);
 
-    const followUpMessage: ConversationMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: action,
+    // Add user message immediately
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user' as const,
+      content: message,
       timestamp: new Date()
     };
 
-    addMessage(followUpMessage);
-    setInput('');
-    
-    await processMessage(action);
-  };
-
-  const parseStreamingChunk = (line: string) => {
-    try {
-      const parsed = JSON.parse(line);
-      console.log('Parsed streaming chunk:', parsed);
-      
-      // Handle thinking step messages - add them as individual chat messages
-      if (parsed.type === 'step-announcement' || 
-          parsed.type === 'partial-result' || 
-          parsed.type === 'tool-announcement') {
-        
-        const thinkingMessage: ConversationMessage = {
-          id: parsed.id || `thinking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          role: 'assistant',
-          content: parsed.content,
-          timestamp: new Date(parsed.timestamp || Date.now()),
-          messageType: parsed.type,
-          toolName: parsed.toolName,
-          toolAction: parsed.toolAction
-        };
-        
-        addMessage(thinkingMessage);
-        console.log('Added thinking message:', thinkingMessage);
-        
-        // Also update working status for live feedback
-        if (parsed.type === 'step-announcement') {
-          setWorkingStatus(parsed.content);
-        }
-        
-        return { type: 'thinking-message', data: thinkingMessage };
-      }
-      
-      // Handle tool announcements
-      if (parsed.type === 'tool-announcement') {
-        console.log('Tool announced:', parsed.toolName);
-        const toolId = startTool(
-          parsed.toolName || 'unknown',
-          getToolDisplayName(parsed.toolName || 'unknown'),
-          {}
-        );
-        setCurrentTool(parsed.toolName);
-        return { type: 'tool-start', toolId, toolName: parsed.toolName };
-      }
-      
-      // Handle progress updates
-      if (parsed.progress !== undefined) {
-        console.log('Progress update:', parsed.progress);
-        const activeTool = tools.find(t => t.status === 'executing');
-        if (activeTool) {
-          updateToolProgress(activeTool.id, parsed.progress);
-        }
-        return { type: 'progress', progress: parsed.progress };
-      }
-      
-      // Handle final results
-      if (parsed.type === 'final-result') {
-        console.log('Final result received:', parsed);
-        return { type: 'final-result', data: parsed };
-      }
-      
-      return parsed;
-    } catch (parseError) {
-      console.warn('Failed to parse streaming chunk:', line);
-      return null;
-    }
-  };
-
-  const getToolDisplayName = (toolName: string) => {
-    const displayNames: Record<string, string> = {
-      'web-search': 'Web Search',
-      'execute_web-search': 'Web Search',
-      'knowledge-search': 'Knowledge Search',
-      'execute_knowledge-search': 'Knowledge Search',
-      'github-tools': 'GitHub Analysis',
-      'execute_github-tools': 'GitHub Analysis',
-      'web-scraper': 'Web Scraper',
-      'execute_web-scraper': 'Web Scraper',
-      'jira-tools': 'Jira Tools',
-      'execute_jira-tools': 'Jira Tools'
-    };
-    
-    return displayNames[toolName] || toolName.replace('execute_', '').replace(/_/g, ' ');
-  };
-
-  const processMessage = async (message: string) => {
-    if (!user || !currentSessionId) return;
-
-    const contextualMessage = getContextForMessage(message);
-    const enhancedMessage = contextualMessage ? `${message}\n\nContext: ${contextualMessage}` : message;
-
-    setIsLoading(true);
-    setIsStreaming(true);
-    setWorkingStatus('Analyzing your request...');
-    setCurrentTool(undefined);
-    clearTools();
-
-    console.log('Starting message processing:', { message, enhancedMessage });
+    await addMessage(userMessage);
 
     try {
-      const conversationHistory = getConversationHistory();
-
-      // Use streaming for enhanced experience
-      const { data, error } = await supabase.functions.invoke('ai-agent', {
-        body: {
-          message: enhancedMessage,
-          conversationHistory,
+      console.log('📡 Starting streaming request...');
+      
+      // Use Supabase edge function directly
+      const { data, error } = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-agent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          message,
+          conversationHistory: getConversationHistory(),
           userId: user.id,
           sessionId: currentSessionId,
           streaming: true,
-          modelSettings: modelSettings
-        }
+          modelSettings
+        })
       });
 
-      if (error) {
-        throw new Error(error.message);
+      if (!data.ok) {
+        const errorData = await data.json();
+        throw new Error(errorData.error || `Server error: ${data.status}`);
       }
 
-      console.log('AI Agent response received:', data);
+      if (!data.body) {
+        throw new Error('No response body received');
+      }
 
-      // Handle streaming response
-      if (data && typeof data === 'string') {
-        const lines = data.split('\n').filter(line => line.trim());
-        let finalResult: any = null;
-        let currentToolId: string | null = null;
+      console.log('📥 Response received, processing stream...');
+      
+      const reader = data.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalMessage = '';
+      let allToolsUsed: any[] = [];
 
-        console.log('Processing streaming lines:', lines.length);
-
-        for (const line of lines) {
-          const parsed = parseStreamingChunk(line);
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
           
-          if (parsed) {
-            if (parsed.type === 'tool-start') {
-              currentToolId = parsed.toolId;
-              console.log('Tool started with ID:', currentToolId);
-            } else if (parsed.type === 'final-result') {
-              finalResult = parsed.data;
-              console.log('Final result captured:', finalResult);
-              
-              // Complete any active tools
-              if (currentToolId) {
-                completeTool(currentToolId, finalResult.toolsUsed);
-                console.log('Tool completed:', currentToolId);
-              }
-              
-              // Mark all executing tools as completed
-              tools.forEach(tool => {
-                if (tool.status === 'executing') {
-                  completeTool(tool.id, finalResult.toolsUsed);
+          if (done) {
+            console.log('✅ Stream completed');
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+          
+          // Process complete lines
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+          
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const step = JSON.parse(line);
+                console.log('📦 Processing step:', step.type, step.content?.substring(0, 50) + '...');
+                
+                if (step.type === 'final-result') {
+                  finalMessage = step.message;
+                  allToolsUsed = step.toolsUsed || [];
+                  console.log('🏁 Final result received:', finalMessage?.length, 'characters');
+                } else if (step.type === 'error') {
+                  throw new Error(step.error || 'Stream processing error');
+                } else if (step.type === 'step-announcement') {
+                  setWorkingStatus(step.content);
+                  setStreamingSteps(prev => [...prev, step]);
+                } else if (step.type === 'tool-announcement') {
+                  setCurrentTool(step.toolName);
+                  setToolProgress(25);
+                  setWorkingStatus(`Using ${step.toolName}...`);
+                  setStreamingSteps(prev => [...prev, step]);
+                } else if (step.type === 'partial-result') {
+                  setToolProgress(75);
+                  setWorkingStatus('Processing results...');
+                  setStreamingSteps(prev => [...prev, step]);
+                } else {
+                  setStreamingSteps(prev => [...prev, step]);
                 }
-              });
+              } catch (parseError) {
+                console.error('❌ Error parsing stream chunk:', parseError, 'Raw line:', line);
+              }
             }
           }
         }
+      } finally {
+        reader.releaseLock();
+      }
 
-        // Add final assistant message
-        if (finalResult && finalResult.success) {
-          console.log('Adding final assistant message');
-          const assistantMessage: ConversationMessage = {
-            id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            content: finalResult.message,
-            timestamp: new Date(),
-            messageType: 'response',
-            toolsUsed: finalResult.toolsUsed || [],
-            followUpSuggestions: finalResult.followUpSuggestions || []
-          };
-
-          addMessage(assistantMessage);
-
-          if (finalResult.toolsUsed && finalResult.toolsUsed.length > 0) {
-            const successCount = finalResult.toolsUsed.filter((tool: any) => tool.success).length;
-            if (successCount > 0) {
-              toast.success(`Used ${successCount} tool(s) successfully`);
-            }
-          }
-        } else {
-          console.warn('No final result found in streaming response');
-        }
-      } else {
-        // Fallback to non-streaming response
-        console.log('Using non-streaming fallback');
-        if (!data || !data.success) {
-          throw new Error(data?.error || 'Failed to get response from AI agent');
-        }
-
-        const assistantMessage: ConversationMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data.message,
+      // Add final assistant message
+      if (finalMessage) {
+        console.log('💾 Adding final message to conversation...');
+        const assistantMessage = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant' as const,
+          content: finalMessage,
           timestamp: new Date(),
-          messageType: 'response',
-          toolsUsed: data.toolsUsed || [],
-          aiReasoning: data.aiReasoning || undefined,
-          followUpSuggestions: data.followUpSuggestions || []
+          toolsUsed: allToolsUsed
         };
 
-        addMessage(assistantMessage);
-
-        if (data.toolsUsed && data.toolsUsed.length > 0) {
-          const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
-          if (successCount > 0) {
-            toast.success(`Used ${successCount} tool(s) successfully`);
-          }
-        }
+        await addMessage(assistantMessage);
+        console.log('✅ Final message added successfully');
+      } else {
+        console.warn('⚠️ No final message received from stream');
+        toast.error('No response received from AI agent');
       }
 
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error in handleSendMessage:', error);
+      toast.error(`Failed to get response: ${error.message}`);
       
-      // Mark any executing tools as failed
-      tools.forEach(tool => {
-        if (tool.status === 'executing') {
-          failTool(tool.id, error.message);
-        }
-      });
-      
-      toast.error('Failed to send message', {
-        description: error.message || 'Please try again.',
-        duration: 10000
-      });
-
-      const errorMessage: ConversationMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
+      // Add error message to conversation
+      const errorMessage = {
+        id: `error-${Date.now()}`,
+        role: 'assistant' as const,
+        content: `I apologize, but I encountered an error while processing your request: ${error.message}. Please try again.`,
         timestamp: new Date()
       };
 
-      addMessage(errorMessage);
+      await addMessage(errorMessage);
     } finally {
       setIsLoading(false);
       setIsStreaming(false);
+      setStreamingSteps([]);
       setWorkingStatus('Processing your request...');
       setCurrentTool(undefined);
+      setToolProgress(undefined);
     }
   };
 
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading || !user || !currentSessionId) return;
-
-    const userMessage: ConversationMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input,
-      timestamp: new Date()
-    };
-
-    addMessage(userMessage);
-    const messageToProcess = input;
-    setInput('');
-    
-    await processMessage(messageToProcess);
+  const handleFollowUpAction = async (action: string) => {
+    await handleSendMessage(action);
   };
 
-  return (
-    <div className="flex h-full">
-      {showSessions && (
-        <SessionsSidebar
-          sessions={sessions}
-          currentSessionId={currentSessionId}
-          onStartNewSession={startNewSession}
-          onLoadSession={loadSession}
-          onDeleteSession={deleteSession}
-          isLoading={isLoadingSessions}
-        />
-      )}
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Card className="p-8 text-center">
+          <h2 className="text-xl font-semibold mb-2">Authentication Required</h2>
+          <p className="text-muted-foreground">Please sign in to use the AI Agent.</p>
+        </Card>
+      </div>
+    );
+  }
 
-      <div className="flex-1 flex flex-col bg-background">
-        <SimplifiedChatHeader
+  return (
+    <div className="flex h-full bg-background">
+      <SessionsSidebar
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onStartNewSession={startNewSession}
+        onLoadSession={loadSession}
+        onDeleteSession={deleteSession}
+        isLoading={isLoadingSessions}
+      />
+      
+      <div className="flex-1 flex flex-col min-w-0">
+        <SimplifiedChatHeader 
+          currentSessionId={currentSessionId}
           modelSettings={modelSettings}
-          showSessions={showSessions}
-          onToggleSessions={() => setShowSessions(!showSessions)}
-          onNewSession={startNewSession}
-          isLoading={isLoading}
         />
         
         <SimplifiedChatInterface
@@ -378,22 +243,20 @@ const AIAgentChat: React.FC = () => {
           isLoading={isLoading}
           modelSettings={modelSettings}
           tools={tools}
-          toolsActive={toolsActive}
+          toolsActive={tools.length > 0}
           scrollAreaRef={scrollAreaRef}
           onFollowUpAction={handleFollowUpAction}
-          streamingSteps={[]}
+          streamingSteps={streamingSteps}
           isStreaming={isStreaming}
           workingStatus={workingStatus}
           currentTool={currentTool}
-          toolProgress={undefined}
+          toolProgress={toolProgress}
         />
         
         <SimplifiedChatInput
-          input={input}
-          onInputChange={setInput}
-          onSendMessage={sendMessage}
+          onSendMessage={handleSendMessage}
           isLoading={isLoading}
-          modelProvider={modelSettings.provider}
+          placeholder="Ask me anything..."
         />
       </div>
     </div>

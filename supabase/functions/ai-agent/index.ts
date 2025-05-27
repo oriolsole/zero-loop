@@ -21,6 +21,8 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+console.log('🤖 AI Agent Edge Function Starting...');
+
 /**
  * Enhanced content validation with guaranteed non-null response
  */
@@ -33,14 +35,12 @@ function validateAndEnsureContent(content: any, context: string = 'Unknown'): st
     isEmpty: !content || content.trim?.() === ''
   });
 
-  // Handle null, undefined, or empty content with specific fallback messages
   if (!content) {
     const fallbackMessage = `I apologize, but I encountered an issue generating a response for your request (${context}). Please try again or rephrase your question.`;
     console.error(`[CONTENT_VALIDATION] Content validation failed for ${context}: content is null/undefined, using fallback`);
     return fallbackMessage;
   }
 
-  // Handle non-string content
   if (typeof content !== 'string') {
     console.warn(`[CONTENT_VALIDATION] Content validation warning for ${context}: content is not a string, converting`);
     const stringContent = String(content);
@@ -52,7 +52,6 @@ function validateAndEnsureContent(content: any, context: string = 'Unknown'): st
     return stringContent;
   }
 
-  // Handle empty string content
   if (!content.trim()) {
     const fallbackMessage = `I received your request but generated an empty response (${context}). Please try rephrasing your question.`;
     console.error(`[CONTENT_VALIDATION] Content validation failed for ${context}: content is empty string, using fallback`);
@@ -116,6 +115,7 @@ serve(async (req) => {
   }
 
   try {
+    console.log('🚀 Processing AI Agent request...');
     const { message, conversationHistory = [], userId, sessionId, streaming = false, modelSettings, testMode = false } = await req.json();
     
     if (!message) {
@@ -123,7 +123,7 @@ serve(async (req) => {
     }
 
     console.log('🤖 AI Agent request:', { 
-      message, 
+      message: message.substring(0, 100) + '...', 
       historyLength: conversationHistory.length, 
       userId, 
       sessionId,
@@ -134,6 +134,7 @@ serve(async (req) => {
 
     // Store conversation in database if userId and sessionId provided (skip in test mode)
     if (userId && sessionId && !testMode) {
+      console.log('💾 Storing user message to database...');
       const validatedUserMessage = validateAndEnsureContent(message, 'User Message');
       await supabase.from('agent_conversations').insert({
         user_id: userId,
@@ -142,14 +143,17 @@ serve(async (req) => {
         content: validatedUserMessage,
         created_at: new Date().toISOString()
       });
+      console.log('✅ User message stored successfully');
     }
 
-    // NEW: Progressive streaming approach
+    // Enhanced streaming approach
     if (streaming) {
+      console.log('🌊 Using progressive streaming...');
       return await handleProgressiveStreaming(message, conversationHistory, userId, sessionId, modelSettings, supabase);
     }
 
     // Use AI to determine query complexity
+    console.log('🧠 Determining query complexity...');
     const complexityDecision = await detectQueryComplexity(message, conversationHistory, supabase, modelSettings);
     const useKnowledgeLoop = shouldUseLearningLoop(complexityDecision);
 
@@ -171,7 +175,7 @@ serve(async (req) => {
     }
 
     if (useKnowledgeLoop) {
-      // Use unified reasoning with learning loop integration
+      console.log('🔄 Using complex query with learning loop...');
       return await handleComplexQueryWithLearningLoop(
         message, 
         conversationHistory, 
@@ -182,7 +186,7 @@ serve(async (req) => {
         complexityDecision
       );
     } else {
-      // Use knowledge-first approach for simple queries
+      console.log('📝 Using simple query with knowledge-first...');
       return await handleSimpleQueryWithKnowledgeFirst(
         message, 
         conversationHistory, 
@@ -196,6 +200,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('❌ AI Agent error:', error);
+    console.error('❌ Error stack:', error.stack);
     
     return new Response(
       JSON.stringify({
@@ -1020,14 +1025,12 @@ async function synthesizeIterativeResults(
         })
       }
     });
-
+    
     if (response.error) {
       console.error('❌ Error in synthesis AI call:', response.error);
       return null;
     }
-
-    console.log('📥 Synthesis response received:', response.data ? 'Success' : 'No data');
-
+    
     const synthesisMessage = extractAndValidateAssistantMessage(response.data, 'Iterative Synthesis');
     
     if (synthesisMessage) {
@@ -1130,19 +1133,29 @@ async function handleProgressiveStreaming(
   modelSettings: any,
   supabase: any
 ): Promise<Response> {
+  console.log('🌊 Starting progressive streaming...');
   const encoder = new TextEncoder();
   let streamSteps: any[] = [];
 
   const stream = new ReadableStream({
     async start(controller) {
+      console.log('📡 Stream started, setting up chunk sender...');
+      
       // Stream function to send chunks to client
       const sendStreamChunk = async (step: any) => {
-        const chunk = JSON.stringify(step) + '\n';
-        controller.enqueue(encoder.encode(chunk));
-        streamSteps.push(step);
+        console.log('📤 Sending stream chunk:', step.type, step.content?.substring(0, 50) + '...');
+        try {
+          const chunk = JSON.stringify(step) + '\n';
+          controller.enqueue(encoder.encode(chunk));
+          streamSteps.push(step);
+        } catch (error) {
+          console.error('❌ Error sending stream chunk:', error);
+        }
       };
 
       try {
+        console.log('🚀 Calling progressive handler...');
+        
         // Use progressive handler
         const result = await handleProgressiveQuery(
           message,
@@ -1154,6 +1167,13 @@ async function handleProgressiveStreaming(
           sendStreamChunk
         );
 
+        console.log('✅ Progressive handler completed:', {
+          success: result.success,
+          messageLength: result.message?.length || 0,
+          toolsUsed: result.toolsUsed?.length || 0,
+          streamSteps: result.streamSteps?.length || 0
+        });
+
         // Send final result
         const finalChunk = JSON.stringify({
           type: 'final-result',
@@ -1163,10 +1183,12 @@ async function handleProgressiveStreaming(
           streamSteps: result.streamSteps
         }) + '\n';
         
+        console.log('📤 Sending final chunk...');
         controller.enqueue(encoder.encode(finalChunk));
 
         // Store final response in database
         if (userId && sessionId && result.success) {
+          console.log('💾 Storing final response to database...');
           const validatedFinalResponse = validateAndEnsureContent(result.message, 'Progressive Streaming Final Response');
           await supabase.from('agent_conversations').insert({
             user_id: userId,
@@ -1176,21 +1198,27 @@ async function handleProgressiveStreaming(
             tools_used: result.toolsUsed,
             created_at: new Date().toISOString()
           });
+          console.log('✅ Final response stored successfully');
         }
 
       } catch (error) {
-        console.error('Streaming error:', error);
+        console.error('❌ Streaming error:', error);
+        console.error('❌ Streaming error stack:', error.stack);
+        
         const errorChunk = JSON.stringify({
           type: 'error',
-          error: error.message
+          error: error.message,
+          details: 'Stream processing failed'
         }) + '\n';
         controller.enqueue(encoder.encode(errorChunk));
       } finally {
+        console.log('🏁 Closing stream...');
         controller.close();
       }
     }
   });
 
+  console.log('📡 Returning streaming response...');
   return new Response(stream, {
     headers: {
       ...corsHeaders,
