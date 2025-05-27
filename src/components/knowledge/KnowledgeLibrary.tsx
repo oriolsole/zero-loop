@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { useKnowledgeLibrary, KnowledgeItem, KnowledgeLibraryFilters } from '@/hooks/knowledge/useKnowledgeLibrary';
@@ -11,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trash2, FileText, File, Search, Filter, ArrowDownAZ, Clock, SlidersHorizontal, Loader2 } from "lucide-react";
+import FileThumbnail from "./FileThumbnail";
 
 const KnowledgeLibrary: React.FC = () => {
   const { domains } = useLoopStore();
@@ -227,9 +229,28 @@ const KnowledgeLibrary: React.FC = () => {
           <Card key={item.id} className="group">
             <CardHeader className="pb-2">
               <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  {getFileIcon(item)}
-                  <CardTitle className="text-base">{item.title}</CardTitle>
+                <div className="flex items-center gap-3">
+                  <FileThumbnail 
+                    fileType={item.original_file_type || undefined}
+                    thumbnailUrl={item.thumbnail_path || undefined}
+                    size="md"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="text-base">{item.title}</CardTitle>
+                    <div className="flex flex-wrap items-center gap-1 text-xs mt-1">
+                      {item.domain_id && (
+                        <Badge variant="secondary" className="mr-1">
+                          {getDomainName(item.domain_id)}
+                        </Badge>
+                      )}
+                      
+                      {item.created_at && (
+                        <CardDescription className="inline-block">
+                          Added {format(new Date(item.created_at), 'MMM d, yyyy')}
+                        </CardDescription>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 
                 <AlertDialog>
@@ -265,21 +286,6 @@ const KnowledgeLibrary: React.FC = () => {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-              </div>
-              
-              {/* Keep domain badge display for information */}
-              <div className="flex flex-wrap items-center gap-1 text-xs mt-1">
-                {item.domain_id && (
-                  <Badge variant="secondary" className="mr-1">
-                    {getDomainName(item.domain_id)}
-                  </Badge>
-                )}
-                
-                {item.created_at && (
-                  <CardDescription className="inline-block">
-                    Added {format(new Date(item.created_at), 'MMM d, yyyy')}
-                  </CardDescription>
-                )}
               </div>
             </CardHeader>
             

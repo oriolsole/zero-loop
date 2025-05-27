@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -14,7 +15,7 @@ export function useKnowledgeUpload() {
   /**
    * Upload knowledge to the knowledge base
    */
-  const uploadKnowledge = async (options: KnowledgeUploadOptions): Promise<boolean> => {
+  const uploadKnowledge = async (options: KnowledgeUploadOptions): Promise<boolean | { backgroundProcessing: boolean; uploadId: string }> => {
     setIsUploading(true);
     setUploadError(null);
     setUploadProgress(null);
@@ -85,6 +86,14 @@ export function useKnowledgeUpload() {
           return false;
         }
         
+        // Handle background processing
+        if (data.backgroundProcessing && data.uploadId) {
+          return {
+            backgroundProcessing: true,
+            uploadId: data.uploadId
+          };
+        }
+        
         // Show success message with processing details
         const processingMethod = data.processingMethod || 'unknown';
         const extractedLength = data.extractedLength || 0;
@@ -138,6 +147,14 @@ export function useKnowledgeUpload() {
           setUploadError(data.error || 'Failed to upload knowledge');
           toast.error(data.error || 'Failed to upload knowledge');
           return false;
+        }
+        
+        // Handle background processing
+        if (data.backgroundProcessing && data.uploadId) {
+          return {
+            backgroundProcessing: true,
+            uploadId: data.uploadId
+          };
         }
         
         toast.success('Knowledge uploaded successfully');

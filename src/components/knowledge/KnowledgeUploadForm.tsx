@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
@@ -6,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useKnowledgeBase } from "@/hooks/useKnowledgeBase";
 import { useLoopStore } from '@/store/useLoopStore';
+import { useUploadProgress } from '@/hooks/knowledge/useUploadProgress';
 import { AlertCircle } from 'lucide-react';
 
 import { TitleInput } from "./TitleInput";
@@ -17,11 +17,13 @@ import { FileUploadPreview } from "./FileUploadPreview";
 import { UploadProgress } from "./UploadProgress";
 import { AdvancedOptions } from "./AdvancedOptions";
 import { SubmitButton } from "./SubmitButton";
+import FileThumbnail from "./FileThumbnail";
 import { isValidUUID } from "@/utils/supabase/helpers";
 
 const KnowledgeUploadForm: React.FC = () => {
   const { uploadKnowledge, isUploading, uploadError, uploadProgress } = useKnowledgeBase();
   const { domains, activeDomainId } = useLoopStore();
+  const { startPolling } = useUploadProgress();
   
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -81,13 +83,15 @@ const KnowledgeUploadForm: React.FC = () => {
     
     try {
       let success;
+      let uploadId: string | undefined;
+      
       // Process domain ID - convert "no-domain" to undefined to avoid foreign key constraint errors
       // Also validate that domainId is a valid UUID if provided
       const processedDomainId = domainId === "no-domain" ? undefined : 
                                (isValidUUID(domainId) ? domainId : undefined);
       
       if (activeTab === 'text') {
-        success = await uploadKnowledge({
+        const result = await uploadKnowledge({
           title,
           content,
           domainId: processedDomainId,
@@ -95,8 +99,16 @@ const KnowledgeUploadForm: React.FC = () => {
           chunkSize,
           overlap,
         });
+        
+        // Handle background processing response
+        if (typeof result === 'object' && result.backgroundProcessing) {
+          uploadId = result.uploadId;
+          success = true;
+        } else {
+          success = result as boolean;
+        }
       } else {
-        success = await uploadKnowledge({
+        const result = await uploadKnowledge({
           title,
           file: selectedFile!,
           domainId: processedDomainId,
@@ -107,9 +119,25 @@ const KnowledgeUploadForm: React.FC = () => {
             originalFileName: fileName
           }
         });
+        
+        // Handle background processing response
+        if (typeof result === 'object' && result.backgroundProcessing) {
+          uploadId = result.uploadId;
+          success = true;
+        } else {
+          success = result as boolean;
+        }
       }
       
       if (success) {
+        // If we got an upload ID, start polling for progress
+        if (uploadId) {
+          startPolling(uploadId, title);
+          toast.success('Upload started in background. You can monitor progress below.');
+        } else {
+          toast.success('Knowledge uploaded successfully!');
+        }
+        
         // Reset the form on success
         setTitle('');
         setContent('');
@@ -117,8 +145,6 @@ const KnowledgeUploadForm: React.FC = () => {
         setFileContent(null);
         setFileName(null);
         setSelectedFile(null);
-        
-        toast.success('Knowledge uploaded successfully!');
       }
     } catch (error) {
       console.error('Error uploading knowledge:', error);
@@ -157,6 +183,18 @@ const KnowledgeUploadForm: React.FC = () => {
               fileName={fileName}
               handleFileChange={handleFileChange}
             />
+            
+            {selectedFile && (
+              <div className="flex items-center gap-3 p-3 border rounded-md bg-muted/30">
+                <FileThumbnail file={selectedFile} size="md" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{selectedFile.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+              </div>
+            )}
             
             <FileUploadPreview
               selectedFile={selectedFile}
