@@ -397,6 +397,45 @@ export type Database = {
         }
         Relationships: []
       }
+      upload_progress: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_details: string | null
+          id: string
+          message: string | null
+          progress: number
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_details?: string | null
+          id?: string
+          message?: string | null
+          progress?: number
+          status: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_details?: string | null
+          id?: string
+          message?: string | null
+          progress?: number
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_secrets: {
         Row: {
           created_at: string

@@ -7,9 +7,9 @@ import { extractTextFromPDF, analyzePDFContent } from "./pdfProcessor.ts";
 import { isValidUUID } from "./utils.ts";
 
 /**
- * Process file upload (PDF, images, etc) with improved user handling
+ * Process file upload (PDF, images, etc) with improved user handling and progress tracking
  */
-export async function handleFileContent(body: any, supabase: any, user: { id: string; email?: string }) {
+export async function handleFileContent(body: any, supabase: any, user: { id: string; email?: string }, uploadId?: string) {
   const {
     title,
     fileBase64,
@@ -19,7 +19,7 @@ export async function handleFileContent(body: any, supabase: any, user: { id: st
     metadata = {},
     domain_id,
     source_url,
-    chunk_size = 300, // Much smaller default chunk size
+    chunk_size = 300,
     overlap = 30
   } = body;
   
@@ -39,6 +39,15 @@ export async function handleFileContent(body: any, supabase: any, user: { id: st
   
   console.log(`Processing file content for user: ${user.id}`);
 
+  // Update progress if tracking
+  if (uploadId) {
+    await supabase.from('upload_progress').update({
+      progress: 15,
+      message: 'Decoding file...',
+      updated_at: new Date().toISOString()
+    }).eq('id', uploadId);
+  }
+
   // Decode the base64 file
   const binaryData = Uint8Array.from(atob(fileBase64.split(',')[1]), c => c.charCodeAt(0));
 
@@ -49,6 +58,15 @@ export async function handleFileContent(body: any, supabase: any, user: { id: st
   let extractedText = '';
   let processingMethod = 'unknown';
   
+  // Update progress
+  if (uploadId) {
+    await supabase.from('upload_progress').update({
+      progress: 25,
+      message: `Extracting text from ${fileType.includes('pdf') ? 'PDF' : 'image'}...`,
+      updated_at: new Date().toISOString()
+    }).eq('id', uploadId);
+  }
+
   // Extract text according to file type
   if (fileType.includes('pdf')) {
     try {
@@ -85,6 +103,15 @@ export async function handleFileContent(body: any, supabase: any, user: { id: st
     processingMethod = 'unsupported';
   }
 
+  // Update progress
+  if (uploadId) {
+    await supabase.from('upload_progress').update({
+      progress: 35,
+      message: 'Uploading file to storage...',
+      updated_at: new Date().toISOString()
+    }).eq('id', uploadId);
+  }
+
   // Upload file to storage
   const { data: fileData, error: fileError } = await supabase.storage
     .from('knowledge_files')
@@ -113,18 +140,36 @@ export async function handleFileContent(body: any, supabase: any, user: { id: st
     .from('knowledge_files')
     .getPublicUrl(filePath);
   
-  // Split extracted text into much smaller chunks
+  // Update progress
+  if (uploadId) {
+    await supabase.from('upload_progress').update({
+      progress: 45,
+      message: 'Splitting content into chunks...',
+      updated_at: new Date().toISOString()
+    }).eq('id', uploadId);
+  }
+
+  // Split extracted text into chunks
   const chunks = extractedText ? chunkText(extractedText, chunk_size, overlap) : [];
   
   console.log(`Split extracted content into ${chunks.length} chunks using ${processingMethod} for user ${user.id}`);
   
+  // Update progress
+  if (uploadId) {
+    await supabase.from('upload_progress').update({
+      progress: 55,
+      message: `Generating embeddings for ${chunks.length} chunks...`,
+      updated_at: new Date().toISOString()
+    }).eq('id', uploadId);
+  }
+
   // Get embeddings for all chunks with improved error handling
   let embeddings: number[][] = [];
   
   if (chunks.length > 0) {
     try {
-      console.log(`Generating embeddings for ${chunks.length} chunks with conservative batching...`);
-      embeddings = await generateEmbeddings(chunks);
+      console.log(`Generating embeddings for ${chunks.length} chunks with progress tracking...`);
+      embeddings = await generateEmbeddings(chunks, uploadId, supabase);
       console.log(`Successfully generated ${embeddings.length} embeddings`);
     } catch (error) {
       console.error('Error generating embeddings:', error);
@@ -142,6 +187,15 @@ export async function handleFileContent(body: any, supabase: any, user: { id: st
     }
   }
   
+  // Update progress
+  if (uploadId) {
+    await supabase.from('upload_progress').update({
+      progress: 85,
+      message: 'Storing chunks in database...',
+      updated_at: new Date().toISOString()
+    }).eq('id', uploadId);
+  }
+
   // Prepare the base insert object with required user_id
   const baseInsertObject: Record<string, any> = {
     title,
@@ -168,21 +222,50 @@ export async function handleFileContent(body: any, supabase: any, user: { id: st
     console.warn(`Invalid domain ID format: ${domain_id}. Setting to null.`);
   }
   
-  // For each chunk, store in the database
-  const insertPromises = chunks.map((chunk, i) => {
-    const insertObject = {
+  // Insert chunks in batches
+  const batchSize = 10;
+  for (let i = 0; i < chunks.length; i += batchSize) {
+    const batchChunks = chunks.slice(i, i + batchSize);
+    const batchEmbeddings = embeddings.slice(i, i + batchSize);
+    
+    const insertObjects = batchChunks.map((chunk, batchIndex) => ({
       ...baseInsertObject,
       content: chunk,
-      embedding: embeddings[i],
+      embedding: batchEmbeddings[batchIndex],
       metadata: {
         ...baseInsertObject.metadata,
-        chunk_index: i,
+        chunk_index: i + batchIndex,
         total_chunks: chunks.length
       }
-    };
+    }));
     
-    return supabase.from('knowledge_chunks').insert(insertObject);
-  });
+    const { error } = await supabase.from('knowledge_chunks').insert(insertObjects);
+    
+    if (error) {
+      console.error(`Error inserting file batch ${i / batchSize + 1}:`, error);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Failed to insert some file chunks',
+          details: error
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Update progress during batch insertion
+    if (uploadId) {
+      const progress = 85 + Math.floor((i + batchSize) / chunks.length * 10);
+      await supabase.from('upload_progress').update({
+        progress: Math.min(progress, 95),
+        message: `Stored ${Math.min(i + batchSize, chunks.length)}/${chunks.length} chunks`,
+        updated_at: new Date().toISOString()
+      }).eq('id', uploadId);
+    }
+  }
   
   // If no chunks were created (e.g., empty file), create a placeholder entry
   if (chunks.length === 0) {
@@ -191,29 +274,22 @@ export async function handleFileContent(body: any, supabase: any, user: { id: st
       content: extractedText || `[File: ${fileName}]`,
     };
     
-    insertPromises.push(
-      supabase.from('knowledge_chunks').insert(placeholderInsertObject)
-    );
-  }
-  
-  // Execute all inserts in parallel
-  const results = await Promise.all(insertPromises);
-  
-  // Check for errors
-  const errors = results.filter(r => r.error).map(r => r.error);
-  if (errors.length > 0) {
-    console.error('Errors inserting file chunks:', errors);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: 'Failed to insert some file chunks',
-        details: errors
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    const { error } = await supabase.from('knowledge_chunks').insert(placeholderInsertObject);
+    
+    if (error) {
+      console.error('Error inserting placeholder file entry:', error);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Failed to insert file entry',
+          details: error
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
   }
   
   console.log(`Successfully processed file ${fileName} using ${processingMethod} and inserted ${chunks.length} chunks for user ${user.id}`);
