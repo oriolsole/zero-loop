@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -156,6 +155,7 @@ async function handleComplexQueryWithLearningLoop(
   let accumulatedContext: any[] = [];
   let stopSignalReached = false;
   let finalResponse = '';
+  let finalToolsUsed: any[] = [];
 
   // Enhanced system prompt for learning loop integration with knowledge priority
   const learningLoopPrompt = `${systemPrompt}
@@ -211,6 +211,8 @@ Continue until you have enough information for a complete answer, but prioritize
       throw new Error('No valid message content received from AI model');
     }
 
+    console.log('🤖 Iteration', iteration, 'assistant response length:', assistantMessage.content?.length || 0);
+
     // Execute tools if chosen (and log potential overuse)
     let toolResults: any[] = [];
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
@@ -231,6 +233,14 @@ Continue until you have enough information for a complete answer, but prioritize
       );
       
       toolResults = results;
+      finalToolsUsed = [...finalToolsUsed, ...toolsUsed];
+      
+      console.log('🔧 Tool results summary:', {
+        toolCount: toolsUsed.length,
+        successCount: toolsUsed.filter(t => t.success).length,
+        resultLengths: results.map(r => typeof r === 'string' ? r.length : 'object')
+      });
+      
       accumulatedContext.push({
         iteration,
         response: assistantMessage.content,
@@ -260,9 +270,34 @@ Continue until you have enough information for a complete answer, but prioritize
     }
   }
 
-  // 4. Synthesize final response with all accumulated context
-  if (accumulatedContext.length > 1) {
-    console.log('🧠 Synthesizing learning loop results from', accumulatedContext.length, 'iterations');
+  // 4. Synthesize final response - USE SAME LOGIC AS SIMPLE QUERIES
+  if (finalToolsUsed.length > 0) {
+    console.log('🧠 Synthesizing tool results for complex query:', {
+      toolCount: finalToolsUsed.length,
+      iterations: iteration
+    });
+    
+    // Use the same synthesis function as simple queries for consistency
+    const synthesizedResponse = await synthesizeToolResults(
+      message,
+      conversationHistory,
+      finalToolsUsed,
+      finalResponse,
+      modelSettings,
+      supabase
+    );
+    
+    if (synthesizedResponse) {
+      console.log('✅ Synthesis successful, response length:', synthesizedResponse.length);
+      finalResponse = synthesizedResponse;
+    } else {
+      console.warn('⚠️ Synthesis failed, using enhanced fallback strategy');
+      
+      // Enhanced fallback for complex queries with tool results
+      finalResponse = createEnhancedFallbackResponse(message, finalToolsUsed, accumulatedContext);
+    }
+  } else if (accumulatedContext.length > 1) {
+    console.log('🧠 Synthesizing learning loop results from', accumulatedContext.length, 'iterations (no tools used)');
     
     const synthesisResponse = await synthesizeIterativeResults(
       message,
@@ -276,25 +311,16 @@ Continue until you have enough information for a complete answer, but prioritize
     } else {
       console.warn('⚠️ Synthesis failed. Using fallback strategy.');
       
-      // Fallback strategy: Use the last tool result or iteration response
+      // Fallback strategy: Use the last iteration response
       const lastContext = accumulatedContext[accumulatedContext.length - 1];
-      if (lastContext?.toolResults && lastContext.toolResults.length > 0) {
-        const lastToolResult = lastContext.toolResults[lastContext.toolResults.length - 1];
-        finalResponse = typeof lastToolResult === 'string' ? lastToolResult : 
-                      lastToolResult?.content || lastToolResult?.result || 
-                      'Learning loop completed successfully, but synthesis failed.';
-      } else if (lastContext?.response) {
-        finalResponse = lastContext.response;
-      } else {
-        finalResponse = 'I was able to process your request through multiple steps, but encountered an issue creating the final summary.';
-      }
+      finalResponse = lastContext?.response || 'I processed your request but encountered an issue generating the response.';
     }
   }
 
   // Ensure we have a meaningful response
   if (!finalResponse || finalResponse.trim().length === 0) {
     console.warn('⚠️ No final response generated. Using emergency fallback.');
-    finalResponse = 'I processed your request but encountered an issue generating the response. Please try again.';
+    finalResponse = createEnhancedFallbackResponse(message, finalToolsUsed, accumulatedContext);
   }
 
   // 5. Persist valuable insights as knowledge nodes
@@ -336,7 +362,7 @@ Continue until you have enough information for a complete answer, but prioritize
       session_id: sessionId,
       role: 'assistant',
       content: finalResponse,
-      tools_used: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
+      tools_used: finalToolsUsed,
       knowledge_used: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : null,
       learning_insights: learningTrackingInfo ? [learningTrackingInfo] : null,
       ai_reasoning: complexityDecision.reasoning,
@@ -356,12 +382,81 @@ Continue until you have enough information for a complete answer, but prioritize
       knowledgeUsed: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : [],
       learningInsights: learningTrackingInfo ? [learningTrackingInfo] : [],
       accumulatedContext: accumulatedContext.length,
-      toolsUsed: accumulatedContext.flatMap(ctx => ctx.toolsUsed || []),
+      toolsUsed: finalToolsUsed,
       aiReasoning: complexityDecision.reasoning,
       sessionId
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
+}
+
+/**
+ * Enhanced fallback response generator for complex queries
+ */
+function createEnhancedFallbackResponse(message: string, toolsUsed: any[], accumulatedContext: any[]): string {
+  console.log('🔧 Creating enhanced fallback response');
+  
+  if (toolsUsed.length > 0) {
+    // Format tool results into a readable response
+    let response = `Here are the results for "${message}":\n\n`;
+    
+    for (const tool of toolsUsed) {
+      if (tool.success && tool.result) {
+        response += formatToolResult(tool.name, tool.result);
+      }
+    }
+    
+    return response || 'I was able to gather information but encountered an issue formatting the response.';
+  }
+  
+  if (accumulatedContext.length > 0) {
+    const lastContext = accumulatedContext[accumulatedContext.length - 1];
+    return lastContext?.response || 'I processed your request through multiple steps but encountered an issue creating the final summary.';
+  }
+  
+  return 'I attempted to process your request but encountered technical difficulties. Please try again.';
+}
+
+/**
+ * Format tool results into human-readable text
+ */
+function formatToolResult(toolName: string, result: any): string {
+  if (toolName.includes('jira')) {
+    return formatJiraResult(result);
+  }
+  
+  if (typeof result === 'string') {
+    return result + '\n\n';
+  }
+  
+  if (Array.isArray(result)) {
+    return result.map(item => typeof item === 'string' ? item : JSON.stringify(item, null, 2)).join('\n') + '\n\n';
+  }
+  
+  return JSON.stringify(result, null, 2) + '\n\n';
+}
+
+/**
+ * Format Jira results into readable lists
+ */
+function formatJiraResult(result: any): string {
+  if (Array.isArray(result)) {
+    if (result.length === 0) {
+      return 'No projects found.\n\n';
+    }
+    
+    let response = 'Available Jira Projects:\n\n';
+    for (const project of result) {
+      response += `• **${project.name}** (${project.key})`;
+      if (project.projectTypeKey) {
+        response += ` - ${project.projectTypeKey}`;
+      }
+      response += '\n';
+    }
+    return response + '\n';
+  }
+  
+  return JSON.stringify(result, null, 2) + '\n\n';
 }
 
 /**
@@ -682,9 +777,17 @@ async function synthesizeToolResults(
   supabase: any
 ): Promise<string | null> {
   try {
+    console.log('🔧 Synthesizing tool results:', {
+      toolCount: toolsUsed.length,
+      originalResponseLength: originalResponse?.length || 0
+    });
+    
     const toolResultsSummary = toolsUsed.map(tool => {
       if (tool.success && tool.result) {
-        return `${tool.name}: ${typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result)}`;
+        const resultPreview = typeof tool.result === 'string' 
+          ? tool.result.substring(0, 500) + (tool.result.length > 500 ? '...' : '')
+          : JSON.stringify(tool.result).substring(0, 500);
+        return `${tool.name}: ${resultPreview}`;
       }
       return `${tool.name}: Failed`;
     }).join('\n');
@@ -699,7 +802,7 @@ User asked: "${originalMessage}"
 Tool results:
 ${toolResultsSummary}
 
-Give a clear answer based on this information.`
+Give a clear, human-readable answer based on this information. Format the response appropriately for the type of data (lists, structured information, etc.).`
       },
       {
         role: 'user',
@@ -726,7 +829,11 @@ Give a clear answer based on this information.`
     }
     
     const synthesisMessage = extractAssistantMessage(synthesisResponse.data);
-    return synthesisMessage?.content || null;
+    const result = synthesisMessage?.content || null;
+    
+    console.log('📋 Synthesis result:', result ? `Success (${result.length} chars)` : 'Failed');
+    
+    return result;
     
   } catch (error) {
     console.error('Error in synthesis:', error);
