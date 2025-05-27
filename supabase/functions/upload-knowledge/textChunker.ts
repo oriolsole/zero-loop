@@ -10,14 +10,14 @@ function estimateTokenCount(text: string): number {
 /**
  * Split text into chunks with overlap, ensuring token limits are respected
  */
-export function chunkText(text: string, chunkSize: number = 800, overlap: number = 100): string[] {
+export function chunkText(text: string, chunkSize: number = 600, overlap: number = 80): string[] {
   const chunks: string[] = [];
   
   // Clean up the text - normalize whitespace
   const cleanedText = text.replace(/\s+/g, ' ').trim();
   
-  // Ensure chunk size doesn't exceed token limits (aim for ~500 tokens max)
-  const maxChunkSize = Math.min(chunkSize, 2000); // 2000 chars ≈ 500 tokens
+  // Ensure chunk size doesn't exceed token limits (aim for ~150 tokens max per chunk)
+  const maxChunkSize = Math.min(chunkSize, 1200); // 1200 chars ≈ 300 tokens
   
   // If text is shorter than chunk size, return as a single chunk
   if (cleanedText.length <= maxChunkSize) {
@@ -86,13 +86,23 @@ export function chunkText(text: string, chunkSize: number = 800, overlap: number
     chunks.push(currentChunk.trim());
   }
   
-  // Filter out empty chunks and log token estimates
+  // Filter out empty chunks and validate token counts
   const filteredChunks = chunks.filter(chunk => chunk.length > 0);
   
-  // Log chunk statistics
+  // Log chunk statistics and validate token counts
   const totalTokens = filteredChunks.reduce((sum, chunk) => sum + estimateTokenCount(chunk), 0);
   const avgTokensPerChunk = Math.round(totalTokens / filteredChunks.length);
-  console.log(`Created ${filteredChunks.length} chunks, estimated ${totalTokens} total tokens, ${avgTokensPerChunk} avg tokens per chunk`);
+  const maxTokensInChunk = Math.max(...filteredChunks.map(chunk => estimateTokenCount(chunk)));
+  
+  console.log(`Created ${filteredChunks.length} chunks:`);
+  console.log(`- Total estimated tokens: ${totalTokens}`);
+  console.log(`- Average tokens per chunk: ${avgTokensPerChunk}`);
+  console.log(`- Max tokens in a chunk: ${maxTokensInChunk}`);
+  
+  // Warn if any chunks are still too large
+  if (maxTokensInChunk > 500) {
+    console.warn(`Warning: Some chunks exceed 500 tokens (max: ${maxTokensInChunk}). Consider reducing chunk size.`);
+  }
   
   return filteredChunks;
 }

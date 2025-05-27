@@ -19,8 +19,8 @@ export async function handleFileContent(body: any, supabase: any) {
     metadata = {},
     domain_id,
     source_url,
-    chunk_size = 800, // Reduced default chunk size
-    overlap = 100
+    chunk_size = 600, // Reduced default chunk size for better token management
+    overlap = 80
   } = body;
   
   // Validate required fields
@@ -111,17 +111,17 @@ export async function handleFileContent(body: any, supabase: any) {
     .from('knowledge_files')
     .getPublicUrl(filePath);
   
-  // Split extracted text into chunks with smaller default size
+  // Split extracted text into chunks with improved token management
   const chunks = extractedText ? chunkText(extractedText, chunk_size, overlap) : [];
   
   console.log(`Split extracted content into ${chunks.length} chunks using ${processingMethod}`);
   
-  // Get embeddings for all chunks with better error handling
+  // Get embeddings for all chunks with improved token-aware batch processing
   let embeddings: number[][] = [];
   
   if (chunks.length > 0) {
     try {
-      console.log(`Generating embeddings for ${chunks.length} chunks...`);
+      console.log(`Generating embeddings for ${chunks.length} chunks with token-aware batching...`);
       embeddings = await generateEmbeddings(chunks);
       console.log(`Successfully generated ${embeddings.length} embeddings`);
     } catch (error) {
