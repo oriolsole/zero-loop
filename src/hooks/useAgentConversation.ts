@@ -104,7 +104,7 @@ export function useAgentConversation() {
           timestamp: new Date(msg.created_at),
           messageType: msg.message_type as 'status' | 'response' | 'error' | undefined,
           toolsUsed: msg.tools_used as any[],
-          learningInsights: msg.learning_insights as KnowledgeToolResult[],
+          learningInsights: (msg.learning_insights as unknown) as KnowledgeToolResult[],
           aiReasoning: msg.ai_reasoning || undefined,
           toolDecision: msg.tool_decision as any,
           selfReflection: msg.self_reflection || undefined
