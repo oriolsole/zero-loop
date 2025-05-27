@@ -35,13 +35,20 @@ function decodeJWTPayload(token: string): JWTPayload | null {
   }
 }
 
-// Background processing function for large files
+// Background processing function for large files with timeout protection
 async function processInBackground(
   body: any,
   supabase: any,
   user: { id: string; email?: string },
   uploadId: string
 ) {
+  // Set a timeout for background processing to prevent infinite execution
+  const BACKGROUND_TIMEOUT = 8 * 60 * 1000; // 8 minutes max
+  
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Background processing timeout')), BACKGROUND_TIMEOUT);
+  });
+  
   try {
     console.log(`Starting background processing for upload ${uploadId}`);
     
@@ -58,14 +65,19 @@ async function processInBackground(
 
     let result;
     
-    // Process based on content type
-    if (body.contentType === 'text') {
-      result = await handleTextContent(body, supabase, user, uploadId);
-    } else if (body.contentType === 'file') {
-      result = await handleFileContent(body, supabase, user, uploadId);
-    } else {
-      throw new Error('Invalid content type');
-    }
+    // Race between actual processing and timeout
+    const processingPromise = (async () => {
+      // Process based on content type
+      if (body.contentType === 'text') {
+        return await handleTextContent(body, supabase, user, uploadId);
+      } else if (body.contentType === 'file') {
+        return await handleFileContent(body, supabase, user, uploadId);
+      } else {
+        throw new Error('Invalid content type');
+      }
+    })();
+    
+    result = await Promise.race([processingPromise, timeoutPromise]);
 
     // Update final status
     const finalStatus = result.ok ? 'completed' : 'failed';
@@ -93,11 +105,17 @@ async function processInBackground(
   }
 }
 
-// Check if content should be processed in background
+// Check if content should be processed in background with lower thresholds
 function shouldProcessInBackground(body: any): boolean {
-  // File size thresholds (in bytes)
-  const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024; // 5MB
-  const LARGE_TEXT_THRESHOLD = 1 * 1024 * 1024; // 1MB
+  // Lowered thresholds to catch more resource-intensive operations
+  const LARGE_FILE_THRESHOLD = 2 * 1024 * 1024; // 2MB (reduced from 5MB)
+  const LARGE_TEXT_THRESHOLD = 500 * 1024; // 500KB (reduced from 1MB)
+  
+  // Always process PDFs in background due to their resource-intensive nature
+  if (body.contentType === 'file' && body.fileType && body.fileType.includes('pdf')) {
+    console.log('PDF detected - forcing background processing');
+    return true;
+  }
   
   if (body.contentType === 'file' && body.fileSize) {
     return body.fileSize > LARGE_FILE_THRESHOLD;
@@ -196,12 +214,12 @@ serve(async (req) => {
     const useBackgroundProcessing = shouldProcessInBackground(body);
     
     if (useBackgroundProcessing) {
-      console.log('Large content detected, using background processing');
+      console.log('Resource-intensive content detected, using background processing');
       
       // Generate unique upload ID for tracking
       const uploadId = generateUploadId();
       
-      // Start background processing
+      // Start background processing with timeout protection
       EdgeRuntime.waitUntil(
         processInBackground(body, supabase, user, uploadId)
       );
@@ -219,31 +237,85 @@ serve(async (req) => {
         }
       );
     } else {
-      // Process immediately for small content
+      // Process immediately for small content with resource limits
       console.log('Small content detected, processing immediately');
       
-      // Process based on content type
-      if (body.contentType === 'text') {
-        return await handleTextContent(body, supabase, user);
-      } 
-      else if (body.contentType === 'file') {
-        return await handleFileContent(body, supabase, user);
-      }
-      else {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Invalid content type' 
-          }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
+      // Set a shorter timeout for immediate processing
+      const IMMEDIATE_TIMEOUT = 25000; // 25 seconds
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          console.error('Immediate processing timeout - should have been background');
+          reject(new Error('Processing timeout - content too large for immediate processing'));
+        }, IMMEDIATE_TIMEOUT);
+      });
+      
+      const processingPromise = (async () => {
+        // Process based on content type
+        if (body.contentType === 'text') {
+          return await handleTextContent(body, supabase, user);
+        } 
+        else if (body.contentType === 'file') {
+          return await handleFileContent(body, supabase, user);
+        }
+        else {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'Invalid content type' 
+            }),
+            { 
+              status: 400, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+      })();
+      
+      try {
+        return await Promise.race([processingPromise, timeoutPromise]);
+      } catch (error) {
+        if (error.message.includes('timeout')) {
+          // If timeout occurs, fallback to background processing
+          console.log('Immediate processing timed out, falling back to background processing');
+          
+          const uploadId = generateUploadId();
+          EdgeRuntime.waitUntil(
+            processInBackground(body, supabase, user, uploadId)
+          );
+          
+          return new Response(
+            JSON.stringify({ 
+              success: true,
+              message: 'Processing moved to background due to timeout',
+              uploadId,
+              backgroundProcessing: true
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+        throw error;
       }
     }
   } catch (error) {
     console.error('Error processing knowledge upload:', error);
+    
+    // Check if this is a WORKER_LIMIT error and suggest background processing
+    if (error.message.includes('WORKER_LIMIT') || error.message.includes('compute resources')) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Content too large for immediate processing - please try again (it will be processed in background)',
+          code: 'WORKER_LIMIT_FALLBACK'
+        }),
+        { 
+          status: 413, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
     
     return new Response(
       JSON.stringify({ 

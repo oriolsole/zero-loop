@@ -3,7 +3,7 @@ import { supabase } from "https://esm.sh/@supabase/supabase-js@2.38.5"
 
 /**
  * Generate embeddings using OpenAI's text-embedding-ada-002 model
- * with batching and progress tracking support
+ * with optimized batching and resource management to prevent WORKER_LIMIT errors
  */
 export async function generateEmbeddings(
   texts: string[], 
@@ -16,8 +16,8 @@ export async function generateEmbeddings(
     throw new Error('OpenAI API key not configured');
   }
 
-  // Process in smaller batches to avoid rate limits and memory issues
-  const BATCH_SIZE = 5;
+  // Reduced batch size to prevent memory issues and resource limits
+  const BATCH_SIZE = 3; // Reduced from 5 to 3
   const embeddings: number[][] = [];
   
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
@@ -63,9 +63,9 @@ export async function generateEmbeddings(
         }).eq('id', uploadId);
       }
       
-      // Add small delay between batches to be respectful to the API
+      // Increased delay between batches to reduce resource pressure
       if (i + BATCH_SIZE < texts.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200)); // Increased from 100ms to 200ms
       }
       
     } catch (error) {

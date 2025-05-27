@@ -5,7 +5,7 @@ import { chunkText } from "./textChunker.ts";
 import { isValidUUID } from "./utils.ts";
 
 /**
- * Process text content upload with user authentication and optional progress tracking
+ * Process text content upload with optimized resource management
  */
 export async function handleTextContent(
   body: any, 
@@ -62,19 +62,19 @@ export async function handleTextContent(
     }).eq('id', uploadId);
   }
   
-  // Get embeddings for all chunks with improved error handling
+  // Get embeddings for all chunks with improved resource management
   let embeddings: number[][] = [];
   
   try {
-    // Process embeddings in batches to avoid memory issues
-    const BATCH_SIZE = 10;
+    // Process embeddings in smaller batches to reduce memory pressure
+    const BATCH_SIZE = 5; // Reduced from 10
     embeddings = [];
     
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batchChunks = chunks.slice(i, i + BATCH_SIZE);
       console.log(`Processing embedding batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(chunks.length / BATCH_SIZE)}`);
       
-      const batchEmbeddings = await generateEmbeddings(batchChunks);
+      const batchEmbeddings = await generateEmbeddings(batchChunks, uploadId, supabase);
       embeddings.push(...batchEmbeddings);
       
       // Update progress during embedding generation
@@ -85,6 +85,11 @@ export async function handleTextContent(
           message: `Generated embeddings for ${Math.min(i + BATCH_SIZE, chunks.length)}/${chunks.length} chunks`,
           updated_at: new Date().toISOString()
         }).eq('id', uploadId);
+      }
+      
+      // Add small delay between batches to prevent resource exhaustion
+      if (i + BATCH_SIZE < chunks.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
   } catch (error) {
@@ -137,8 +142,8 @@ export async function handleTextContent(
     console.warn(`Invalid domain ID format: ${domain_id}. Setting to null.`);
   }
   
-  // Insert chunks with embeddings into the database in batches
-  const INSERT_BATCH_SIZE = 5; // Smaller batches for database inserts
+  // Insert chunks with embeddings into the database in smaller batches
+  const INSERT_BATCH_SIZE = 3; // Reduced from 5 to prevent resource issues
   
   for (let i = 0; i < chunks.length; i += INSERT_BATCH_SIZE) {
     const batchChunks = chunks.slice(i, i + INSERT_BATCH_SIZE);
@@ -180,6 +185,11 @@ export async function handleTextContent(
         message: `Stored ${Math.min(i + INSERT_BATCH_SIZE, chunks.length)}/${chunks.length} chunks`,
         updated_at: new Date().toISOString()
       }).eq('id', uploadId);
+    }
+    
+    // Add small delay between database inserts to prevent overload
+    if (i + INSERT_BATCH_SIZE < chunks.length) {
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
   }
   
