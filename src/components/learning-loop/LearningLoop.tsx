@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useLoopStore } from '../../store/useLoopStore';
-import LearningStep from './LearningStep';
+import { LearningStep } from './LearningStep';
 import EmptyLoopState from './EmptyLoopState';
 import LoopControls from './LoopControls';
 import { Card } from "@/components/ui/card";
