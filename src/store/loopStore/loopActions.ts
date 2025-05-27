@@ -1,3 +1,4 @@
+
 import { LearningStep, LoopHistory } from '../../types/intelligence';
 import { LoopState } from '../useLoopStore';
 import { domainEngines } from '../../engines/domainEngines';
@@ -344,15 +345,42 @@ export const createLoopActions = (
           }
           break;
         }
-        case 'mutation':
+        case 'mutation': {
+          // FIXED: Add proper null/undefined checks for all step accesses
+          const taskStep = currentLoop[0];
+          const solutionStep = currentLoop[1];
+          const verificationStep = currentLoop[2];
+          const reflectionStep = currentLoop[3];
+          
+          // Defensive programming: check if all required steps exist
+          if (!taskStep) {
+            console.error('Task step is missing for mutation');
+            throw new Error('Task step is required for mutation');
+          }
+          
+          // Safe content extraction with fallbacks
+          const taskContent = taskStep.content || '';
+          const solutionContent = solutionStep?.content || '';
+          const verificationContent = verificationStep?.content || '';
+          const reflectionContent = reflectionStep?.content || '';
+          
+          console.log('Mutation step inputs:', {
+            taskContent: taskContent.substring(0, 50) + '...',
+            solutionContent: solutionContent.substring(0, 50) + '...',
+            verificationContent: verificationContent.substring(0, 50) + '...',
+            reflectionContent: reflectionContent.substring(0, 50) + '...'
+          });
+          
           result = await engine.mutateTask(
-            currentLoop[0].content,
-            currentLoop[1].content || '',
-            currentLoop[2].content || '',
-            currentLoop[3].content || ''
+            taskContent,
+            solutionContent,
+            verificationContent,
+            reflectionContent
           );
+          
           metrics = { complexity: Math.floor(Math.random() * 10) + 1 };
           break;
+        }
         default:
           result = "Unexpected step type";
       }
