@@ -32,7 +32,8 @@ const AIAgentChat: React.FC = () => {
     setCurrentSession,
     addMessageToContext,
     persistMessage,
-    loadConversation
+    loadConversation,
+    addAssistantResponse
   } = useConversationContext();
 
   // Use session manager for session operations
@@ -194,10 +195,29 @@ const AIAgentChat: React.FC = () => {
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
-      console.log('✅ AI agent response received');
+      console.log('✅ AI agent response received:', data);
 
-      // The backend handles message persistence through streaming
-      // We don't need to manually add response messages here
+      // Create and add assistant response to context immediately
+      if (data.response) {
+        const assistantMessageId = generateMessageId(data.response, 'assistant', currentSessionId);
+        
+        const assistantMessage: ConversationMessage = {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: data.response,
+          timestamp: new Date(),
+          messageType: 'response',
+          loopIteration: data.loopIteration || 0,
+          toolsUsed: data.toolsUsed || undefined,
+          improvementReasoning: data.improvementReasoning || undefined
+        };
+
+        console.log(`🤖 Adding assistant response to UI: ${assistantMessageId}`);
+        addAssistantResponse(assistantMessage);
+
+        // Also persist to database
+        await persistMessage(assistantMessage);
+      }
       
       if (data.toolsUsed && data.toolsUsed.length > 0) {
         const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
@@ -223,7 +243,7 @@ const AIAgentChat: React.FC = () => {
         timestamp: new Date()
       };
 
-      addMessageToContext(errorMessage);
+      addAssistantResponse(errorMessage);
       await persistMessage(errorMessage);
     } finally {
       setIsLoading(false);
