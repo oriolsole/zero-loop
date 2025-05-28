@@ -16,24 +16,6 @@ export interface ConversationMessage {
     result?: any;
     error?: string;
   }>;
-  knowledgeUsed?: Array<{
-    name: string;
-    success: boolean;
-    result?: any;
-    sources?: any[];
-    searchMode?: 'semantic' | 'text';
-  }>;
-  learningInsights?: Array<{
-    name: string;
-    success: boolean;
-    result?: any;
-    insight?: any;
-  }>;
-  toolProgress?: Array<{
-    name: string;
-    status: 'pending' | 'executing' | 'completed' | 'failed';
-    displayName?: string;
-  }>;
   selfReflection?: string;
   toolDecision?: {
     reasoning: string;
@@ -41,12 +23,6 @@ export interface ConversationMessage {
   };
   executionPlan?: any;
   aiReasoning?: string;
-  stepDetails?: {
-    tool: string;
-    result: any;
-    status: string;
-    progressUpdate?: string;
-  };
   followUpSuggestions?: string[];
 }
 
@@ -79,7 +55,6 @@ export const useAgentConversation = () => {
     setIsLoadingSessions(true);
     
     try {
-      // Get distinct sessions with metadata
       const { data: sessionData, error } = await supabase
         .from('agent_conversations')
         .select('session_id, created_at, content, role')
@@ -89,7 +64,6 @@ export const useAgentConversation = () => {
       if (error) throw error;
 
       if (sessionData && sessionData.length > 0) {
-        // Group messages by session_id and create session metadata
         const sessionMap = new Map<string, {
           id: string;
           firstMessage: string;
@@ -119,13 +93,11 @@ export const useAgentConversation = () => {
           session.updated_at = createdAt > session.updated_at ? createdAt : session.updated_at;
           session.lastMessage = row.content;
           
-          // Set first user message as the session title source
           if (row.role === 'user' && !session.firstMessage) {
             session.firstMessage = row.content;
           }
         });
 
-        // Convert to sessions array
         const sessionsArray: ConversationSession[] = Array.from(sessionMap.values())
           .map(session => ({
             id: session.id,
@@ -170,7 +142,6 @@ export const useAgentConversation = () => {
 
     setConversations(prev => [...prev, message]);
 
-    // Update session title if this is the first user message
     if (message.role === 'user' && conversations.length === 0) {
       const title = generateSessionTitle(message.content);
       setSessions(prev => prev.map(session => 
@@ -184,7 +155,6 @@ export const useAgentConversation = () => {
           : session
       ));
     } else {
-      // Update session metadata
       setSessions(prev => prev.map(session => 
         session.id === currentSessionId 
           ? { 
@@ -207,11 +177,8 @@ export const useAgentConversation = () => {
           content: message.content,
           message_type: message.messageType || null,
           tools_used: message.toolsUsed || null,
-          knowledge_used: message.knowledgeUsed || null,
-          learning_insights: message.learningInsights || null,
           self_reflection: message.selfReflection || null,
           tool_decision: message.toolDecision || null,
-          tool_progress: message.toolProgress || null,
           ai_reasoning: message.aiReasoning || null,
           created_at: message.timestamp.toISOString()
         });
@@ -253,27 +220,9 @@ export const useAgentConversation = () => {
           result?: any;
           error?: string;
         }> : undefined,
-        knowledgeUsed: Array.isArray((row as any).knowledge_used) ? (row as any).knowledge_used as Array<{
-          name: string;
-          success: boolean;
-          result?: any;
-          sources?: any[];
-          searchMode?: 'semantic' | 'text';
-        }> : undefined,
-        learningInsights: Array.isArray((row as any).learning_insights) ? (row as any).learning_insights as Array<{
-          name: string;
-          success: boolean;
-          result?: any;
-          insight?: any;
-        }> : undefined,
         selfReflection: row.self_reflection || undefined,
         toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 
           row.tool_decision as { reasoning: string; selectedTools: string[]; } : undefined,
-        toolProgress: Array.isArray(row.tool_progress) ? row.tool_progress as Array<{
-          name: string;
-          status: 'pending' | 'executing' | 'completed' | 'failed';
-          displayName?: string;
-        }> : undefined,
         aiReasoning: row.ai_reasoning || undefined
       }));
 
@@ -312,14 +261,12 @@ export const useAgentConversation = () => {
     }));
   }, [conversations]);
 
-  // Load existing sessions when user becomes available
   useEffect(() => {
     if (user && sessions.length === 0 && !isLoadingSessions) {
       loadExistingSessions();
     }
   }, [user, sessions.length, loadExistingSessions, isLoadingSessions]);
 
-  // Initialize with a new session if none exists and no sessions are loading
   useEffect(() => {
     if (user && !currentSessionId && sessions.length === 0 && !isLoadingSessions) {
       startNewSession();

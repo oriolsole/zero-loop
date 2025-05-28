@@ -9,15 +9,12 @@ import { createMCPSummary, formatMCPForPrompt } from './mcp-summary.ts';
  * Generates a comprehensive system prompt with knowledge-first strategy
  */
 export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): string {
-  // Create condensed summaries for all MCPs
   const mcpSummaries = mcps?.map(mcp => createMCPSummary(mcp)) || [];
   
-  // Format tool descriptions with rich metadata
   const toolDescriptions = mcpSummaries
     .map(summary => formatMCPForPrompt(summary))
     .join('\n\n');
   
-  // Format knowledge base content if available
   const knowledgeSection = relevantKnowledge && relevantKnowledge.length > 0 
     ? formatKnowledgeSection(relevantKnowledge)
     : '';
@@ -90,10 +87,8 @@ export function createKnowledgeAwareMessages(
     }
   ];
 
-  // Inject knowledge as assistant messages with proper content validation
   if (relevantKnowledge && relevantKnowledge.length > 0) {
     relevantKnowledge.forEach(knowledge => {
-      // Validate knowledge content before creating message
       let knowledgeContent = '';
       
       if (knowledge.snippet && typeof knowledge.snippet === 'string' && knowledge.snippet.trim()) {
@@ -103,12 +98,10 @@ export function createKnowledgeAwareMessages(
       } else if (knowledge.content && typeof knowledge.content === 'string' && knowledge.content.trim()) {
         knowledgeContent = knowledge.content;
       } else {
-        // Fallback if no valid content is found
         knowledgeContent = `Knowledge item: ${knowledge.title || 'Untitled'} - Content not available`;
         console.warn('Knowledge item has no valid content:', knowledge);
       }
       
-      // Create the knowledge message with validated content
       const knowledgeMessage = {
         role: 'assistant',
         content: `From knowledge base: ${knowledge.title || 'Untitled Knowledge'}\n${knowledgeContent}`
@@ -118,14 +111,11 @@ export function createKnowledgeAwareMessages(
     });
   }
 
-  // Add conversation history with validation
   if (conversationHistory && Array.isArray(conversationHistory)) {
     conversationHistory.forEach(historyMessage => {
-      // Validate each history message
       if (historyMessage && typeof historyMessage === 'object' && historyMessage.role) {
         let content = historyMessage.content;
         
-        // Ensure content is a valid string
         if (content === null || content === undefined) {
           content = `[Content unavailable for ${historyMessage.role} message]`;
           console.warn('History message has null/undefined content, using placeholder');
@@ -146,7 +136,6 @@ export function createKnowledgeAwareMessages(
     });
   }
 
-  // Add current user message with validation
   let validatedUserMessage = userMessage;
   if (!validatedUserMessage || typeof validatedUserMessage !== 'string') {
     validatedUserMessage = String(validatedUserMessage || 'Empty message');
@@ -158,7 +147,6 @@ export function createKnowledgeAwareMessages(
     content: validatedUserMessage
   });
 
-  // Final validation pass - ensure all messages have valid content
   const validatedMessages = messages.filter(msg => {
     if (!msg || !msg.role || !msg.content || typeof msg.content !== 'string' || !msg.content.trim()) {
       console.warn('Removing invalid message:', msg);

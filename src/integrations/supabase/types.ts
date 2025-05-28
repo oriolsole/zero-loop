@@ -15,14 +15,11 @@ export type Database = {
           content: string
           created_at: string
           id: string
-          knowledge_used: Json | null
-          learning_insights: Json | null
           message_type: string | null
           role: string
           self_reflection: string | null
           session_id: string
           tool_decision: Json | null
-          tool_progress: Json | null
           tools_used: Json | null
           user_id: string
         }
@@ -31,14 +28,11 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
-          knowledge_used?: Json | null
-          learning_insights?: Json | null
           message_type?: string | null
           role: string
           self_reflection?: string | null
           session_id: string
           tool_decision?: Json | null
-          tool_progress?: Json | null
           tools_used?: Json | null
           user_id: string
         }
@@ -47,14 +41,11 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
-          knowledge_used?: Json | null
-          learning_insights?: Json | null
           message_type?: string | null
           role?: string
           self_reflection?: string | null
           session_id?: string
           tool_decision?: Json | null
-          tool_progress?: Json | null
           tools_used?: Json | null
           user_id?: string
         }
