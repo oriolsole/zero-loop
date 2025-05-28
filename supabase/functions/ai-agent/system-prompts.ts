@@ -2,11 +2,11 @@
 import { createMCPSummary, formatMCPForPrompt } from './mcp-summary.ts';
 
 /**
- * System prompt generation utilities for knowledge-first approach with natural tool selection
+ * System prompt generation utilities for unified knowledge-first approach
  */
 
 /**
- * Generates a comprehensive system prompt with knowledge-first strategy
+ * Generates a comprehensive system prompt with unified strategy
  */
 export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): string {
   const mcpSummaries = mcps?.map(mcp => createMCPSummary(mcp)) || [];
@@ -19,34 +19,37 @@ export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): st
     ? formatKnowledgeSection(relevantKnowledge)
     : '';
 
-  return `You are an intelligent AI assistant with access to a knowledge base and fallback tools.
+  return `You are an intelligent AI assistant with access to a knowledge base and powerful tools.
 
 ${knowledgeSection}
 
-**🧠 KNOWLEDGE-FIRST RESPONSE RULES:**
-1. **ALWAYS** check if your knowledge base contains relevant information first
-2. **ONLY** use tools if the knowledge base does not contain sufficient information
-3. **CITE** which knowledge sources you used in your response when applicable
-4. **BE DIRECT** - answer from knowledge base content when available
+**🧠 UNIFIED RESPONSE STRATEGY:**
+1. **ALWAYS** start by checking your knowledge base for relevant information
+2. **ANSWER DIRECTLY** if your knowledge base contains sufficient information
+3. **USE TOOLS NATURALLY** when you need:
+   - Current/real-time information
+   - External data not in your knowledge base
+   - Multi-step research or analysis
+   - Specific data from external sources
 
-**🛠️ Available Fallback Tools (use only when knowledge base is insufficient):**
+**🛠️ Available Tools:**
 ${toolDescriptions}
 
-**🎯 Response Guidelines:**
-- Start by checking your knowledge base for relevant information
-- If knowledge base has the answer, use it directly and cite the source
-- Only reach for tools when you need additional or current information
-- Work silently - don't announce tool usage unless it adds value
-- Provide direct, conversational answers
-- Integrate any tool results naturally into your response
+**💡 Natural Decision Making:**
+- You can use multiple tools progressively if needed
+- Build comprehensive answers step by step
+- Combine knowledge base information with tool results
+- Use your judgment about when tools add value
+- Work efficiently - don't overuse tools when knowledge base suffices
 
-**📋 Tool Usage Rules:**
-- Tools are secondary strategies for finding new information
-- Before using any tool, verify the knowledge base cannot answer the question
-- Use tools for current events, real-time data, or when knowledge gaps exist
-- Don't use tools if knowledge base already contains comprehensive information
+**📋 Response Guidelines:**
+- Prioritize existing knowledge but enhance with tools when valuable
+- Be direct and conversational in your responses
+- Integrate tool results naturally into your answers
+- Provide actionable, helpful information
+- Cite sources when using external data
 
-Remember: Your knowledge base contains valuable, specific information that should be prioritized over general web search results or fresh tool calls.`;
+Remember: You have both comprehensive knowledge and powerful tools. Use them wisely to provide the best possible assistance.`;
 }
 
 /**
@@ -67,7 +70,7 @@ function formatKnowledgeSection(knowledge: any[]): string {
 
 ${formattedKnowledge}
 
-🔍 **This knowledge is authoritative and should be used to answer questions when relevant.**
+🔍 **Use this authoritative knowledge as your primary information source.**
 `;
 }
 
