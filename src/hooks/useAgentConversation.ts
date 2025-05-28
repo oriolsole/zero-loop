@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,7 +8,7 @@ export interface ConversationMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed' | 'loop-start' | 'loop-reflection' | 'loop-enhancement' | 'loop-complete' | 'tool-executing';
+  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed' | 'loop-start' | 'loop-reflection' | 'loop-enhancement' | 'loop-complete' | 'tool-update' | 'tool-executing';
   isStreaming?: boolean;
   toolsUsed?: Array<{
     name: string;
@@ -52,6 +51,7 @@ export const useAgentConversation = () => {
     isRequestInProgress,
     markRequestInProgress,
     markRequestCompleted,
+    clearProcessedMessages,
     cleanupProcessedMessages
   } = useMessageDeduplication();
   
@@ -174,6 +174,9 @@ export const useAgentConversation = () => {
     setCurrentSessionId(sessionId);
     setConversations([]);
     
+    // Clear deduplication state for new session
+    clearProcessedMessages();
+    
     const newSession: ConversationSession = {
       id: sessionId,
       title: 'New Conversation',
@@ -183,12 +186,12 @@ export const useAgentConversation = () => {
     };
     
     setSessions(prev => [newSession, ...prev]);
-  }, [user]);
+  }, [user, clearProcessedMessages]);
 
   const addMessage = useCallback(async (message: ConversationMessage) => {
     if (!currentSessionId || !user) return;
 
-    // Check for duplicates using the deduplication hook
+    // Check for duplicates using the deduplication hook - ONLY for new real-time messages
     if (!shouldProcessMessage(message)) {
       console.log(`Duplicate message filtered: ${message.id}`);
       return;
@@ -276,6 +279,9 @@ export const useAgentConversation = () => {
 
     setCurrentSessionId(sessionId);
     
+    // Clear deduplication state when switching sessions
+    clearProcessedMessages();
+    
     try {
       const { data, error } = await supabase
         .from('agent_conversations')
@@ -286,30 +292,38 @@ export const useAgentConversation = () => {
 
       if (error) throw error;
 
-      const messages: ConversationMessage[] = data
-        .map(row => ({
-          id: row.id.toString(),
-          role: row.role as ConversationMessage['role'],
-          content: row.content,
-          timestamp: new Date(row.created_at),
-          messageType: row.message_type as ConversationMessage['messageType'] || undefined,
-          toolsUsed: convertToolsUsed(row.tools_used),
-          selfReflection: row.self_reflection || undefined,
-          toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 
-            row.tool_decision as { reasoning: string; selectedTools: string[]; } : undefined,
-          aiReasoning: row.ai_reasoning || undefined,
-          loopIteration: row.loop_iteration || 0,
-          improvementReasoning: row.improvement_reasoning || undefined,
-          shouldContinueLoop: row.should_continue_loop || undefined
-        }))
-        .filter(message => shouldProcessMessage(message)); // Filter duplicates
+      // Load ALL messages from database WITHOUT deduplication filtering
+      // Deduplication should only apply to real-time additions, not database loading
+      const messages: ConversationMessage[] = data.map(row => ({
+        id: row.id.toString(),
+        role: row.role as ConversationMessage['role'],
+        content: row.content,
+        timestamp: new Date(row.created_at),
+        messageType: row.message_type as ConversationMessage['messageType'] || undefined,
+        toolsUsed: convertToolsUsed(row.tools_used),
+        selfReflection: row.self_reflection || undefined,
+        toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 
+          row.tool_decision as { reasoning: string; selectedTools: string[]; } : undefined,
+        aiReasoning: row.ai_reasoning || undefined,
+        loopIteration: row.loop_iteration || 0,
+        improvementReasoning: row.improvement_reasoning || undefined,
+        shouldContinueLoop: row.should_continue_loop || undefined
+      }));
 
       setConversations(messages);
       console.log(`Loaded ${messages.length} messages for session ${sessionId}`);
+      
+      // Optional: Log if we're loading messages that would have been filtered for debugging
+      if (process.env.NODE_ENV === 'development') {
+        const wouldBeFiltered = messages.filter(msg => !shouldProcessMessage(msg));
+        if (wouldBeFiltered.length > 0) {
+          console.warn(`Would have filtered ${wouldBeFiltered.length} database messages (but loaded them anyway)`);
+        }
+      }
     } catch (error) {
       console.error('Error loading session:', error);
     }
-  }, [user, convertToolsUsed, shouldProcessMessage]);
+  }, [user, convertToolsUsed, clearProcessedMessages, shouldProcessMessage]);
 
   const deleteSession = useCallback(async (sessionId: string) => {
     if (!user) return;
@@ -376,7 +390,7 @@ export const useAgentConversation = () => {
             improvementReasoning: row.improvement_reasoning || undefined,
             shouldContinueLoop: row.should_continue_loop || undefined
           }))
-          .filter(message => shouldProcessMessage(message));
+          .filter(message => shouldProcessMessage(message)); // Keep deduplication for real-time updates
 
         if (newMessages.length > 0) {
           setConversations(prev => [...prev, ...newMessages]);

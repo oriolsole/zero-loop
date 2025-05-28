@@ -62,6 +62,13 @@ export const useMessageDeduplication = () => {
     requestsInProgress.current.delete(requestKey);
   }, []);
 
+  // Clear all processed messages (for session changes)
+  const clearProcessedMessages = useCallback((): void => {
+    console.log('Clearing message deduplication state for new session');
+    processedMessages.current.clear();
+    requestsInProgress.current.clear();
+  }, []);
+
   // Clean up old processed messages (keep only last 100)
   const cleanupProcessedMessages = useCallback((): void => {
     if (processedMessages.current.size > 100) {
@@ -80,6 +87,7 @@ export const useMessageDeduplication = () => {
     isRequestInProgress,
     markRequestInProgress,
     markRequestCompleted,
+    clearProcessedMessages,
     cleanupProcessedMessages
   };
 };
