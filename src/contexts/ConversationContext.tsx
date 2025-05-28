@@ -188,12 +188,12 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           filter: `user_id=eq.${user.id},session_id=eq.${sessionId}`
         },
         (payload) => {
-          console.log('📡 Real-time message update:', payload.eventType, payload.new?.id);
+          console.log('📡 Real-time message update:', payload.eventType, payload.new);
           
-          // Type-safe payload handling
-          const newRecord = payload.new as any;
-          
-          if (payload.eventType === 'INSERT' && newRecord && newRecord.id) {
+          // Enhanced type safety for payload handling
+          if (payload.eventType === 'INSERT' && payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
+            const newRecord = payload.new as Record<string, any>;
+            
             const newMessage: ConversationMessage = {
               id: newRecord.id,
               role: newRecord.role,
@@ -205,7 +205,9 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               improvementReasoning: newRecord.improvement_reasoning
             };
             addMessage(newMessage);
-          } else if (payload.eventType === 'UPDATE' && newRecord && newRecord.id) {
+          } else if (payload.eventType === 'UPDATE' && payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
+            const newRecord = payload.new as Record<string, any>;
+            
             const updatedFields: Partial<ConversationMessage> = {
               content: newRecord.content,
               messageType: safeMessageType(newRecord.message_type),
