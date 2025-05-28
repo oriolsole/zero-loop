@@ -21,7 +21,6 @@ export type Database = {
           role: string
           self_reflection: string | null
           session_id: string
-          stream_steps: Json | null
           tool_decision: Json | null
           tool_progress: Json | null
           tools_used: Json | null
@@ -38,7 +37,6 @@ export type Database = {
           role: string
           self_reflection?: string | null
           session_id: string
-          stream_steps?: Json | null
           tool_decision?: Json | null
           tool_progress?: Json | null
           tools_used?: Json | null
@@ -55,37 +53,9 @@ export type Database = {
           role?: string
           self_reflection?: string | null
           session_id?: string
-          stream_steps?: Json | null
           tool_decision?: Json | null
           tool_progress?: Json | null
           tools_used?: Json | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      agent_sessions: {
-        Row: {
-          created_at: string
-          id: string
-          messages: Json
-          title: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id: string
-          messages?: Json
-          title?: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          messages?: Json
-          title?: string
-          updated_at?: string
           user_id?: string
         }
         Relationships: []

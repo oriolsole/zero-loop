@@ -9,7 +9,6 @@ import { extractAssistantMessage } from './response-handler.ts';
 import { detectQueryComplexity, shouldUseLearningLoop } from './learning-loop-detector.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 import { getRelevantKnowledge, logToolOveruse } from './knowledge-retrieval.ts';
-import { handleProgressiveQuery } from './progressive-handler.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -142,11 +141,6 @@ serve(async (req) => {
         content: validatedUserMessage,
         created_at: new Date().toISOString()
       });
-    }
-
-    // NEW: Progressive streaming approach
-    if (streaming) {
-      return await handleProgressiveStreaming(message, conversationHistory, userId, sessionId, modelSettings, supabase);
     }
 
     // Use AI to determine query complexity
@@ -1117,85 +1111,4 @@ Give a clear, human-readable answer based on this information. Format the respon
     console.error('Error in synthesis:', error);
     return null;
   }
-}
-
-/**
- * Handle progressive streaming for enhanced user experience
- */
-async function handleProgressiveStreaming(
-  message: string,
-  conversationHistory: any[],
-  userId: string | null,
-  sessionId: string | null,
-  modelSettings: any,
-  supabase: any
-): Promise<Response> {
-  const encoder = new TextEncoder();
-  let streamSteps: any[] = [];
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      // Stream function to send chunks to client
-      const sendStreamChunk = async (step: any) => {
-        const chunk = JSON.stringify(step) + '\n';
-        controller.enqueue(encoder.encode(chunk));
-        streamSteps.push(step);
-      };
-
-      try {
-        // Use progressive handler
-        const result = await handleProgressiveQuery(
-          message,
-          conversationHistory,
-          userId,
-          sessionId,
-          modelSettings,
-          supabase,
-          sendStreamChunk
-        );
-
-        // Send final result
-        const finalChunk = JSON.stringify({
-          type: 'final-result',
-          success: result.success,
-          message: result.message,
-          toolsUsed: result.toolsUsed,
-          streamSteps: result.streamSteps
-        }) + '\n';
-        
-        controller.enqueue(encoder.encode(finalChunk));
-
-        // Store final response in database
-        if (userId && sessionId && result.success) {
-          const validatedFinalResponse = validateAndEnsureContent(result.message, 'Progressive Streaming Final Response');
-          await supabase.from('agent_conversations').insert({
-            user_id: userId,
-            session_id: sessionId,
-            role: 'assistant',
-            content: validatedFinalResponse,
-            tools_used: result.toolsUsed,
-            created_at: new Date().toISOString()
-          });
-        }
-
-      } catch (error) {
-        console.error('Streaming error:', error);
-        const errorChunk = JSON.stringify({
-          type: 'error',
-          error: error.message
-        }) + '\n';
-        controller.enqueue(encoder.encode(errorChunk));
-      } finally {
-        controller.close();
-      }
-    }
-  });
-
-  return new Response(stream, {
-    headers: {
-      ...corsHeaders,
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Transfer-Encoding': 'chunked'
-    }
-  });
 }
