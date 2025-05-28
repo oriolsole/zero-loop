@@ -5,11 +5,10 @@ import { convertMCPsToTools } from './mcp-tools.ts';
 import { generateSystemPrompt, createKnowledgeAwareMessages } from './system-prompts.ts';
 import { extractAssistantMessage } from './response-handler.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
-import { getRelevantKnowledge } from './knowledge-retrieval.ts';
 
 /**
  * Unified query handler that lets the LLM naturally decide tool usage
- * Based on knowledge-first approach with natural tool progression
+ * Knowledge retrieval is now tool-based, not forced
  */
 export async function handleUnifiedQuery(
   message: string,
@@ -26,11 +25,7 @@ export async function handleUnifiedQuery(
   let allToolsUsed: any[] = [];
 
   try {
-    // 1. Retrieve relevant knowledge FIRST (knowledge-first approach)
-    const { knowledge: relevantKnowledge, trackingInfo: knowledgeTrackingInfo } = await getRelevantKnowledge(message, userId, supabase);
-    console.log('📚 Retrieved relevant knowledge:', relevantKnowledge?.length || 0, 'items');
-
-    // 2. Get available tools
+    // 1. Get available tools (including knowledge search as a tool)
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
       .select('*')
@@ -42,17 +37,16 @@ export async function handleUnifiedQuery(
     }
 
     const tools = convertMCPsToTools(mcps);
-    const systemPrompt = generateUnifiedSystemPrompt(mcps, relevantKnowledge);
+    const systemPrompt = generateUnifiedSystemPrompt(mcps);
 
-    // 3. Prepare knowledge-aware messages
+    // 2. Prepare messages without forced knowledge injection
     const messages = createKnowledgeAwareMessages(
       systemPrompt,
       conversationHistory,
-      message,
-      relevantKnowledge
+      message
     );
 
-    // 4. Single LLM call with natural tool decision-making
+    // 3. Single LLM call with natural tool decision-making
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
@@ -88,7 +82,7 @@ export async function handleUnifiedQuery(
     const data = response.data;
     finalResponse = extractAssistantMessage(data) || '';
 
-    // 5. Execute tools if LLM chose to use them
+    // 4. Execute tools if LLM chose to use them
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
       console.log('🛠️ LLM chose to use', data.choices[0].message.tool_calls.length, 'tools');
       
@@ -101,7 +95,7 @@ export async function handleUnifiedQuery(
       
       allToolsUsed = toolsUsed;
       
-      // 6. Synthesize tool results if tools were used
+      // 5. Synthesize tool results if tools were used
       if (toolsUsed.length > 0) {
         console.log('🔄 Synthesizing tool results');
         const synthesizedResponse = await synthesizeResults(
@@ -118,30 +112,10 @@ export async function handleUnifiedQuery(
         }
       }
     } else {
-      console.log('✅ LLM used knowledge base appropriately - no tools needed');
+      console.log('✅ LLM responded directly without needing tools');
     }
 
-    // 7. Add knowledge retrieval to tools list for tracking
-    if (knowledgeTrackingInfo) {
-      const knowledgeTool = {
-        name: 'knowledge_retrieval',
-        parameters: {
-          query: knowledgeTrackingInfo.result?.query || message,
-          searchMode: knowledgeTrackingInfo.searchMode || 'semantic',
-          resultsCount: knowledgeTrackingInfo.result?.returnedResults || 0
-        },
-        result: {
-          sources: knowledgeTrackingInfo.sources || [],
-          searchType: knowledgeTrackingInfo.result?.searchType || 'semantic',
-          totalResults: knowledgeTrackingInfo.result?.totalResults || 0,
-          returnedResults: knowledgeTrackingInfo.result?.returnedResults || 0
-        },
-        success: knowledgeTrackingInfo.success
-      };
-      allToolsUsed.unshift(knowledgeTool);
-    }
-
-    // 8. Persist valuable insights if tools were used extensively
+    // 6. Persist valuable insights if tools were used extensively
     if (userId && allToolsUsed.length > 1) {
       try {
         await persistInsightAsKnowledgeNode(
@@ -157,12 +131,12 @@ export async function handleUnifiedQuery(
       }
     }
 
-    // 9. Validate and ensure response quality
+    // 7. Validate and ensure response quality
     if (!finalResponse || !finalResponse.trim()) {
       finalResponse = createFallbackResponse(message, allToolsUsed);
     }
 
-    // 10. Store response in database
+    // 8. Store response in database
     if (userId && sessionId) {
       await supabase.from('agent_conversations').insert({
         user_id: userId,
@@ -178,7 +152,6 @@ export async function handleUnifiedQuery(
       success: true,
       message: finalResponse,
       unifiedApproach: true,
-      knowledgeUsed: knowledgeTrackingInfo ? [knowledgeTrackingInfo] : [],
       toolsUsed: allToolsUsed,
       sessionId
     };
@@ -216,9 +189,9 @@ export async function handleUnifiedQuery(
 }
 
 /**
- * Generate unified system prompt that guides natural tool usage
+ * Generate unified system prompt that mentions knowledge access via tools
  */
-function generateUnifiedSystemPrompt(mcps: any[], relevantKnowledge?: any[]): string {
+function generateUnifiedSystemPrompt(mcps: any[]): string {
   const mcpSummaries = mcps?.map(mcp => ({
     name: mcp.title,
     description: mcp.description,
@@ -228,21 +201,15 @@ function generateUnifiedSystemPrompt(mcps: any[], relevantKnowledge?: any[]): st
   const toolDescriptions = mcpSummaries
     .map(summary => `**${summary.name}**: ${summary.description}`)
     .join('\n');
-  
-  const knowledgeSection = relevantKnowledge && relevantKnowledge.length > 0 
-    ? formatKnowledgeSection(relevantKnowledge)
-    : '';
 
-  return `You are an intelligent AI assistant with access to a knowledge base and powerful tools.
-
-${knowledgeSection}
+  return `You are an intelligent AI assistant with access to powerful tools and previous knowledge.
 
 **🧠 UNIFIED RESPONSE STRATEGY:**
-1. **ALWAYS** start by checking your knowledge base for relevant information
-2. **ANSWER DIRECTLY** if your knowledge base contains sufficient information
-3. **USE TOOLS NATURALLY** when you need:
+1. **ANSWER DIRECTLY** from your general knowledge for simple questions
+2. **USE TOOLS WHEN VALUABLE** for:
    - Current/real-time information
-   - External data not in your knowledge base
+   - Searching your previous knowledge and uploaded documents
+   - External data not in your general knowledge
    - Multi-step research or analysis
    - Specific data from external sources
 
@@ -250,42 +217,21 @@ ${knowledgeSection}
 ${toolDescriptions}
 
 **💡 Natural Decision Making:**
-- You can use multiple tools progressively if needed
+- For simple greetings or basic questions, respond directly
+- Use the Knowledge Search tool when you need to access previous learnings or uploaded documents
+- Use Web Search for current information or external data
+- Use multiple tools progressively if needed
 - Build comprehensive answers step by step
-- Combine knowledge base information with tool results
-- Use your judgment about when tools add value
-- Work efficiently - don't overuse tools when knowledge base suffices
+- Work efficiently - don't overuse tools when direct knowledge suffices
 
 **📋 Response Guidelines:**
-- Prioritize existing knowledge but enhance with tools when valuable
 - Be direct and conversational in your responses
+- Only use tools when they add clear value
 - Integrate tool results naturally into your answers
 - Provide actionable, helpful information
 - Cite sources when using external data
 
-Remember: You have both comprehensive knowledge and powerful tools. Use them wisely to provide the best possible assistance.`;
-}
-
-/**
- * Format knowledge base content for the system prompt
- */
-function formatKnowledgeSection(knowledge: any[]): string {
-  if (!knowledge || knowledge.length === 0) return '';
-  
-  const formattedKnowledge = knowledge.map((item, index) => {
-    const sourceType = item.sourceType === 'node' ? `Knowledge Node (${item.nodeType || 'insight'})` : 'Document';
-    return `**${index + 1}. ${item.title}** (${sourceType})
-   ${item.snippet || item.description}
-   Source: ${item.source || 'Internal Knowledge Base'}
-   Confidence: ${item.confidence || item.relevanceScore || 'High'}`;
-  }).join('\n\n');
-  
-  return `📚 **YOUR KNOWLEDGE BASE CONTAINS:**
-
-${formattedKnowledge}
-
-🔍 **Use this authoritative knowledge as your primary information source.**
-`;
+Remember: You have both comprehensive general knowledge and powerful tools. Use your judgment about when tools add value.`;
 }
 
 /**

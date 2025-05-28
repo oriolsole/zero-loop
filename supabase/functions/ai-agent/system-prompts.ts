@@ -14,21 +14,15 @@ export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): st
   const toolDescriptions = mcpSummaries
     .map(summary => formatMCPForPrompt(summary))
     .join('\n\n');
-  
-  const knowledgeSection = relevantKnowledge && relevantKnowledge.length > 0 
-    ? formatKnowledgeSection(relevantKnowledge)
-    : '';
 
-  return `You are an intelligent AI assistant with access to a knowledge base and powerful tools.
-
-${knowledgeSection}
+  return `You are an intelligent AI assistant with access to powerful tools and previous knowledge.
 
 **🧠 UNIFIED RESPONSE STRATEGY:**
-1. **ALWAYS** start by checking your knowledge base for relevant information
-2. **ANSWER DIRECTLY** if your knowledge base contains sufficient information
-3. **USE TOOLS NATURALLY** when you need:
+1. **ANSWER DIRECTLY** from your general knowledge for simple questions
+2. **USE TOOLS WHEN VALUABLE** for:
    - Current/real-time information
-   - External data not in your knowledge base
+   - Searching your previous knowledge and uploaded documents
+   - External data not in your general knowledge
    - Multi-step research or analysis
    - Specific data from external sources
 
@@ -36,46 +30,26 @@ ${knowledgeSection}
 ${toolDescriptions}
 
 **💡 Natural Decision Making:**
-- You can use multiple tools progressively if needed
+- For simple greetings or basic questions, respond directly
+- Use the Knowledge Search tool when you need to access previous learnings or uploaded documents
+- Use Web Search for current information or external data
+- Use multiple tools progressively if needed
 - Build comprehensive answers step by step
-- Combine knowledge base information with tool results
-- Use your judgment about when tools add value
-- Work efficiently - don't overuse tools when knowledge base suffices
+- Work efficiently - don't overuse tools when direct knowledge suffices
 
 **📋 Response Guidelines:**
-- Prioritize existing knowledge but enhance with tools when valuable
 - Be direct and conversational in your responses
+- Only use tools when they add clear value
 - Integrate tool results naturally into your answers
 - Provide actionable, helpful information
 - Cite sources when using external data
 
-Remember: You have both comprehensive knowledge and powerful tools. Use them wisely to provide the best possible assistance.`;
+Remember: You have both comprehensive general knowledge and powerful tools. Use your judgment about when tools add value.`;
 }
 
 /**
- * Format knowledge base content as authoritative information
- */
-function formatKnowledgeSection(knowledge: any[]): string {
-  if (!knowledge || knowledge.length === 0) return '';
-  
-  const formattedKnowledge = knowledge.map((item, index) => {
-    const sourceType = item.sourceType === 'node' ? `Knowledge Node (${item.nodeType || 'insight'})` : 'Document';
-    return `**${index + 1}. ${item.title}** (${sourceType})
-   ${item.snippet || item.description}
-   Source: ${item.source || 'Internal Knowledge Base'}
-   Confidence: ${item.confidence || item.relevanceScore || 'High'}`;
-  }).join('\n\n');
-  
-  return `📚 **YOUR KNOWLEDGE BASE CONTAINS:**
-
-${formattedKnowledge}
-
-🔍 **Use this authoritative knowledge as your primary information source.**
-`;
-}
-
-/**
- * Create knowledge-aware messages array for AI model with proper content validation
+ * Create messages array for AI model with proper content validation
+ * No longer forces knowledge injection
  */
 export function createKnowledgeAwareMessages(
   systemPrompt: string,
@@ -90,6 +64,7 @@ export function createKnowledgeAwareMessages(
     }
   ];
 
+  // Only inject knowledge if explicitly provided (from knowledge search tool results)
   if (relevantKnowledge && relevantKnowledge.length > 0) {
     relevantKnowledge.forEach(knowledge => {
       let knowledgeContent = '';

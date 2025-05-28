@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -128,7 +127,7 @@ const AIAgentChat: React.FC = () => {
       const conversationHistory = getConversationHistory();
 
       setTimeout(() => {
-        updateMessage(statusId, { content: "Analyzing and checking knowledge base..." });
+        updateMessage(statusId, { content: "Thinking and deciding on approach..." });
       }, 800);
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
