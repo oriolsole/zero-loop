@@ -248,8 +248,8 @@ export const useAgentConversation = () => {
         timestamp: new Date(row.created_at),
         isAutonomous: row.message_type === 'reflection' || row.message_type === 'autonomous',
         messageType: row.message_type as ConversationMessage['messageType'] || 'standard',
-        toolName: row.tool_name,
-        stepNumber: row.step_number
+        toolName: row.tool_name || undefined,
+        stepNumber: row.step_number || undefined
       }));
 
       setConversations(messages);
@@ -318,8 +318,8 @@ export const useAgentConversation = () => {
               timestamp: new Date(newRow.created_at),
               isAutonomous: newRow.message_type === 'reflection' || newRow.message_type === 'autonomous',
               messageType: newRow.message_type as ConversationMessage['messageType'] || 'standard',
-              toolName: newRow.tool_name,
-              stepNumber: newRow.step_number
+              toolName: newRow.tool_name || undefined,
+              stepNumber: newRow.step_number || undefined
             };
 
             setConversations(prev => {
