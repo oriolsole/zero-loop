@@ -2,11 +2,12 @@
 import React, { useEffect } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Bot, Loader2, MessageSquare, Search, Github, Code, Brain } from 'lucide-react';
+import { Bot, MessageSquare, Search, Github, Code, Brain } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
 import { useConversationContext } from '@/contexts/ConversationContext';
+import { getToolDisplayName } from '@/utils/toolIcons';
 import AIAgentMessage from './AIAgentMessage';
 import ToolExecutionCard from './ToolExecutionCard';
 import StatusMessage from './StatusMessage';
@@ -68,6 +69,30 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
       action: "Help me break down and solve a complex problem"
     }
   ];
+
+  // Get active tool names for status message
+  const getActiveToolsMessage = () => {
+    const activeTools = tools.filter(tool => 
+      tool.status === 'pending' || 
+      tool.status === 'starting' || 
+      tool.status === 'executing'
+    );
+    
+    if (activeTools.length === 0) return "Processing your request...";
+    
+    if (activeTools.length === 1) {
+      const toolName = getToolDisplayName(activeTools[0].name);
+      return `Using ${toolName}...`;
+    }
+    
+    const toolNames = activeTools.map(tool => getToolDisplayName(tool.name));
+    if (toolNames.length === 2) {
+      return `Using ${toolNames[0]} and ${toolNames[1]}...`;
+    }
+    
+    const lastTool = toolNames.pop();
+    return `Using ${toolNames.join(', ')}, and ${lastTool}...`;
+  };
 
   return (
     <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
@@ -134,8 +159,10 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
           {toolsActive && tools.length > 0 && (
             <div className="mt-8 space-y-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Using tools to help with your request...</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span>{getActiveToolsMessage()}</span>
+                </div>
               </div>
               
               <div className="grid gap-3">
@@ -143,7 +170,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
                   <ToolExecutionCard 
                     key={tool.id} 
                     tool={tool} 
-                    compact={true}
+                    compact={false}
                   />
                 ))}
               </div>
