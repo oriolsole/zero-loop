@@ -111,11 +111,12 @@ export const useSessionManager = () => {
     };
     
     setCurrentSession(newSession);
-    setSessions(prev => [newSession, ...prev]);
+    const updatedSessions = [newSession, ...sessions];
+    setSessions(updatedSessions);
     console.log(`🆕 Started new session: ${sessionId}`);
     
     return sessionId;
-  }, [user, setCurrentSessionId, setCurrentSession, setSessions, setMessages]);
+  }, [user, setCurrentSessionId, setCurrentSession, setSessions, setMessages, sessions]);
 
   const deleteSession = useCallback(async (sessionId: string) => {
     if (!user) return;
@@ -127,7 +128,8 @@ export const useSessionManager = () => {
         .eq('session_id', sessionId)
         .eq('user_id', user.id);
 
-      setSessions(prev => prev.filter(session => session.id !== sessionId));
+      const filteredSessions = sessions.filter(session => session.id !== sessionId);
+      setSessions(filteredSessions);
       
       if (currentSessionId === sessionId) {
         setCurrentSessionId(null);
@@ -137,7 +139,7 @@ export const useSessionManager = () => {
     } catch (error) {
       console.error('Error deleting session:', error);
     }
-  }, [user, currentSessionId, setSessions, setCurrentSessionId, setCurrentSession, setMessages]);
+  }, [user, currentSessionId, setSessions, setCurrentSessionId, setCurrentSession, setMessages, sessions]);
 
   return {
     currentSessionId,
