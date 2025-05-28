@@ -1,16 +1,18 @@
 
 import React from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Bot, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Bot, Loader2, CheckCircle, AlertCircle, Info } from 'lucide-react';
 
 interface StatusMessageProps {
   content: string;
-  type?: 'thinking' | 'success' | 'error';
+  type?: 'thinking' | 'success' | 'error' | 'info';
+  isAnimated?: boolean;
 }
 
 const StatusMessage: React.FC<StatusMessageProps> = ({ 
   content, 
-  type = 'thinking'
+  type = 'thinking',
+  isAnimated = false
 }) => {
   const getIcon = () => {
     switch (type) {
@@ -18,8 +20,10 @@ const StatusMessage: React.FC<StatusMessageProps> = ({
         return <CheckCircle className="h-4 w-4 text-green-500" />;
       case 'error':
         return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'info':
+        return <Info className="h-4 w-4 text-blue-500" />;
       default:
-        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
+        return <Loader2 className={`h-4 w-4 text-blue-500 ${isAnimated ? 'animate-spin' : ''}`} />;
     }
   };
 
@@ -29,6 +33,8 @@ const StatusMessage: React.FC<StatusMessageProps> = ({
         return 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800/30';
       case 'error':
         return 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800/30';
+      case 'info':
+        return 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800/30';
       default:
         return 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800/30';
     }
