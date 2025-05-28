@@ -46,8 +46,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       .replace(/^### (.*$)/gm, '<h3 class="text-lg font-semibold mt-4 mb-2">$1</h3>')
       .replace(/^## (.*$)/gm, '<h2 class="text-xl font-semibold mt-4 mb-2">$1</h2>')
       .replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mt-4 mb-2">$1</h1>')
-      // URLs (make them clickable) - MOVED BEFORE markdown links to prevent conflicts
-      .replace(/(https?:\/\/[^\s<>"{}|\\^`\[\](),.;!?]+)(?=\s|$|[),.;!?]|<)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline break-all">$1</a>')
+      // URLs (make them clickable) - Improved regex for better URL detection
+      .replace(/(https?:\/\/[^\s<>"{}|\\^`\[\]]+?)(?=[\s<>"{}|\\^`\[\](),.;!?]|$)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline break-all">$1</a>')
       // Markdown links [text](url) - now safe since URLs are already processed
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline break-all">$1</a>')
       // Bracket links [text] - but not markdown links [text](url) - now safe since markdown links are already processed
