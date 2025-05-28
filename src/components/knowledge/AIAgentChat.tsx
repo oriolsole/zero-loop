@@ -1,11 +1,12 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
+import { useConversationContext } from '@/contexts/ConversationContext';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
@@ -27,17 +28,33 @@ const AIAgentChat: React.FC = () => {
     refreshConversationState
   } = useAgentConversation();
 
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [showSessions, setShowSessions] = useState(false);
-  const [modelSettings, setModelSettings] = useState(getModelSettings());
+  // Use context for UI state
+  const {
+    messages,
+    setMessages,
+    currentSession,
+    setCurrentSession,
+    sessions: contextSessions,
+    setSessions,
+    isLoading,
+    setIsLoading,
+    input,
+    setInput,
+    tools,
+    setTools,
+    toolsActive,
+    setToolsActive
+  } = useConversationContext();
+
+  const [showSessions, setShowSessions] = React.useState(false);
+  const [modelSettings, setModelSettings] = React.useState(getModelSettings());
 
   // Track active requests to prevent duplicates
   const activeRequests = useRef<Set<string>>(new Set());
   
   const {
-    tools,
-    isActive: toolsActive,
+    tools: hookTools,
+    isActive: hookToolsActive,
     startTool,
     updateTool,
     completeTool,
@@ -47,12 +64,26 @@ const AIAgentChat: React.FC = () => {
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
+  // Sync hook state with context
+  useEffect(() => {
+    setMessages(conversations);
+  }, [conversations, setMessages]);
+
+  useEffect(() => {
+    setSessions(sessions);
+  }, [sessions, setSessions]);
+
+  useEffect(() => {
+    setTools(hookTools);
+    setToolsActive(hookToolsActive);
+  }, [hookTools, hookToolsActive, setTools, setToolsActive]);
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [conversations, tools]);
+  }, [messages, tools]);
 
   // Helper function to safely convert tools_used from database
   const convertToolsUsed = (toolsUsed: any): Array<{name: string; success: boolean; result?: any; error?: string;}> => {
@@ -244,7 +275,7 @@ const AIAgentChat: React.FC = () => {
     <div className="flex h-full">
       {showSessions && (
         <SessionsSidebar
-          sessions={sessions}
+          sessions={contextSessions}
           currentSessionId={currentSessionId}
           onStartNewSession={startNewSession}
           onLoadSession={loadSession}
@@ -263,7 +294,7 @@ const AIAgentChat: React.FC = () => {
         />
         
         <SimplifiedChatInterface
-          conversations={conversations}
+          conversations={messages}
           isLoading={isLoading}
           modelSettings={modelSettings}
           tools={tools}

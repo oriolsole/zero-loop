@@ -6,6 +6,7 @@ import { Bot, Loader2, MessageSquare, Search, Github, Code, Brain } from 'lucide
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
+import { useConversationContext } from '@/contexts/ConversationContext';
 import AIAgentMessage from './AIAgentMessage';
 import ToolExecutionCard from './ToolExecutionCard';
 import StatusMessage from './StatusMessage';
@@ -32,12 +33,18 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   scrollAreaRef,
   onFollowUpAction
 }) => {
+  // Use context for centralized state access
+  const { messages } = useConversationContext();
+
   // Debug effect to track conversations prop changes
   useEffect(() => {
     console.log(`🎯 SimplifiedChatInterface received ${conversations.length} conversations:`, 
       conversations.map(c => ({ id: c.id, role: c.role, content: c.content.substring(0, 50) + '...' }))
     );
   }, [conversations]);
+
+  // Use messages from context as the source of truth
+  const displayMessages = messages.length > 0 ? messages : conversations;
 
   const suggestedActions = [
     {
@@ -70,7 +77,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
     <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
       <ScrollArea className="h-full" ref={scrollAreaRef}>
         <div className="max-w-4xl mx-auto px-6 py-8">
-          {conversations.length === 0 && (
+          {displayMessages.length === 0 && (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
               <div className="w-20 h-20 mb-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center shadow-lg">
                 <Bot className="h-10 w-10 text-primary" />
@@ -116,7 +123,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
           )}
 
           <div className="space-y-8">
-            {conversations.map((message) => {
+            {displayMessages.map((message) => {
               console.log(`🎨 Rendering message: ${message.id} (${message.role}): ${message.content.substring(0, 50)}...`);
               return (
                 <AIAgentMessage 
