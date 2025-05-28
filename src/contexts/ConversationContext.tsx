@@ -13,7 +13,7 @@ interface ConversationContextType {
   // Session state
   currentSession: ConversationSession | null;
   setCurrentSession: (session: ConversationSession | null) => void;
-  currentSessionId: string | null; // Add for compatibility
+  currentSessionId: string | null;
   setCurrentSessionId: (id: string | null) => void;
   sessions: ConversationSession[];
   setSessions: (sessions: ConversationSession[]) => void;
@@ -34,7 +34,7 @@ interface ConversationContextType {
   input: string;
   setInput: (input: string) => void;
 
-  // Message operations (will be implemented by useMessagePersistence)
+  // Message operations
   loadConversation?: (sessionId: string) => Promise<void>;
   persistMessage?: (message: ConversationMessage) => Promise<void>;
   refreshMessages?: () => Promise<void>;

@@ -111,7 +111,7 @@ const AIAgentChat: React.FC = () => {
     });
   };
 
-  // Refresh conversation every 4 seconds while loading, but with throttling
+  // Refresh conversation every 4 seconds while loading
   useEffect(() => {
     let refreshInterval: NodeJS.Timeout;
     
@@ -130,7 +130,7 @@ const AIAgentChat: React.FC = () => {
     };
   }, [isLoading, currentSessionId, refreshMessages]);
 
-  // Load model settings on component mount and when they change
+  // Load model settings on component mount
   useEffect(() => {
     const loadSettings = () => {
       const settings = getModelSettings();
@@ -149,7 +149,7 @@ const AIAgentChat: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Enhanced session loading on mount
+  // Load sessions on mount
   useEffect(() => {
     if (user && sessions.length === 0 && !isLoadingSessions) {
       console.log('🔄 Loading sessions on mount');
@@ -173,7 +173,7 @@ const AIAgentChat: React.FC = () => {
     }
   }, [currentSessionId]);
 
-  // Handle session loading with new persistence hook
+  // Handle session loading
   const handleLoadSession = async (sessionId: string) => {
     if (!loadConversation) return;
     
@@ -195,11 +195,9 @@ const AIAgentChat: React.FC = () => {
   const handleFollowUpAction = async (action: string) => {
     if (!user || !currentSessionId) return;
 
-    // Enhanced message ID generation with timestamp
     const messageId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     // Check if we've already processed this exact action recently
-    const actionKey = `${action}-${Date.now()}`;
     if (processedMessages.current.has(action)) {
       console.log('⚠️ Action already processed recently, skipping:', action);
       return;
@@ -226,7 +224,6 @@ const AIAgentChat: React.FC = () => {
   const processMessage = async (message: string, existingMessageId?: string) => {
     if (!user || !currentSessionId) return;
 
-    // Enhanced request tracking with message content hash
     const contentHash = btoa(message).substring(0, 16);
     const requestKey = `${currentSessionId}-${contentHash}-${existingMessageId || Date.now()}`;
     
@@ -338,14 +335,13 @@ const AIAgentChat: React.FC = () => {
       // Clean up processed messages after some time
       setTimeout(() => {
         processedMessages.current.clear();
-      }, 30000); // Clear after 30 seconds
+      }, 30000);
     }
   };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !user || !currentSessionId) return;
 
-    // Enhanced message ID generation with better uniqueness
     const messageId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Check for rapid duplicate submissions
