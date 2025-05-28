@@ -4,7 +4,6 @@ import { toast } from '@/components/ui/sonner';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
-import { useToolProgress } from '@/hooks/useToolProgress';
 import { useConversationContext } from '@/contexts/ConversationContext';
 import { useMessageManager } from '@/hooks/conversation/useMessageManager';
 import { useSessionManager } from '@/hooks/conversation/useSessionManager';
@@ -12,6 +11,7 @@ import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
 import SessionsSidebar from './SessionsSidebar';
+import ToolProgressManager from './ToolProgressManager';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
@@ -51,23 +51,13 @@ const AIAgentChat: React.FC = () => {
   // Request tracking to prevent duplicates
   const activeRequests = useRef<Set<string>>(new Set());
   
-  const {
-    tools: hookTools,
-    isActive: hookToolsActive,
-    startTool,
-    updateTool,
-    completeTool,
-    failTool,
-    clearTools
-  } = useToolProgress();
-  
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
-  // Sync tools from hook to context
-  useEffect(() => {
-    setTools(hookTools || []);
-    setToolsActive(hookToolsActive || false);
-  }, [hookTools, hookToolsActive, setTools, setToolsActive]);
+  // Handle tool progress updates from ToolProgressManager
+  const handleToolsUpdate = React.useCallback((updatedTools: any[], isActive: boolean) => {
+    setTools(updatedTools);
+    setToolsActive(isActive);
+  }, [setTools, setToolsActive]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -164,7 +154,6 @@ const AIAgentChat: React.FC = () => {
 
     activeRequests.current.add(requestKey);
     setIsLoading(true);
-    clearTools();
 
     console.log(`🚀 [PROCESS] Processing message: ${requestKey}`);
     console.log(`📝 [PROCESS] Current session: ${currentSessionId}`);
@@ -325,6 +314,9 @@ const AIAgentChat: React.FC = () => {
 
   return (
     <div className="flex h-full">
+      {/* Tool Progress Manager - handles tool state automatically */}
+      <ToolProgressManager onToolsUpdate={handleToolsUpdate} />
+      
       {showSessions && (
         <SessionsSidebar
           sessions={sessions}

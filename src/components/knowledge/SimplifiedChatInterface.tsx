@@ -7,11 +7,11 @@ import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
 import { useConversationContext } from '@/contexts/ConversationContext';
-import { getToolDisplayName } from '@/utils/toolIcons';
 import AIAgentMessage from './AIAgentMessage';
 import ToolExecutionCard from './ToolExecutionCard';
 import StatusMessage from './StatusMessage';
 import DebugInfo from './DebugInfo';
+import LoopProgressIndicator from './LoopProgressIndicator';
 
 interface SimplifiedChatInterfaceProps {
   conversations: ConversationMessage[]; // Keep for compatibility, but won't use
@@ -43,6 +43,24 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
       messages.map(c => ({ id: c.id.substring(0, 8), role: c.role, content: c.content.substring(0, 30) + '...' }))
     );
   }, [messages]);
+
+  // Group messages by loop iteration to show progression
+  const groupMessagesByLoop = (messages: ConversationMessage[]) => {
+    const grouped: { [key: number]: ConversationMessage[] } = {};
+    
+    messages.forEach(msg => {
+      const loop = msg.loopIteration || 0;
+      if (!grouped[loop]) {
+        grouped[loop] = [];
+      }
+      grouped[loop].push(msg);
+    });
+    
+    return grouped;
+  };
+
+  const groupedMessages = groupMessagesByLoop(messages);
+  const loopNumbers = Object.keys(groupedMessages).map(Number).sort((a, b) => a - b);
 
   const suggestedActions = [
     {
@@ -122,15 +140,34 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             </div>
           )}
 
+          {/* Display messages grouped by loop iteration */}
           <div className="space-y-8">
-            {messages.map((message) => {
-              console.log(`🎨 [INTERFACE] Rendering message: ${message.id.substring(0, 8)} (${message.role}): ${message.content.substring(0, 50)}...`);
+            {loopNumbers.map((loopNumber) => {
+              const loopMessages = groupedMessages[loopNumber];
+              const hasMultipleLoops = loopNumbers.length > 1;
+              
               return (
-                <AIAgentMessage 
-                  key={message.id}
-                  message={message}
-                  onFollowUpAction={onFollowUpAction}
-                />
+                <div key={loopNumber} className="space-y-6">
+                  {/* Loop indicator for multiple loops */}
+                  {hasMultipleLoops && loopNumber > 0 && (
+                    <LoopProgressIndicator 
+                      loopNumber={loopNumber}
+                      messages={loopMessages}
+                    />
+                  )}
+                  
+                  {/* Messages in this loop */}
+                  {loopMessages.map((message) => {
+                    console.log(`🎨 [INTERFACE] Rendering message: ${message.id.substring(0, 8)} (${message.role}): ${message.content.substring(0, 50)}...`);
+                    return (
+                      <AIAgentMessage 
+                        key={message.id}
+                        message={message}
+                        onFollowUpAction={onFollowUpAction}
+                      />
+                    );
+                  })}
+                </div>
               );
             })}
           </div>
@@ -138,6 +175,9 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
           {/* Enhanced Tool Execution Cards */}
           {toolsActive && tools.length > 0 && (
             <div className="mt-8 space-y-4">
+              <div className="text-sm font-medium text-muted-foreground mb-2">
+                Tools Running:
+              </div>
               <div className="grid gap-3">
                 {tools.map((tool) => (
                   <ToolExecutionCard 

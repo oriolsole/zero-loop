@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConversation';
 import { supabase } from '@/integrations/supabase/client';
@@ -203,7 +202,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     console.log(`✅ [CONTEXT] Conversation loaded successfully for session ${sessionId}`);
   }, [loadConversationFromDatabase, clearMessages]);
 
-  // Real-time subscription with proper session tracking
+  // Enhanced real-time subscription with better tool message handling
   useEffect(() => {
     if (!user?.id || !currentSessionId) {
       console.log(`🔌 [REALTIME] No user (${!!user?.id}) or session (${!!currentSessionId}) for real-time subscription`);
@@ -234,6 +233,11 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             if (newRecord.role === 'user' && localUserMessageIds.current.has(newRecord.id)) {
               console.log(`⚠️ [REALTIME] Skipping locally originated user message: ${newRecord.id}`);
               return;
+            }
+            
+            // Special handling for tool execution messages
+            if (newRecord.message_type === 'tool-executing') {
+              console.log(`🔧 [REALTIME] Processing tool execution message: ${newRecord.id}`);
             }
             
             console.log(`✅ [REALTIME] Processing real-time message: ${newRecord.id} (${newRecord.role})`);
