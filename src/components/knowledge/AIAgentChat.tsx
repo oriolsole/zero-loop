@@ -151,12 +151,15 @@ const AIAgentChat: React.FC = () => {
   };
 
   const processMessage = async (message: string, existingMessageId?: string) => {
-    if (!user || !currentSessionId) return;
+    if (!user || !currentSessionId) {
+      console.error('❌ [PROCESS] Cannot process message - missing user or session');
+      return;
+    }
 
     const requestKey = `${currentSessionId}-${btoa(message).substring(0, 16)}`;
     
     if (activeRequests.current.has(requestKey)) {
-      console.log('⚠️ Request already in progress, skipping:', requestKey);
+      console.log('⚠️ [PROCESS] Request already in progress, skipping:', requestKey);
       return;
     }
 
@@ -164,7 +167,9 @@ const AIAgentChat: React.FC = () => {
     setIsLoading(true);
     clearTools();
 
-    console.log(`🚀 Processing message: ${requestKey}`);
+    console.log(`🚀 [PROCESS] Processing message: ${requestKey}`);
+    console.log(`📝 [PROCESS] Current session: ${currentSessionId}`);
+    console.log(`👤 [PROCESS] User ID: ${user.id}`);
 
     try {
       const conversationHistory = messages
@@ -174,7 +179,7 @@ const AIAgentChat: React.FC = () => {
           content: msg.content
         }));
 
-      console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages`);
+      console.log(`📞 [PROCESS] Calling AI agent with ${conversationHistory.length} history messages`);
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
@@ -188,14 +193,21 @@ const AIAgentChat: React.FC = () => {
       });
 
       if (error) {
+        console.error('❌ [PROCESS] Supabase function error:', error);
         throw new Error(error.message);
       }
 
       if (!data || !data.success) {
+        console.error('❌ [PROCESS] AI agent returned error:', data);
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
-      console.log('✅ AI agent response received:', data);
+      console.log('✅ [PROCESS] AI agent response received:', {
+        success: data.success,
+        responseLength: data.response?.length,
+        loopIteration: data.loopIteration,
+        toolsUsed: data.toolsUsed?.length
+      });
 
       // CRITICAL: Create and add assistant response to context IMMEDIATELY
       if (data.response) {
@@ -212,12 +224,20 @@ const AIAgentChat: React.FC = () => {
           improvementReasoning: data.improvementReasoning || undefined
         };
 
-        console.log(`🤖 Adding assistant response to UI immediately: ${assistantMessageId}`);
+        console.log(`🤖 [PROCESS] Creating assistant message for immediate UI display: ${assistantMessageId}`);
+        console.log(`📝 [PROCESS] Assistant message content preview: "${data.response.substring(0, 100)}..."`);
+        
         // Add to UI context first for immediate display
+        console.log(`➕ [PROCESS] Adding assistant response to context...`);
         addAssistantResponse(assistantMessage);
+        console.log(`✅ [PROCESS] Assistant response added to context successfully`);
 
         // Then persist to database (this will trigger real-time for other clients)
-        await persistMessage(assistantMessage);
+        console.log(`💾 [PROCESS] Persisting assistant message to database...`);
+        const persistResult = await persistMessage(assistantMessage);
+        console.log(`${persistResult ? '✅' : '❌'} [PROCESS] Assistant message persistence ${persistResult ? 'succeeded' : 'failed'}`);
+      } else {
+        console.warn('⚠️ [PROCESS] No response content in AI agent data');
       }
       
       if (data.toolsUsed && data.toolsUsed.length > 0) {
@@ -228,7 +248,7 @@ const AIAgentChat: React.FC = () => {
       }
 
     } catch (error) {
-      console.error('❌ Error sending message:', error);
+      console.error('❌ [PROCESS] Error processing message:', error);
       
       toast.error('Failed to send message', {
         description: error.message || 'Please try again.',
@@ -244,16 +264,26 @@ const AIAgentChat: React.FC = () => {
         timestamp: new Date()
       };
 
+      console.log(`🚨 [PROCESS] Adding error message to context: ${errorMessageId}`);
       addAssistantResponse(errorMessage);
       await persistMessage(errorMessage);
     } finally {
       setIsLoading(false);
       activeRequests.current.delete(requestKey);
+      console.log(`🏁 [PROCESS] Message processing completed for: ${requestKey}`);
     }
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading || !user || !currentSessionId) return;
+    if (!input.trim() || isLoading || !user || !currentSessionId) {
+      console.log('⚠️ [SEND] Cannot send message - invalid state:', {
+        hasInput: !!input.trim(),
+        isLoading,
+        hasUser: !!user,
+        hasSession: !!currentSessionId
+      });
+      return;
+    }
 
     const messageId = generateMessageId(input, 'user', currentSessionId);
 
@@ -264,7 +294,7 @@ const AIAgentChat: React.FC = () => {
       timestamp: new Date()
     };
 
-    console.log(`📤 Sending user message: ${messageId}`);
+    console.log(`📤 [SEND] Sending user message: ${messageId} - "${input}"`);
 
     // Add to context immediately for UX
     addMessageToContext(userMessage);
@@ -277,6 +307,15 @@ const AIAgentChat: React.FC = () => {
     
     await processMessage(messageToProcess, messageId);
   };
+
+  // Debug effect to monitor messages state
+  useEffect(() => {
+    console.log(`🎯 [CHAT] Messages state updated. Count: ${messages.length}`);
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      console.log(`📨 [CHAT] Last message: ${lastMessage.id.substring(0, 8)} (${lastMessage.role}) - "${lastMessage.content.substring(0, 50)}..."`);
+    }
+  }, [messages]);
 
   return (
     <div className="flex h-full">

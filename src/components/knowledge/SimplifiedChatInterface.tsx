@@ -11,6 +11,7 @@ import { getToolDisplayName } from '@/utils/toolIcons';
 import AIAgentMessage from './AIAgentMessage';
 import ToolExecutionCard from './ToolExecutionCard';
 import StatusMessage from './StatusMessage';
+import DebugInfo from './DebugInfo';
 
 interface SimplifiedChatInterfaceProps {
   conversations: ConversationMessage[]; // Keep for compatibility, but won't use
@@ -38,8 +39,8 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
 
   // Debug effect to track messages from context
   useEffect(() => {
-    console.log(`🎯 SimplifiedChatInterface using context messages: ${messages.length}`, 
-      messages.map(c => ({ id: c.id, role: c.role, content: c.content.substring(0, 50) + '...' }))
+    console.log(`🎯 [INTERFACE] Using context messages: ${messages.length}`, 
+      messages.map(c => ({ id: c.id.substring(0, 8), role: c.role, content: c.content.substring(0, 30) + '...' }))
     );
   }, [messages]);
 
@@ -71,7 +72,9 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   ];
 
   return (
-    <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
+    <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95 relative">
+      <DebugInfo />
+      
       <ScrollArea className="h-full" ref={scrollAreaRef}>
         <div className="max-w-4xl mx-auto px-6 py-8">
           {messages.length === 0 && (
@@ -121,7 +124,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
 
           <div className="space-y-8">
             {messages.map((message) => {
-              console.log(`🎨 Rendering message: ${message.id} (${message.role}): ${message.content.substring(0, 50)}...`);
+              console.log(`🎨 [INTERFACE] Rendering message: ${message.id.substring(0, 8)} (${message.role}): ${message.content.substring(0, 50)}...`);
               return (
                 <AIAgentMessage 
                   key={message.id}

@@ -104,76 +104,91 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // Add message to local context only
   const addMessageToContext = useCallback((message: ConversationMessage) => {
-    console.log(`➕ Adding message to context: ${message.id} (${message.role})`);
+    console.log(`🔵 [CONTEXT] Adding message to context: ${message.id} (${message.role}) - "${message.content.substring(0, 50)}..."`);
     
     setMessages(prev => {
       const exists = prev.find(m => m.id === message.id);
       if (exists) {
-        console.log(`⚠️ Message ${message.id} already exists in context`);
+        console.log(`⚠️ [CONTEXT] Message ${message.id} already exists in context`);
         return prev;
       }
       
       // Track user messages as local
       if (message.role === 'user') {
         localUserMessageIds.current.add(message.id);
+        console.log(`📝 [CONTEXT] Tracked user message as local: ${message.id}`);
       }
       
       const newMessages = [...prev, message].sort((a, b) => 
         a.timestamp.getTime() - b.timestamp.getTime()
       );
       
-      console.log(`✅ Message added to context. Total messages: ${newMessages.length}`);
+      console.log(`✅ [CONTEXT] Message added to context. Total messages: ${newMessages.length}`);
+      console.log(`📊 [CONTEXT] Current message IDs in context:`, newMessages.map(m => `${m.id.substring(0, 8)}(${m.role})`));
       return newMessages;
     });
   }, []);
 
   // Update message in local context only
   const updateMessageInContext = useCallback((messageId: string, updates: Partial<ConversationMessage>) => {
+    console.log(`🔄 [CONTEXT] Updating message in context: ${messageId}`);
     setMessages(prev => {
       const messageIndex = prev.findIndex(m => m.id === messageId);
       if (messageIndex === -1) {
-        console.log(`⚠️ Message ${messageId} not found for update`);
+        console.log(`⚠️ [CONTEXT] Message ${messageId} not found for update`);
         return prev;
       }
       
       const updated = [...prev];
       updated[messageIndex] = { ...updated[messageIndex], ...updates };
-      console.log(`🔄 Updated message in context: ${messageId}`);
+      console.log(`✅ [CONTEXT] Updated message in context: ${messageId}`);
       return updated;
     });
   }, []);
 
   // Clear all messages from context
   const clearMessages = useCallback(() => {
-    console.log('🧹 Clearing all messages from context');
+    console.log('🧹 [CONTEXT] Clearing all messages from context');
     setMessages([]);
     localUserMessageIds.current.clear();
   }, []);
 
   // Add assistant response directly to context (for backend responses)
   const addAssistantResponse = useCallback((response: ConversationMessage) => {
-    console.log(`🤖 Adding assistant response to context: ${response.id}`);
+    console.log(`🤖 [CONTEXT] Adding assistant response to context: ${response.id} - "${response.content.substring(0, 50)}..."`);
+    console.log(`🔍 [CONTEXT] Assistant response details:`, {
+      id: response.id,
+      role: response.role,
+      timestamp: response.timestamp,
+      contentLength: response.content.length
+    });
+    
+    // Use the regular addMessageToContext to ensure consistent logging and processing
     addMessageToContext(response);
+    
+    console.log(`✅ [CONTEXT] Assistant response added successfully`);
   }, [addMessageToContext]);
 
   // Persist message to database only
   const persistMessage = useCallback(async (message: ConversationMessage): Promise<boolean> => {
     if (!currentSessionId) {
-      console.error('❌ No session available for persistence');
+      console.error('❌ [CONTEXT] No session available for persistence');
       return false;
     }
 
-    console.log(`💾 Persisting message: ${message.id}`);
-    return await persistMessageToDatabase(message, currentSessionId);
+    console.log(`💾 [CONTEXT] Persisting message: ${message.id} to session ${currentSessionId}`);
+    const result = await persistMessageToDatabase(message, currentSessionId);
+    console.log(`${result ? '✅' : '❌'} [CONTEXT] Message persistence ${result ? 'succeeded' : 'failed'}: ${message.id}`);
+    return result;
   }, [currentSessionId, persistMessageToDatabase]);
 
   // Load conversation from database and update context
   const loadConversation = useCallback(async (sessionId: string) => {
-    console.log(`📂 Loading conversation: ${sessionId}`);
+    console.log(`📂 [CONTEXT] Loading conversation: ${sessionId}`);
     clearMessages();
     
     const loadedMessages = await loadConversationFromDatabase(sessionId);
-    console.log(`📥 Loaded ${loadedMessages.length} messages from database`);
+    console.log(`📥 [CONTEXT] Loaded ${loadedMessages.length} messages from database for session ${sessionId}`);
     
     // Add all loaded messages to context
     setMessages(loadedMessages);
@@ -184,16 +199,18 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         localUserMessageIds.current.add(msg.id);
       }
     });
+    
+    console.log(`✅ [CONTEXT] Conversation loaded successfully for session ${sessionId}`);
   }, [loadConversationFromDatabase, clearMessages]);
 
   // Real-time subscription with proper session tracking
   useEffect(() => {
     if (!user?.id || !currentSessionId) {
-      console.log('🔌 No user or session for real-time subscription');
+      console.log(`🔌 [REALTIME] No user (${!!user?.id}) or session (${!!currentSessionId}) for real-time subscription`);
       return;
     }
 
-    console.log(`🔗 Setting up real-time subscription for session: ${currentSessionId}`);
+    console.log(`🔗 [REALTIME] Setting up real-time subscription for session: ${currentSessionId}`);
 
     const channel = supabase
       .channel(`agent-conversations-${currentSessionId}`)
@@ -206,17 +223,20 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           filter: `user_id=eq.${user.id},session_id=eq.${currentSessionId}`
         },
         (payload) => {
+          console.log(`📡 [REALTIME] Received INSERT event:`, payload);
+          
           if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
             const newRecord = payload.new as Record<string, any>;
             
-            // Only filter out user messages that were added locally
-            // Always allow assistant messages through
+            console.log(`📨 [REALTIME] Processing new message: ${newRecord.id} (${newRecord.role}) - "${newRecord.content?.substring(0, 50)}..."`);
+            
+            // Check if this is a user message that was added locally
             if (newRecord.role === 'user' && localUserMessageIds.current.has(newRecord.id)) {
-              console.log('⚠️ Skipping locally originated user message from real-time:', newRecord.id);
+              console.log(`⚠️ [REALTIME] Skipping locally originated user message: ${newRecord.id}`);
               return;
             }
             
-            console.log('📡 Processing real-time INSERT:', newRecord.id, newRecord.role);
+            console.log(`✅ [REALTIME] Processing real-time message: ${newRecord.id} (${newRecord.role})`);
             
             const newMessage: ConversationMessage = {
               id: newRecord.id,
@@ -230,6 +250,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             };
             
             addMessageToContext(newMessage);
+            console.log(`📨 [REALTIME] Added real-time message to context: ${newRecord.id}`);
           }
         }
       )
@@ -244,7 +265,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         (payload) => {
           if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
             const newRecord = payload.new as Record<string, any>;
-            console.log('📡 Processing real-time UPDATE:', newRecord.id);
+            console.log(`📡 [REALTIME] Processing UPDATE for message: ${newRecord.id}`);
             
             const updatedFields: Partial<ConversationMessage> = {
               content: newRecord.content,
@@ -259,7 +280,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .subscribe();
 
     return () => {
-      console.log('🔌 Cleaning up real-time subscription for session:', currentSessionId);
+      console.log(`🔌 [REALTIME] Cleaning up real-time subscription for session: ${currentSessionId}`);
       supabase.removeChannel(channel);
     };
   }, [user?.id, currentSessionId, addMessageToContext, updateMessageInContext]);
@@ -268,14 +289,26 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   useEffect(() => {
     if (currentSessionId) {
       localUserMessageIds.current.clear();
-      console.log('🧹 Cleared user message tracking for new session:', currentSessionId);
+      console.log(`🧹 [CONTEXT] Cleared user message tracking for new session: ${currentSessionId}`);
     }
   }, [currentSessionId]);
 
   // Debug logging for session changes
   useEffect(() => {
-    console.log('🎯 Current session ID changed to:', currentSessionId);
+    console.log(`🎯 [SESSION] Current session ID changed to: ${currentSessionId}`);
   }, [currentSessionId]);
+
+  // Debug logging for messages changes
+  useEffect(() => {
+    console.log(`📝 [MESSAGES] Messages array updated. Count: ${messages.length}`);
+    if (messages.length > 0) {
+      console.log(`📝 [MESSAGES] Latest messages:`, messages.slice(-3).map(m => ({
+        id: m.id.substring(0, 8),
+        role: m.role,
+        content: m.content.substring(0, 30) + '...'
+      })));
+    }
+  }, [messages]);
 
   const contextValue: ConversationContextType = {
     messages,
