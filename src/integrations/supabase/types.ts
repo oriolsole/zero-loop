@@ -15,10 +15,13 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          improvement_reasoning: string | null
+          loop_iteration: number | null
           message_type: string | null
           role: string
           self_reflection: string | null
           session_id: string
+          should_continue_loop: boolean | null
           step_number: number | null
           tool_decision: Json | null
           tool_name: string | null
@@ -30,10 +33,13 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          improvement_reasoning?: string | null
+          loop_iteration?: number | null
           message_type?: string | null
           role: string
           self_reflection?: string | null
           session_id: string
+          should_continue_loop?: boolean | null
           step_number?: number | null
           tool_decision?: Json | null
           tool_name?: string | null
@@ -45,10 +51,13 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          improvement_reasoning?: string | null
+          loop_iteration?: number | null
           message_type?: string | null
           role?: string
           self_reflection?: string | null
           session_id?: string
+          should_continue_loop?: boolean | null
           step_number?: number | null
           tool_decision?: Json | null
           tool_name?: string | null

@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,6 +23,9 @@ export interface ConversationMessage {
   executionPlan?: any;
   aiReasoning?: string;
   followUpSuggestions?: string[];
+  loopIteration?: number;
+  improvementReasoning?: string;
+  shouldContinueLoop?: boolean;
 }
 
 export interface ConversationSession {
