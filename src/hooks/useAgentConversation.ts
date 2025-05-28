@@ -53,20 +53,18 @@ export const useAgentConversation = () => {
     setConversations([]);
 
     try {
-      // Use edge function to insert into agent_sessions
-      const { error } = await supabase.functions.invoke('exec-sql', {
-        body: {
-          query: `
-            INSERT INTO agent_sessions (id, user_id, title, messages)
-            VALUES ($1, $2, $3, $4)
-          `,
-          params: [newSessionId, user.id, 'New Conversation', JSON.stringify([])]
-        }
-      });
+      const { error } = await supabase
+        .from('agent_sessions')
+        .insert({
+          id: newSessionId,
+          user_id: user.id,
+          title: 'New Conversation',
+          messages: []
+        });
 
       if (error) {
         console.error('Error creating session:', error);
-        // Fallback: just set the session locally
+        // Continue with local session management as fallback
         console.log('Using local session management as fallback');
       }
 
@@ -83,19 +81,11 @@ export const useAgentConversation = () => {
 
     setIsLoadingSessions(true);
     try {
-      // Use edge function to query agent_sessions
-      const { data, error } = await supabase.functions.invoke('exec-sql', {
-        body: {
-          query: `
-            SELECT id, title, created_at, updated_at,
-                   jsonb_array_length(messages) as message_count
-            FROM agent_sessions 
-            WHERE user_id = $1 
-            ORDER BY updated_at DESC
-          `,
-          params: [user.id]
-        }
-      });
+      const { data, error } = await supabase
+        .from('agent_sessions')
+        .select('id, title, created_at, updated_at, messages')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false });
 
       if (error) {
         console.error('Error loading sessions:', error);
@@ -103,14 +93,13 @@ export const useAgentConversation = () => {
         return;
       }
 
-      // Transform the data to match our interface
-      const sessionsData = data?.data || [];
-      const transformedSessions: ConversationSession[] = sessionsData.map((session: any) => ({
+      // Transform the data and calculate message count
+      const transformedSessions: ConversationSession[] = (data || []).map((session: any) => ({
         id: session.id,
         title: session.title,
         created_at: session.created_at,
         updated_at: session.updated_at,
-        messageCount: session.message_count || 0
+        messageCount: Array.isArray(session.messages) ? session.messages.length : 0
       }));
 
       setSessions(transformedSessions);
@@ -127,26 +116,21 @@ export const useAgentConversation = () => {
     if (!user) return;
 
     try {
-      // Use edge function to query specific session
-      const { data, error } = await supabase.functions.invoke('exec-sql', {
-        body: {
-          query: `
-            SELECT * FROM agent_sessions 
-            WHERE id = $1 AND user_id = $2
-          `,
-          params: [sessionId, user.id]
-        }
-      });
+      const { data, error } = await supabase
+        .from('agent_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .eq('user_id', user.id)
+        .single();
 
-      if (error || !data?.data || data.data.length === 0) {
+      if (error || !data) {
         console.error('Error loading session:', error);
         return;
       }
 
-      const sessionData = data.data[0];
       setCurrentSessionId(sessionId);
       
-      const messages = sessionData.messages || [];
+      const messages = data.messages || [];
       const parsedMessages: ConversationMessage[] = messages.map((msg: any) => ({
         ...msg,
         timestamp: new Date(msg.timestamp)
@@ -163,16 +147,11 @@ export const useAgentConversation = () => {
     if (!user) return;
 
     try {
-      // Use edge function to delete session
-      const { error } = await supabase.functions.invoke('exec-sql', {
-        body: {
-          query: `
-            DELETE FROM agent_sessions 
-            WHERE id = $1 AND user_id = $2
-          `,
-          params: [sessionId, user.id]
-        }
-      });
+      const { error } = await supabase
+        .from('agent_sessions')
+        .delete()
+        .eq('id', sessionId)
+        .eq('user_id', user.id);
 
       if (error) {
         console.error('Error deleting session:', error);
@@ -201,24 +180,18 @@ export const useAgentConversation = () => {
     setConversations(newConversations);
 
     try {
-      // Update the session with the new message using edge function
-      const { error } = await supabase.functions.invoke('exec-sql', {
-        body: {
-          query: `
-            UPDATE agent_sessions 
-            SET messages = $1, updated_at = now()
-            WHERE id = $2 AND user_id = $3
-          `,
-          params: [
-            JSON.stringify(newConversations.map(msg => ({
-              ...msg,
-              timestamp: msg.timestamp.toISOString()
-            }))),
-            currentSessionId,
-            user.id
-          ]
-        }
-      });
+      // Update the session with the new message
+      const { error } = await supabase
+        .from('agent_sessions')
+        .update({
+          messages: newConversations.map(msg => ({
+            ...msg,
+            timestamp: msg.timestamp.toISOString()
+          })),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', currentSessionId)
+        .eq('user_id', user.id);
 
       if (error) {
         console.error('Error updating session:', error);
@@ -230,16 +203,11 @@ export const useAgentConversation = () => {
           ? message.content.substring(0, 47) + '...'
           : message.content;
         
-        await supabase.functions.invoke('exec-sql', {
-          body: {
-            query: `
-              UPDATE agent_sessions 
-              SET title = $1
-              WHERE id = $2 AND user_id = $3
-            `,
-            params: [title, currentSessionId, user.id]
-          }
-        });
+        await supabase
+          .from('agent_sessions')
+          .update({ title })
+          .eq('id', currentSessionId)
+          .eq('user_id', user.id);
       }
     } catch (error) {
       console.error('Error saving message:', error);
@@ -255,23 +223,17 @@ export const useAgentConversation = () => {
 
     if (currentSessionId && user) {
       try {
-        await supabase.functions.invoke('exec-sql', {
-          body: {
-            query: `
-              UPDATE agent_sessions 
-              SET messages = $1, updated_at = now()
-              WHERE id = $2 AND user_id = $3
-            `,
-            params: [
-              JSON.stringify(updatedConversations.map(msg => ({
-                ...msg,
-                timestamp: msg.timestamp.toISOString()
-              }))),
-              currentSessionId,
-              user.id
-            ]
-          }
-        });
+        await supabase
+          .from('agent_sessions')
+          .update({
+            messages: updatedConversations.map(msg => ({
+              ...msg,
+              timestamp: msg.timestamp.toISOString()
+            })),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', currentSessionId)
+          .eq('user_id', user.id);
       } catch (error) {
         console.error('Error updating message:', error);
       }
