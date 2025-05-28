@@ -40,9 +40,12 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   // Debug effect to track messages from context
   useEffect(() => {
     console.log(`🎯 [INTERFACE] Using context messages: ${messages.length}`, 
-      messages.map(c => ({ id: c.id.substring(0, 8), role: c.role, content: c.content.substring(0, 30) + '...' }))
+      messages.map(c => ({ id: c.id.substring(0, 8), role: c.role, messageType: c.messageType, content: c.content.substring(0, 30) + '...' }))
     );
   }, [messages]);
+
+  // Filter out tool execution messages from regular display (they're handled by ToolProgressManager)
+  const displayMessages = messages.filter(msg => msg.messageType !== 'tool-executing');
 
   // Group messages by loop iteration to show progression
   const groupMessagesByLoop = (messages: ConversationMessage[]) => {
@@ -59,7 +62,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
     return grouped;
   };
 
-  const groupedMessages = groupMessagesByLoop(messages);
+  const groupedMessages = groupMessagesByLoop(displayMessages);
   const loopNumbers = Object.keys(groupedMessages).map(Number).sort((a, b) => a - b);
 
   const suggestedActions = [
@@ -95,7 +98,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
       
       <ScrollArea className="h-full" ref={scrollAreaRef}>
         <div className="max-w-4xl mx-auto px-6 py-8">
-          {messages.length === 0 && (
+          {displayMessages.length === 0 && (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
               <div className="w-20 h-20 mb-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center shadow-lg">
                 <Bot className="h-10 w-10 text-primary" />

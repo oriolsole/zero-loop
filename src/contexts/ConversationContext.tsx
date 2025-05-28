@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConversation';
 import { supabase } from '@/integrations/supabase/client';
@@ -202,7 +203,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     console.log(`✅ [CONTEXT] Conversation loaded successfully for session ${sessionId}`);
   }, [loadConversationFromDatabase, clearMessages]);
 
-  // Enhanced real-time subscription with better tool message handling
+  // Enhanced real-time subscription to capture ALL message types including tool-executing
   useEffect(() => {
     if (!user?.id || !currentSessionId) {
       console.log(`🔌 [REALTIME] No user (${!!user?.id}) or session (${!!currentSessionId}) for real-time subscription`);
@@ -227,7 +228,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
             const newRecord = payload.new as Record<string, any>;
             
-            console.log(`📨 [REALTIME] Processing new message: ${newRecord.id} (${newRecord.role}) - "${newRecord.content?.substring(0, 50)}..."`);
+            console.log(`📨 [REALTIME] Processing new message: ${newRecord.id} (${newRecord.role}) - type: ${newRecord.message_type} - "${newRecord.content?.substring(0, 50)}..."`);
             
             // Check if this is a user message that was added locally
             if (newRecord.role === 'user' && localUserMessageIds.current.has(newRecord.id)) {
@@ -235,9 +236,9 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               return;
             }
             
-            // Special handling for tool execution messages
+            // IMPORTANT: Capture tool execution messages
             if (newRecord.message_type === 'tool-executing') {
-              console.log(`🔧 [REALTIME] Processing tool execution message: ${newRecord.id}`);
+              console.log(`🔧 [REALTIME] Processing tool execution message: ${newRecord.id} - content: ${newRecord.content}`);
             }
             
             console.log(`✅ [REALTIME] Processing real-time message: ${newRecord.id} (${newRecord.role})`);
@@ -270,6 +271,11 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
             const newRecord = payload.new as Record<string, any>;
             console.log(`📡 [REALTIME] Processing UPDATE for message: ${newRecord.id}`);
+            
+            // IMPORTANT: Handle tool status updates
+            if (newRecord.message_type === 'tool-executing') {
+              console.log(`🔧 [REALTIME] Tool execution update: ${newRecord.id} - content: ${newRecord.content}`);
+            }
             
             const updatedFields: Partial<ConversationMessage> = {
               content: newRecord.content,
@@ -309,6 +315,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       console.log(`📝 [MESSAGES] Latest messages:`, messages.slice(-3).map(m => ({
         id: m.id.substring(0, 8),
         role: m.role,
+        messageType: m.messageType,
         content: m.content.substring(0, 30) + '...'
       })));
     }
