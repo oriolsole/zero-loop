@@ -2,7 +2,7 @@
 import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Bot, Loader2, Sparkles, Search, Github, Code } from 'lucide-react';
+import { Bot, Loader2, MessageSquare, Search, Github, Code, Brain } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
@@ -34,28 +34,28 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
 }) => {
   const suggestedActions = [
     {
+      icon: <MessageSquare className="h-4 w-4" />,
+      title: "General Questions",
+      description: "Ask me anything you'd like to know",
+      action: "What can you help me with today?"
+    },
+    {
       icon: <Search className="h-4 w-4" />,
-      title: "Web Search",
-      description: "Search the web for information",
-      action: "Search for the latest AI developments"
+      title: "Research & Analysis",
+      description: "Get current information and insights",
+      action: "Research the latest developments in artificial intelligence"
     },
     {
       icon: <Github className="h-4 w-4" />,
-      title: "GitHub Analysis",
-      description: "Analyze GitHub repositories",
-      action: "Analyze a GitHub repository for code quality"
+      title: "Code & Development",
+      description: "Programming help and code analysis",
+      action: "Help me analyze and improve my code"
     },
     {
-      icon: <Code className="h-4 w-4" />,
-      title: "Code Review",
-      description: "Review and improve code",
-      action: "Help me review and optimize my React code"
-    },
-    {
-      icon: <Sparkles className="h-4 w-4" />,
-      title: "Knowledge Base",
-      description: "Query knowledge base",
-      action: "Search my knowledge base for relevant information"
+      icon: <Brain className="h-4 w-4" />,
+      title: "Problem Solving",
+      description: "Complex analysis and decision making",
+      action: "Help me break down and solve a complex problem"
     }
   ];
 
@@ -74,10 +74,10 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
                   Welcome to AI Assistant
                 </h2>
                 <p className="text-muted-foreground text-lg mb-2 max-w-2xl">
-                  I'm here to help with analysis, research, coding, and complex problem-solving.
+                  I'm here to help with analysis, research, problem-solving, and general assistance.
                 </p>
                 <p className="text-muted-foreground/80 text-sm">
-                  Choose a starting point below or ask me anything directly.
+                  I can use various tools when they add value to help answer your questions.
                 </p>
               </div>
               
@@ -122,7 +122,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             <div className="mt-8 space-y-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Working on your request...</span>
+                <span>Using tools to help with your request...</span>
               </div>
               
               <div className="grid gap-3">

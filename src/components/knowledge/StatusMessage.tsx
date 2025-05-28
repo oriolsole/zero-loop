@@ -30,13 +30,13 @@ const StatusMessage: React.FC<StatusMessageProps> = ({
   const getBgColor = () => {
     switch (type) {
       case 'success':
-        return 'bg-green-50 border-green-200';
+        return 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800/30';
       case 'error':
-        return 'bg-red-50 border-red-200';
+        return 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800/30';
       case 'thinking':
-        return 'bg-blue-50 border-blue-200';
+        return 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800/30';
       default:
-        return 'bg-gray-50 border-gray-200';
+        return 'bg-gray-50 border-gray-200 dark:bg-gray-950/20 dark:border-gray-800/30';
     }
   };
 
@@ -51,7 +51,7 @@ const StatusMessage: React.FC<StatusMessageProps> = ({
       <div className={`rounded-lg px-4 py-3 max-w-[80%] border ${getBgColor()}`}>
         <div className="flex items-center gap-2">
           {getIcon()}
-          <span className="text-sm italic text-muted-foreground">
+          <span className="text-sm text-muted-foreground">
             {content}
           </span>
         </div>

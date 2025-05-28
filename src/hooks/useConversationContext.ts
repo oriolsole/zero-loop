@@ -39,18 +39,10 @@ export const useConversationContext = () => {
     });
   }, []);
 
+  // Simplified context retrieval - no automatic pattern matching
   const getContextForMessage = useCallback((message: string): string => {
-    const contextParts: string[] = [];
-    
-    if (context.lastGitHubRepo && message.toLowerCase().includes('project')) {
-      contextParts.push(`Previously analyzed GitHub repository: ${context.lastGitHubRepo.owner}/${context.lastGitHubRepo.repo}`);
-    }
-    
-    if (context.lastSearchQuery && (message.toLowerCase().includes('search') || message.toLowerCase().includes('find'))) {
-      contextParts.push(`Recent search: "${context.lastSearchQuery.query}"`);
-    }
-
-    return contextParts.join('. ');
+    // Return empty string - let the LLM decide when context is needed via tools
+    return '';
   }, [context]);
 
   return {

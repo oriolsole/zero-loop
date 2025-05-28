@@ -6,7 +6,6 @@ import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConve
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
-import { useConversationContext } from '@/hooks/useConversationContext';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
@@ -41,14 +40,6 @@ const AIAgentChat: React.FC = () => {
     failTool,
     clearTools
   } = useToolProgress();
-
-  const {
-    context,
-    updateGitHubContext,
-    updateSearchContext,
-    storeToolResult,
-    getContextForMessage
-  } = useConversationContext();
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -78,7 +69,7 @@ const AIAgentChat: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const addStatusMessage = (content: string, type: 'thinking' | 'success' | 'error' = 'thinking') => {
+  const addStatusMessage = (content: string) => {
     const statusMessage: ConversationMessage = {
       id: `status-${Date.now()}`,
       role: 'assistant',
@@ -92,7 +83,7 @@ const AIAgentChat: React.FC = () => {
 
   const removeStatusMessage = (messageId: string) => {
     updateMessage(messageId, { 
-      content: '✓ Processing complete',
+      content: '✓ Complete',
       messageType: 'status' as any
     });
   };
@@ -116,24 +107,17 @@ const AIAgentChat: React.FC = () => {
   const processMessage = async (message: string) => {
     if (!user || !currentSessionId) return;
 
-    const contextualMessage = getContextForMessage(message);
-    const enhancedMessage = contextualMessage ? `${message}\n\nContext: ${contextualMessage}` : message;
-
     setIsLoading(true);
     clearTools();
 
-    const statusId = addStatusMessage("Thinking...");
+    const statusId = addStatusMessage("Processing your request...");
 
     try {
       const conversationHistory = getConversationHistory();
 
-      setTimeout(() => {
-        updateMessage(statusId, { content: "Analyzing your request..." });
-      }, 800);
-
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
-          message: enhancedMessage,
+          message,
           conversationHistory,
           userId: user.id,
           sessionId: currentSessionId,
