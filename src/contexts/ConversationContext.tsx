@@ -1,16 +1,9 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { ConversationMessage } from '@/hooks/useAgentConversation';
+import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConversation';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { ToolProgressItem } from '@/types/tools';
-
-interface Session {
-  id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-}
 
 interface ConversationContextType {
   // Messages
@@ -20,14 +13,15 @@ interface ConversationContextType {
   addMessage: (message: ConversationMessage) => void;
   updateMessage: (messageId: string, updates: Partial<ConversationMessage>) => void;
   
-  // Session management
+  // Session management - using ConversationSession for consistency
   sessionId: string | null;
   setSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   currentSessionId: string | null;
-  currentSession: Session | null;
-  setCurrentSession: React.Dispatch<React.SetStateAction<Session | null>>;
-  sessions: Session[];
-  setSessions: React.Dispatch<React.SetStateAction<Session[]>>;
+  setCurrentSessionId: React.Dispatch<React.SetStateAction<string | null>>;
+  currentSession: ConversationSession | null;
+  setCurrentSession: React.Dispatch<React.SetStateAction<ConversationSession | null>>;
+  sessions: ConversationSession[];
+  setSessions: React.Dispatch<React.SetStateAction<ConversationSession[]>>;
   
   // UI state
   isLoading: boolean;
@@ -49,8 +43,8 @@ const ConversationContext = createContext<ConversationContextType | undefined>(u
 export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [currentSession, setCurrentSession] = useState<Session | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [currentSession, setCurrentSession] = useState<ConversationSession | null>(null);
+  const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [input, setInput] = useState('');
@@ -196,26 +190,29 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         (payload) => {
           console.log('📡 Real-time message update:', payload.eventType, payload.new?.id);
           
-          if (payload.eventType === 'INSERT' && payload.new) {
+          // Type-safe payload handling
+          const newRecord = payload.new as any;
+          
+          if (payload.eventType === 'INSERT' && newRecord && newRecord.id) {
             const newMessage: ConversationMessage = {
-              id: payload.new.id,
-              role: payload.new.role,
-              content: payload.new.content,
-              timestamp: new Date(payload.new.created_at),
-              messageType: safeMessageType(payload.new.message_type),
-              loopIteration: payload.new.loop_iteration || 0,
-              toolsUsed: safeToolsUsed(payload.new.tools_used),
-              improvementReasoning: payload.new.improvement_reasoning
+              id: newRecord.id,
+              role: newRecord.role,
+              content: newRecord.content,
+              timestamp: new Date(newRecord.created_at),
+              messageType: safeMessageType(newRecord.message_type),
+              loopIteration: newRecord.loop_iteration || 0,
+              toolsUsed: safeToolsUsed(newRecord.tools_used),
+              improvementReasoning: newRecord.improvement_reasoning
             };
             addMessage(newMessage);
-          } else if (payload.eventType === 'UPDATE' && payload.new) {
+          } else if (payload.eventType === 'UPDATE' && newRecord && newRecord.id) {
             const updatedFields: Partial<ConversationMessage> = {
-              content: payload.new.content,
-              messageType: safeMessageType(payload.new.message_type),
-              toolsUsed: safeToolsUsed(payload.new.tools_used),
-              improvementReasoning: payload.new.improvement_reasoning
+              content: newRecord.content,
+              messageType: safeMessageType(newRecord.message_type),
+              toolsUsed: safeToolsUsed(newRecord.tools_used),
+              improvementReasoning: newRecord.improvement_reasoning
             };
-            updateMessage(payload.new.id, updatedFields);
+            updateMessage(newRecord.id, updatedFields);
           }
         }
       )
@@ -239,6 +236,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     sessionId,
     setSessionId,
     currentSessionId: sessionId,
+    setCurrentSessionId: setSessionId, // Use the same setter for consistency
     currentSession,
     setCurrentSession,
     sessions,
