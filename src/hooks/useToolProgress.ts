@@ -47,7 +47,7 @@ export const useToolProgress = (): UseToolProgressReturn => {
       setTools(prev => prev.map(tool => 
         tool.id === id ? { ...tool, status: 'executing', progress: 25 } : tool
       ));
-    }, 100);
+    }, 200); // Increased delay to ensure visibility
 
     return id;
   }, []);
@@ -73,10 +73,10 @@ export const useToolProgress = (): UseToolProgressReturn => {
         : tool
     ));
     
-    // Keep completed tools visible for a while, then remove them
+    // Keep completed tools visible longer for better user experience
     setTimeout(() => {
       setTools(prev => prev.filter(t => t.id !== id));
-    }, 10000); // 10 seconds
+    }, 12000); // Increased from 10 to 12 seconds
   }, []);
 
   const failTool = useCallback((id: string, error: string) => {
@@ -92,10 +92,10 @@ export const useToolProgress = (): UseToolProgressReturn => {
         : tool
     ));
     
-    // Keep failed tools visible for a while, then remove them
+    // Keep failed tools visible longer for error visibility
     setTimeout(() => {
       setTools(prev => prev.filter(t => t.id !== id));
-    }, 15000); // 15 seconds for errors
+    }, 18000); // Increased from 15 to 18 seconds for errors
   }, []);
 
   const setToolProgress = useCallback((id: string, progress: number) => {

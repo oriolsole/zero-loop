@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConversation';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -59,6 +59,10 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // Track only user messages as local (since they're added before backend response)
   const localUserMessageIds = React.useRef<Set<string>>(new Set());
+  
+  // Message queue for handling rapid updates
+  const messageQueue = useRef<ConversationMessage[]>([]);
+  const processingQueue = useRef<boolean>(false);
 
   // Helper to safely convert messageType
   const safeMessageType = (messageType: any): ConversationMessage['messageType'] => {
@@ -102,32 +106,56 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return undefined;
   };
 
-  // Add message to local context only
-  const addMessageToContext = useCallback((message: ConversationMessage) => {
-    console.log(`🔵 [CONTEXT] Adding message to context: ${message.id} (${message.role}) - "${message.content.substring(0, 50)}..."`);
-    
-    setMessages(prev => {
-      const exists = prev.find(m => m.id === message.id);
-      if (exists) {
-        console.log(`⚠️ [CONTEXT] Message ${message.id} already exists in context`);
-        return prev;
-      }
-      
-      // Track user messages as local
-      if (message.role === 'user') {
-        localUserMessageIds.current.add(message.id);
-        console.log(`📝 [CONTEXT] Tracked user message as local: ${message.id}`);
-      }
-      
-      const newMessages = [...prev, message].sort((a, b) => 
-        a.timestamp.getTime() - b.timestamp.getTime()
-      );
-      
-      console.log(`✅ [CONTEXT] Message added to context. Total messages: ${newMessages.length}`);
-      console.log(`📊 [CONTEXT] Current message IDs in context:`, newMessages.map(m => `${m.id.substring(0, 8)}(${m.role})`));
-      return newMessages;
-    });
+  // Process message queue sequentially to prevent race conditions
+  const processMessageQueue = useCallback(async () => {
+    if (processingQueue.current || messageQueue.current.length === 0) {
+      return;
+    }
+
+    processingQueue.current = true;
+    console.log(`🔄 [QUEUE] Processing ${messageQueue.current.length} queued messages`);
+
+    const messagesToProcess = [...messageQueue.current];
+    messageQueue.current = [];
+
+    for (const message of messagesToProcess) {
+      setMessages(prev => {
+        const exists = prev.find(m => m.id === message.id);
+        if (exists) {
+          console.log(`⚠️ [QUEUE] Message ${message.id} already exists, skipping`);
+          return prev;
+        }
+        
+        const newMessages = [...prev, message].sort((a, b) => 
+          a.timestamp.getTime() - b.timestamp.getTime()
+        );
+        
+        console.log(`✅ [QUEUE] Added message ${message.id} to context`);
+        return newMessages;
+      });
+
+      // Small delay to allow UI to update
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+    processingQueue.current = false;
+    console.log(`✅ [QUEUE] Finished processing message queue`);
   }, []);
+
+  // Enhanced add message function with queueing
+  const addMessageToContext = useCallback((message: ConversationMessage) => {
+    console.log(`🔵 [CONTEXT] Queueing message: ${message.id} (${message.role}) - "${message.content.substring(0, 50)}..."`);
+    
+    // Track user messages as local
+    if (message.role === 'user') {
+      localUserMessageIds.current.add(message.id);
+      console.log(`📝 [CONTEXT] Tracked user message as local: ${message.id}`);
+    }
+    
+    // Add to queue for sequential processing
+    messageQueue.current.push(message);
+    processMessageQueue();
+  }, [processMessageQueue]);
 
   // Update message in local context only
   const updateMessageInContext = useCallback((messageId: string, updates: Partial<ConversationMessage>) => {
@@ -150,23 +178,14 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const clearMessages = useCallback(() => {
     console.log('🧹 [CONTEXT] Clearing all messages from context');
     setMessages([]);
+    messageQueue.current = [];
     localUserMessageIds.current.clear();
   }, []);
 
   // Add assistant response directly to context (for backend responses)
   const addAssistantResponse = useCallback((response: ConversationMessage) => {
     console.log(`🤖 [CONTEXT] Adding assistant response to context: ${response.id} - "${response.content.substring(0, 50)}..."`);
-    console.log(`🔍 [CONTEXT] Assistant response details:`, {
-      id: response.id,
-      role: response.role,
-      timestamp: response.timestamp,
-      contentLength: response.content.length
-    });
-    
-    // Use the regular addMessageToContext to ensure consistent logging and processing
     addMessageToContext(response);
-    
-    console.log(`✅ [CONTEXT] Assistant response added successfully`);
   }, [addMessageToContext]);
 
   // Persist message to database only
@@ -190,20 +209,15 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const loadedMessages = await loadConversationFromDatabase(sessionId);
     console.log(`📥 [CONTEXT] Loaded ${loadedMessages.length} messages from database for session ${sessionId}`);
     
-    // Add all loaded messages to context
-    setMessages(loadedMessages);
-    
-    // Mark all loaded messages as processed
-    loadedMessages.forEach(msg => {
-      if (msg.role === 'user') {
-        localUserMessageIds.current.add(msg.id);
-      }
-    });
+    // Add all loaded messages to context using the queue
+    for (const message of loadedMessages) {
+      addMessageToContext(message);
+    }
     
     console.log(`✅ [CONTEXT] Conversation loaded successfully for session ${sessionId}`);
-  }, [loadConversationFromDatabase, clearMessages]);
+  }, [loadConversationFromDatabase, clearMessages, addMessageToContext]);
 
-  // Enhanced real-time subscription to capture ALL message types including tool-executing
+  // Enhanced real-time subscription with better error handling and batching
   useEffect(() => {
     if (!user?.id || !currentSessionId) {
       console.log(`🔌 [REALTIME] No user (${!!user?.id}) or session (${!!currentSessionId}) for real-time subscription`);
@@ -236,12 +250,8 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               return;
             }
             
-            // IMPORTANT: Capture tool execution messages
-            if (newRecord.message_type === 'tool-executing') {
-              console.log(`🔧 [REALTIME] Processing tool execution message: ${newRecord.id} - content: ${newRecord.content}`);
-            }
-            
-            console.log(`✅ [REALTIME] Processing real-time message: ${newRecord.id} (${newRecord.role})`);
+            // IMPORTANT: Process all message types including tool-executing and loop messages
+            console.log(`✅ [REALTIME] Processing real-time message: ${newRecord.id} (${newRecord.role}) - ${newRecord.message_type}`);
             
             const newMessage: ConversationMessage = {
               id: newRecord.id,
@@ -255,7 +265,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             };
             
             addMessageToContext(newMessage);
-            console.log(`📨 [REALTIME] Added real-time message to context: ${newRecord.id}`);
+            console.log(`📨 [REALTIME] Queued real-time message: ${newRecord.id}`);
           }
         }
       )
@@ -271,11 +281,6 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
             const newRecord = payload.new as Record<string, any>;
             console.log(`📡 [REALTIME] Processing UPDATE for message: ${newRecord.id}`);
-            
-            // IMPORTANT: Handle tool status updates
-            if (newRecord.message_type === 'tool-executing') {
-              console.log(`🔧 [REALTIME] Tool execution update: ${newRecord.id} - content: ${newRecord.content}`);
-            }
             
             const updatedFields: Partial<ConversationMessage> = {
               content: newRecord.content,
@@ -299,6 +304,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   useEffect(() => {
     if (currentSessionId) {
       localUserMessageIds.current.clear();
+      messageQueue.current = [];
       console.log(`🧹 [CONTEXT] Cleared user message tracking for new session: ${currentSessionId}`);
     }
   }, [currentSessionId]);

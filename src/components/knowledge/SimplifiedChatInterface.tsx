@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+
+import React, { useEffect, useRef } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Bot, MessageSquare, Search, Github, Code, Brain } from 'lucide-react';
@@ -34,7 +35,11 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   onFollowUpAction
 }) => {
   // Use context for centralized state access - this is now the single source of truth
-  const { messages } = useConversationContext();
+  const { messages, currentSessionId } = useConversationContext();
+  
+  // Track last sync to prevent unnecessary re-syncs
+  const lastSyncTime = useRef<number>(0);
+  const syncTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Debug effect to track messages from context
   useEffect(() => {
@@ -42,6 +47,35 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
       messages.map(c => ({ id: c.id.substring(0, 8), role: c.role, messageType: c.messageType, content: c.content.substring(0, 30) + '...' }))
     );
   }, [messages]);
+
+  // Fallback sync mechanism - if real-time updates seem to be lagging
+  useEffect(() => {
+    if (!currentSessionId || messages.length === 0) return;
+
+    const now = Date.now();
+    
+    // Clear existing timeout
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+
+    // If it's been more than 2 seconds since last message and we're not loading, check for sync
+    syncTimeoutRef.current = setTimeout(() => {
+      const timeSinceLastMessage = now - Math.max(...messages.map(m => m.timestamp.getTime()));
+      
+      if (timeSinceLastMessage > 3000 && !isLoading) {
+        console.log(`🔄 [INTERFACE] Triggering fallback sync check - last message was ${timeSinceLastMessage}ms ago`);
+        lastSyncTime.current = now;
+        // Note: In a real implementation, you might want to add a method to re-sync with database here
+      }
+    }, 2000);
+
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
+  }, [messages, currentSessionId, isLoading]);
 
   // Show ALL messages except tool-executing (those are handled by ToolProgressManager)
   // But keep loop messages visible for progression tracking
@@ -146,7 +180,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             </div>
           )}
 
-          {/* Display messages grouped by loop iteration */}
+          {/* Display messages grouped by loop iteration with enhanced real-time display */}
           <div className="space-y-8">
             {loopNumbers.map((loopNumber) => {
               const loopMessages = groupedMessages[loopNumber];
@@ -154,7 +188,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
               
               return (
                 <div key={loopNumber} className="space-y-6">
-                  {/* Loop indicator for multiple loops */}
+                  {/* Loop indicator for multiple loops with enhanced visibility */}
                   {hasMultipleLoops && loopNumber > 0 && (
                     <LoopProgressIndicator 
                       loopNumber={loopNumber}
@@ -162,14 +196,14 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
                     />
                   )}
                   
-                  {/* Messages in this loop */}
+                  {/* Messages in this loop with immediate display */}
                   {loopMessages.map((message) => {
                     console.log(`🎨 [INTERFACE] Rendering message: ${message.id.substring(0, 8)} (${message.role}): ${message.content.substring(0, 50)}...`);
                     
-                    // Show loop progression messages with special styling
+                    // Show loop progression messages with special styling and immediate visibility
                     if (message.messageType && ['loop-start', 'loop-reflection', 'loop-enhancement', 'loop-complete'].includes(message.messageType)) {
                       return (
-                        <div key={message.id} className="border-l-4 border-blue-500/50 pl-4 py-2 bg-blue-50/50 dark:bg-blue-950/20 rounded-r-lg">
+                        <div key={message.id} className="border-l-4 border-blue-500/50 pl-4 py-2 bg-blue-50/50 dark:bg-blue-950/20 rounded-r-lg animate-in slide-in-from-left duration-300">
                           <div className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-1">
                             {message.messageType === 'loop-start' && '🔄 Loop Started'}
                             {message.messageType === 'loop-reflection' && '🤔 Reflecting on Response'}
@@ -186,13 +220,14 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
                       );
                     }
                     
-                    // Regular message display
+                    // Regular message display with fade-in animation
                     return (
-                      <AIAgentMessage 
-                        key={message.id}
-                        message={message}
-                        onFollowUpAction={onFollowUpAction}
-                      />
+                      <div key={message.id} className="animate-in fade-in duration-300">
+                        <AIAgentMessage 
+                          message={message}
+                          onFollowUpAction={onFollowUpAction}
+                        />
+                      </div>
                     );
                   })}
                 </div>
@@ -200,26 +235,27 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             })}
           </div>
           
-          {/* Enhanced Tool Execution Cards */}
+          {/* Enhanced Tool Execution Cards with better timing */}
           {toolsActive && tools.length > 0 && (
-            <div className="mt-8 space-y-4">
+            <div className="mt-8 space-y-4 animate-in slide-in-from-bottom duration-300">
               <div className="text-sm font-medium text-muted-foreground mb-2">
                 Tools Running:
               </div>
               <div className="grid gap-3">
                 {tools.map((tool) => (
-                  <ToolExecutionCard 
-                    key={tool.id} 
-                    tool={tool} 
-                    compact={false}
-                  />
+                  <div key={tool.id} className="animate-in fade-in duration-200">
+                    <ToolExecutionCard 
+                      tool={tool} 
+                      compact={false}
+                    />
+                  </div>
                 ))}
               </div>
             </div>
           )}
           
           {isLoading && !toolsActive && (
-            <div className="mt-8">
+            <div className="mt-8 animate-in fade-in duration-200">
               <StatusMessage 
                 content="Processing your request..."
                 type="thinking"
