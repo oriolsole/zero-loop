@@ -4,16 +4,16 @@ import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConver
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { ToolProgressItem } from '@/types/tools';
+import { useMessageManager } from '@/hooks/conversation/useMessageManager';
 
 interface ConversationContextType {
-  // Messages
+  // Messages - centralized state management
   messages: ConversationMessage[];
-  setMessages: React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
-  refreshMessages: () => Promise<void>;
-  addMessage: (message: ConversationMessage) => void;
-  updateMessage: (messageId: string, updates: Partial<ConversationMessage>) => void;
+  addMessageToContext: (message: ConversationMessage) => void;
+  updateMessageInContext: (messageId: string, updates: Partial<ConversationMessage>) => void;
+  clearMessages: () => void;
   
-  // Session management - using ConversationSession for consistency
+  // Session management
   sessionId: string | null;
   setSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   currentSessionId: string | null;
@@ -36,6 +36,10 @@ interface ConversationContextType {
   setTools: React.Dispatch<React.SetStateAction<ToolProgressItem[]>>;
   toolsActive: boolean;
   setToolsActive: React.Dispatch<React.SetStateAction<boolean>>;
+
+  // Database operations
+  persistMessage: (message: ConversationMessage) => Promise<boolean>;
+  loadConversation: (sessionId: string) => Promise<void>;
 }
 
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);
@@ -51,6 +55,10 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [tools, setTools] = useState<ToolProgressItem[]>([]);
   const [toolsActive, setToolsActive] = useState(false);
   const { user } = useAuth();
+  const { persistMessageToDatabase, loadConversationFromDatabase } = useMessageManager();
+
+  // Track message origins to prevent real-time loops
+  const messageOrigins = React.useRef<Set<string>>(new Set());
 
   // Helper to safely convert messageType
   const safeMessageType = (messageType: any): ConversationMessage['messageType'] => {
@@ -94,69 +102,22 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return undefined;
   };
 
-  // Refresh messages from database
-  const refreshMessages = useCallback(async () => {
-    if (!user?.id || !sessionId) return;
-
-    try {
-      console.log(`🔄 Refreshing messages for session: ${sessionId}`);
-      
-      const { data, error } = await supabase
-        .from('agent_conversations')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('session_id', sessionId)
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('Error fetching messages:', error);
-        return;
-      }
-
-      if (data) {
-        const formattedMessages: ConversationMessage[] = data.map(msg => ({
-          id: msg.id,
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content,
-          timestamp: new Date(msg.created_at),
-          messageType: safeMessageType(msg.message_type),
-          loopIteration: msg.loop_iteration || 0,
-          toolsUsed: safeToolsUsed(msg.tools_used),
-          improvementReasoning: msg.improvement_reasoning
-        }));
-
-        // Only update if messages have actually changed
-        setMessages(prevMessages => {
-          const hasChanges = JSON.stringify(prevMessages) !== JSON.stringify(formattedMessages);
-          if (hasChanges) {
-            console.log(`📝 Messages updated: ${formattedMessages.length} total, changes detected`);
-            return formattedMessages;
-          }
-          return prevMessages;
-        });
-      }
-    } catch (error) {
-      console.error('Failed to refresh messages:', error);
-    }
-  }, [user?.id, sessionId]);
-
-  // Add a new message to the context
-  const addMessage = useCallback((message: ConversationMessage) => {
+  // Add message to local context only
+  const addMessageToContext = useCallback((message: ConversationMessage) => {
     setMessages(prev => {
-      // Check if message already exists
       const exists = prev.find(m => m.id === message.id);
       if (exists) {
-        console.log(`⚠️ Message ${message.id} already exists, skipping add`);
+        console.log(`⚠️ Message ${message.id} already exists in context`);
         return prev;
       }
       
-      console.log(`➕ Adding message: ${message.id} (${message.role})`);
+      console.log(`➕ Adding message to context: ${message.id} (${message.role})`);
       return [...prev, message];
     });
   }, []);
 
-  // Update an existing message in the context
-  const updateMessage = useCallback((messageId: string, updates: Partial<ConversationMessage>) => {
+  // Update message in local context only
+  const updateMessageInContext = useCallback((messageId: string, updates: Partial<ConversationMessage>) => {
     setMessages(prev => {
       const messageIndex = prev.findIndex(m => m.id === messageId);
       if (messageIndex === -1) {
@@ -166,19 +127,52 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       
       const updated = [...prev];
       updated[messageIndex] = { ...updated[messageIndex], ...updates };
-      console.log(`🔄 Updated message: ${messageId}`);
+      console.log(`🔄 Updated message in context: ${messageId}`);
       return updated;
     });
   }, []);
 
-  // Set up real-time subscription for message updates
+  // Clear all messages from context
+  const clearMessages = useCallback(() => {
+    console.log('🧹 Clearing all messages from context');
+    setMessages([]);
+    messageOrigins.current.clear();
+  }, []);
+
+  // Persist message to database only
+  const persistMessage = useCallback(async (message: ConversationMessage): Promise<boolean> => {
+    const currentSessionId = currentSession?.id || sessionId;
+    if (!currentSessionId) {
+      console.error('❌ No session available for persistence');
+      return false;
+    }
+
+    // Mark message as originated locally
+    messageOrigins.current.add(message.id);
+    
+    return await persistMessageToDatabase(message, currentSessionId);
+  }, [currentSession, sessionId, persistMessageToDatabase]);
+
+  // Load conversation from database and update context
+  const loadConversation = useCallback(async (sessionId: string) => {
+    console.log(`📂 Loading conversation: ${sessionId}`);
+    clearMessages();
+    
+    const loadedMessages = await loadConversationFromDatabase(sessionId);
+    setMessages(loadedMessages);
+    
+    // Mark all loaded messages as from database to prevent real-time conflicts
+    loadedMessages.forEach(msg => messageOrigins.current.add(msg.id));
+  }, [loadConversationFromDatabase, clearMessages]);
+
+  // Smart real-time subscription - only for external updates
   useEffect(() => {
     if (!user?.id || !sessionId) return;
 
-    console.log(`🔗 Setting up real-time subscription for session: ${sessionId}`);
+    console.log(`🔗 Setting up smart real-time subscription for session: ${sessionId}`);
 
     const channel = supabase
-      .channel('agent-conversations-updates')
+      .channel('agent-conversations-smart')
       .on(
         'postgres_changes',
         {
@@ -188,25 +182,31 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           filter: `user_id=eq.${user.id},session_id=eq.${sessionId}`
         },
         (payload) => {
-          console.log('📡 Real-time message update:', payload.eventType, payload.new);
-          
-          // Enhanced type safety for payload handling
           if (payload.eventType === 'INSERT' && payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
             const newRecord = payload.new as Record<string, any>;
             
-            const newMessage: ConversationMessage = {
-              id: newRecord.id,
-              role: newRecord.role,
-              content: newRecord.content,
-              timestamp: new Date(newRecord.created_at),
-              messageType: safeMessageType(newRecord.message_type),
-              loopIteration: newRecord.loop_iteration || 0,
-              toolsUsed: safeToolsUsed(newRecord.tools_used),
-              improvementReasoning: newRecord.improvement_reasoning
-            };
-            addMessage(newMessage);
+            // Only process if this message wasn't originated locally
+            if (!messageOrigins.current.has(newRecord.id)) {
+              console.log('📡 Processing external real-time INSERT:', newRecord.id);
+              
+              const newMessage: ConversationMessage = {
+                id: newRecord.id,
+                role: newRecord.role,
+                content: newRecord.content,
+                timestamp: new Date(newRecord.created_at),
+                messageType: safeMessageType(newRecord.message_type),
+                loopIteration: newRecord.loop_iteration || 0,
+                toolsUsed: safeToolsUsed(newRecord.tools_used),
+                improvementReasoning: newRecord.improvement_reasoning
+              };
+              
+              addMessageToContext(newMessage);
+            } else {
+              console.log('⚠️ Skipping locally originated message from real-time:', newRecord.id);
+            }
           } else if (payload.eventType === 'UPDATE' && payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
             const newRecord = payload.new as Record<string, any>;
+            console.log('📡 Processing real-time UPDATE:', newRecord.id);
             
             const updatedFields: Partial<ConversationMessage> = {
               content: newRecord.content,
@@ -214,31 +214,35 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               toolsUsed: safeToolsUsed(newRecord.tools_used),
               improvementReasoning: newRecord.improvement_reasoning
             };
-            updateMessage(newRecord.id, updatedFields);
+            updateMessageInContext(newRecord.id, updatedFields);
           }
         }
       )
       .subscribe();
 
     return () => {
-      console.log('🔌 Cleaning up real-time subscription');
+      console.log('🔌 Cleaning up smart real-time subscription');
       supabase.removeChannel(channel);
     };
-  }, [user?.id, sessionId, addMessage, updateMessage]);
+  }, [user?.id, sessionId, addMessageToContext, updateMessageInContext]);
 
-  // Initial load of messages when session changes
+  // Clear message origins when session changes
   useEffect(() => {
-    refreshMessages();
-  }, [refreshMessages]);
+    if (sessionId) {
+      messageOrigins.current.clear();
+      console.log('🧹 Cleared message origins for new session:', sessionId);
+    }
+  }, [sessionId]);
 
   const contextValue: ConversationContextType = {
     messages,
-    setMessages,
-    refreshMessages,
+    addMessageToContext,
+    updateMessageInContext,
+    clearMessages,
     sessionId,
     setSessionId,
     currentSessionId: sessionId,
-    setCurrentSessionId: setSessionId, // Use the same setter for consistency
+    setCurrentSessionId: setSessionId,
     currentSession,
     setCurrentSession,
     sessions,
@@ -253,8 +257,8 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     setTools,
     toolsActive,
     setToolsActive,
-    addMessage,
-    updateMessage
+    persistMessage,
+    loadConversation
   };
 
   return (
