@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -142,7 +143,15 @@ export const useAgentConversation = () => {
   const addMessage = useCallback(async (message: ConversationMessage) => {
     if (!currentSessionId || !user) return;
 
-    setConversations(prev => [...prev, message]);
+    // Check if message already exists to prevent duplicates
+    setConversations(prev => {
+      const exists = prev.some(m => m.id === message.id);
+      if (exists) {
+        console.log(`Message ${message.id} already exists, skipping add`);
+        return prev;
+      }
+      return [...prev, message];
+    });
 
     if (message.role === 'user' && conversations.length === 0) {
       const title = generateSessionTitle(message.content);
@@ -213,18 +222,34 @@ export const useAgentConversation = () => {
 
       if (error) throw error;
 
+      // Helper function to safely convert tools_used from database
+      const convertToolsUsed = (toolsUsed: any): Array<{name: string; success: boolean; result?: any; error?: string;}> => {
+        if (!toolsUsed || !Array.isArray(toolsUsed)) return [];
+        
+        return toolsUsed.map((tool: any) => {
+          if (typeof tool === 'object' && tool !== null) {
+            return {
+              name: tool.name || 'Unknown Tool',
+              success: Boolean(tool.success),
+              result: tool.result,
+              error: tool.error
+            };
+          }
+          return {
+            name: 'Unknown Tool',
+            success: false,
+            error: 'Invalid tool data'
+          };
+        });
+      };
+
       const messages: ConversationMessage[] = data.map(row => ({
         id: row.id.toString(),
         role: row.role as ConversationMessage['role'],
         content: row.content,
         timestamp: new Date(row.created_at),
         messageType: row.message_type as ConversationMessage['messageType'] || undefined,
-        toolsUsed: Array.isArray(row.tools_used) ? row.tools_used as Array<{
-          name: string;
-          success: boolean;
-          result?: any;
-          error?: string;
-        }> : undefined,
+        toolsUsed: convertToolsUsed(row.tools_used),
         selfReflection: row.self_reflection || undefined,
         toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 
           row.tool_decision as { reasoning: string; selectedTools: string[]; } : undefined,

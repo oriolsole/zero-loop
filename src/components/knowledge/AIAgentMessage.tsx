@@ -19,15 +19,15 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   const getMessageTypeStyles = () => {
     switch (message.messageType) {
       case 'loop-start':
-        return 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800/30';
+        return 'bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800/50';
       case 'loop-reflection':
-        return 'bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800/30';
+        return 'bg-purple-50 border-purple-200 dark:bg-purple-950/30 dark:border-purple-800/50';
       case 'tool-executing':
-        return 'bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800/30';
+        return 'bg-orange-50 border-orange-200 dark:bg-orange-950/30 dark:border-orange-800/50';
       case 'loop-enhancement':
-        return 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800/30';
+        return 'bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800/50';
       case 'loop-complete':
-        return 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800/30';
+        return 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800/50';
       default:
         return '';
     }
@@ -77,10 +77,10 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
             <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
               {getMessageTypeIcon()}
               {isLoopIteration && (
-                <span>Loop {message.loopIteration}</span>
+                <span className="text-foreground/80">Loop {message.loopIteration}</span>
               )}
               {message.messageType && (
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline" className="text-xs border-current/20">
                   {message.messageType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 </Badge>
               )}
@@ -97,14 +97,14 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
           
           {/* Improvement reasoning for reflection messages */}
           {message.improvementReasoning && !isUser && message.messageType === 'loop-reflection' && (
-            <div className="mt-3 p-3 bg-muted/50 rounded-lg text-sm">
+            <div className="mt-3 p-3 bg-muted/50 border border-muted-foreground/20 rounded-lg text-sm dark:bg-muted/20 dark:border-muted-foreground/30">
               <div className="flex items-center gap-2 mb-2">
                 <Eye className="h-4 w-4 text-purple-500" />
-                <span className="font-medium text-purple-700 dark:text-purple-300">
+                <span className="font-medium text-purple-700 dark:text-purple-400">
                   Why I'm improving:
                 </span>
               </div>
-              <p className="m-0 text-muted-foreground">{message.improvementReasoning}</p>
+              <p className="m-0 text-muted-foreground dark:text-foreground/80">{message.improvementReasoning}</p>
             </div>
           )}
           

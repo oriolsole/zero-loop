@@ -30,6 +30,7 @@ const AIAgentChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
+  const [processedMessageIds, setProcessedMessageIds] = useState<Set<string>>(new Set());
 
   const {
     tools,
@@ -50,43 +51,74 @@ const AIAgentChat: React.FC = () => {
     }
   }, [conversations, tools]);
 
+  // Helper function to safely convert tools_used from database
+  const convertToolsUsed = (toolsUsed: any): Array<{name: string; success: boolean; result?: any; error?: string;}> => {
+    if (!toolsUsed || !Array.isArray(toolsUsed)) return [];
+    
+    return toolsUsed.map((tool: any) => {
+      if (typeof tool === 'object' && tool !== null) {
+        return {
+          name: tool.name || 'Unknown Tool',
+          success: Boolean(tool.success),
+          result: tool.result,
+          error: tool.error
+        };
+      }
+      return {
+        name: 'Unknown Tool',
+        success: false,
+        error: 'Invalid tool data'
+      };
+    });
+  };
+
+  // Optimized refresh conversation with deduplication
+  const refreshConversationState = async () => {
+    if (!currentSessionId || !user?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('agent_conversations')
+        .select('*')
+        .eq('session_id', currentSessionId)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) {
+        const messages: ConversationMessage[] = data
+          .filter(row => !processedMessageIds.has(row.id.toString()))
+          .map(row => ({
+            id: row.id.toString(),
+            role: row.role as ConversationMessage['role'],
+            content: row.content,
+            timestamp: new Date(row.created_at),
+            messageType: row.message_type as ConversationMessage['messageType'] || undefined,
+            toolsUsed: convertToolsUsed(row.tools_used),
+            loopIteration: row.loop_iteration || 0,
+            improvementReasoning: row.improvement_reasoning || undefined,
+            shouldContinueLoop: row.should_continue_loop || undefined
+          }));
+
+        // Only add truly new messages
+        if (messages.length > 0) {
+          const newIds = messages.map(msg => msg.id);
+          setProcessedMessageIds(prev => new Set([...prev, ...newIds]));
+          
+          // Add messages one by one to maintain proper state
+          messages.forEach(msg => addMessage(msg));
+        }
+      }
+    } catch (error) {
+      console.warn('Error refreshing conversation:', error);
+    }
+  };
+
   // Refresh conversation every 2 seconds while loading to catch loop steps
   useEffect(() => {
     let refreshInterval: NodeJS.Timeout;
     
     if (isLoading && currentSessionId) {
-      refreshInterval = setInterval(async () => {
-        try {
-          const { data, error } = await supabase
-            .from('agent_conversations')
-            .select('*')
-            .eq('session_id', currentSessionId)
-            .eq('user_id', user?.id)
-            .order('created_at', { ascending: true });
-
-          if (!error && data) {
-            const messages: ConversationMessage[] = data.map(row => ({
-              id: row.id.toString(),
-              role: row.role as ConversationMessage['role'],
-              content: row.content,
-              timestamp: new Date(row.created_at),
-              messageType: row.message_type as ConversationMessage['messageType'] || undefined,
-              toolsUsed: Array.isArray(row.tools_used) ? row.tools_used : undefined,
-              loopIteration: row.loop_iteration || 0,
-              improvementReasoning: row.improvement_reasoning || undefined,
-              shouldContinueLoop: row.should_continue_loop || undefined
-            }));
-
-            // Update conversations if new messages found
-            if (messages.length > conversations.length) {
-              const newMessages = messages.slice(conversations.length);
-              newMessages.forEach(msg => addMessage(msg));
-            }
-          }
-        } catch (error) {
-          console.warn('Error refreshing conversation:', error);
-        }
-      }, 2000);
+      refreshInterval = setInterval(refreshConversationState, 2000);
     }
 
     return () => {
@@ -94,7 +126,12 @@ const AIAgentChat: React.FC = () => {
         clearInterval(refreshInterval);
       }
     };
-  }, [isLoading, currentSessionId, user?.id, conversations.length, addMessage]);
+  }, [isLoading, currentSessionId, user?.id, processedMessageIds]);
+
+  // Reset processed message IDs when switching sessions
+  useEffect(() => {
+    setProcessedMessageIds(new Set());
+  }, [currentSessionId]);
 
   // Load model settings on component mount and when they change
   useEffect(() => {
@@ -136,6 +173,7 @@ const AIAgentChat: React.FC = () => {
 
     setIsLoading(true);
     clearTools();
+    setProcessedMessageIds(new Set()); // Reset for new conversation flow
 
     try {
       const conversationHistory = getConversationHistory();
@@ -164,39 +202,7 @@ const AIAgentChat: React.FC = () => {
       if (data.streamedSteps) {
         // Allow time for final database writes to complete
         setTimeout(async () => {
-          try {
-            const { data: refreshData, error: refreshError } = await supabase
-              .from('agent_conversations')
-              .select('*')
-              .eq('session_id', currentSessionId)
-              .eq('user_id', user.id)
-              .order('created_at', { ascending: true });
-
-            if (!refreshError && refreshData) {
-              const messages: ConversationMessage[] = refreshData.map(row => ({
-                id: row.id.toString(),
-                role: row.role as ConversationMessage['role'],
-                content: row.content,
-                timestamp: new Date(row.created_at),
-                messageType: row.message_type as ConversationMessage['messageType'] || undefined,
-                toolsUsed: Array.isArray(row.tools_used) ? row.tools_used : undefined,
-                loopIteration: row.loop_iteration || 0,
-                improvementReasoning: row.improvement_reasoning || undefined,
-                shouldContinueLoop: row.should_continue_loop || undefined
-              }));
-
-              // Force refresh conversation state
-              const userMessages = messages.filter(m => m.role === 'user');
-              const lastUserMessage = userMessages[userMessages.length - 1];
-              
-              if (lastUserMessage && lastUserMessage.content === message) {
-                // Load fresh conversation state
-                await loadSession(currentSessionId);
-              }
-            }
-          } catch (refreshError) {
-            console.warn('Error refreshing conversation after loop:', refreshError);
-          }
+          await refreshConversationState();
         }, 1000);
       } else {
         // Fallback: add traditional single response message
@@ -206,7 +212,7 @@ const AIAgentChat: React.FC = () => {
           content: data.message,
           timestamp: new Date(),
           messageType: 'response',
-          toolsUsed: data.toolsUsed || [],
+          toolsUsed: convertToolsUsed(data.toolsUsed) || [],
           loopIteration: data.loopIteration || 0,
           improvementReasoning: data.improvementReasoning || undefined
         };
