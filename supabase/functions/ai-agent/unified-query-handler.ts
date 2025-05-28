@@ -1,3 +1,4 @@
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
@@ -152,7 +153,7 @@ export async function handleUnifiedQuery(
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
       console.log(`🛠️ LLM chose to use ${data.choices[0].message.tool_calls.length} tools (loop ${loopIteration})`);
       
-      // Store individual tool execution messages with enhanced metadata
+      // Store individual tool execution messages as JSON with enhanced metadata
       for (const toolCall of data.choices[0].message.tool_calls) {
         const toolName = toolCall.function.name.replace('execute_', '');
         const mcpInfo = mcps?.find(m => m.default_key === toolName);
@@ -164,14 +165,18 @@ export async function handleUnifiedQuery(
           parameters = {};
         }
         
+        // Generate JSON message for tool execution start
+        const toolExecutionData = {
+          toolName: toolName,
+          displayName: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          status: 'executing',
+          parameters: parameters,
+          startTime: new Date().toISOString(),
+          progress: 0
+        };
+        
         await insertMessage(
-          JSON.stringify({
-            toolName: toolName,
-            displayName: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            status: 'executing',
-            parameters: parameters,
-            startTime: new Date().toISOString()
-          }),
+          JSON.stringify(toolExecutionData),
           'tool-executing'
         );
       }
@@ -185,17 +190,24 @@ export async function handleUnifiedQuery(
       
       allToolsUsed = toolsUsed;
       
-      // Store tool completion messages with results
+      // Store tool completion messages with results as JSON
       for (const tool of toolsUsed) {
+        const toolName = tool.name.replace('execute_', '');
+        const mcpInfo = mcps?.find(m => m.default_key === toolName);
+        
+        const toolCompletionData = {
+          toolName: toolName,
+          displayName: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          status: tool.success ? 'completed' : 'failed',
+          result: tool.result,
+          error: tool.success ? undefined : (tool.error || 'Tool execution failed'),
+          success: tool.success,
+          endTime: new Date().toISOString(),
+          progress: tool.success ? 100 : 0
+        };
+        
         await insertMessage(
-          JSON.stringify({
-            toolName: tool.name.replace('execute_', ''),
-            displayName: tool.name.replace('execute_', '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            status: tool.success ? 'completed' : 'failed',
-            result: tool.result,
-            success: tool.success,
-            endTime: new Date().toISOString()
-          }),
+          JSON.stringify(toolCompletionData),
           'tool-executing'
         );
       }

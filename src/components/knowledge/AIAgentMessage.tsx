@@ -50,7 +50,10 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   };
 
   // Check if this is a tool message and should be rendered as a tool card
-  const isToolMessage = message.messageType === 'tool-executing' && message.content.startsWith('{');
+  const isToolMessage = message.messageType === 'tool-executing' && 
+                        message.content.startsWith('{') && 
+                        !message.content.includes('🛠️') && 
+                        !message.content.includes('Using');
   const toolData = isToolMessage ? parseToolMessage(message.content) : null;
 
   // Render tool execution/completion as enhanced tool card
@@ -64,7 +67,8 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
       endTime: toolData.endTime,
       parameters: toolData.parameters,
       result: toolData.result,
-      progress: toolData.status === 'completed' ? 100 : toolData.status === 'executing' ? 50 : 0
+      error: toolData.error,
+      progress: toolData.progress || (toolData.status === 'completed' ? 100 : toolData.status === 'executing' ? 50 : 0)
     };
 
     return (
@@ -156,8 +160,8 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
             </div>
           )}
           
-          {/* Tools used indicator */}
-          {message.toolsUsed && message.toolsUsed.length > 0 && !isUser && (
+          {/* Tools used indicator - only show for non-tool messages that have tool usage */}
+          {message.toolsUsed && message.toolsUsed.length > 0 && !isUser && !isToolMessage && (
             <div className="flex flex-wrap gap-1 mt-3">
               {message.toolsUsed.map((tool, index) => (
                 <Badge 
