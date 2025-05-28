@@ -12,6 +12,7 @@ interface ConversationContextType {
   addMessageToContext: (message: ConversationMessage) => void;
   updateMessageInContext: (messageId: string, updates: Partial<ConversationMessage>) => void;
   clearMessages: () => void;
+  setMessages: React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
   
   // Session management
   sessionId: string | null;
@@ -239,6 +240,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     addMessageToContext,
     updateMessageInContext,
     clearMessages,
+    setMessages,
     sessionId,
     setSessionId,
     currentSessionId: sessionId,

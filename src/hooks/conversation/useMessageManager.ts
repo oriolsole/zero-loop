@@ -15,6 +15,45 @@ export const useMessageManager = () => {
     return `${role}-${timestamp}-${hash}`;
   }, []);
 
+  // Helper to safely convert toolsUsed from database JSON to TypeScript interface
+  const safeToolsUsed = useCallback((toolsUsed: any): ConversationMessage['toolsUsed'] => {
+    if (!toolsUsed) return undefined;
+    
+    try {
+      let parsedTools;
+      if (typeof toolsUsed === 'string') {
+        parsedTools = JSON.parse(toolsUsed);
+      } else if (Array.isArray(toolsUsed)) {
+        parsedTools = toolsUsed;
+      } else {
+        return undefined;
+      }
+      
+      if (Array.isArray(parsedTools)) {
+        return parsedTools.map((tool: any) => ({
+          name: tool.name || 'Unknown Tool',
+          success: Boolean(tool.success),
+          result: tool.result,
+          error: tool.error
+        }));
+      }
+    } catch (e) {
+      console.warn('Failed to parse toolsUsed:', e);
+    }
+    
+    return undefined;
+  }, []);
+
+  // Helper to safely convert messageType
+  const safeMessageType = useCallback((messageType: any): ConversationMessage['messageType'] => {
+    const validTypes = [
+      'analysis', 'planning', 'execution', 'tool-update', 'response', 
+      'step-executing', 'step-completed', 'loop-start', 'loop-reflection', 
+      'loop-enhancement', 'loop-complete', 'tool-executing'
+    ];
+    return validTypes.includes(messageType) ? messageType : undefined;
+  }, []);
+
   // Database-only persistence with conflict resolution
   const persistMessageToDatabase = useCallback(async (
     message: ConversationMessage,
@@ -100,8 +139,8 @@ export const useMessageManager = () => {
         role: row.role as ConversationMessage['role'],
         content: row.content,
         timestamp: new Date(row.created_at),
-        messageType: row.message_type as ConversationMessage['messageType'] || undefined,
-        toolsUsed: row.tools_used ? (Array.isArray(row.tools_used) ? row.tools_used : []) : undefined,
+        messageType: safeMessageType(row.message_type),
+        toolsUsed: safeToolsUsed(row.tools_used),
         selfReflection: row.self_reflection || undefined,
         toolDecision: row.tool_decision || undefined,
         aiReasoning: row.ai_reasoning || undefined,
@@ -116,7 +155,7 @@ export const useMessageManager = () => {
       console.error(`❌ Error loading conversation:`, error);
       return [];
     }
-  }, [user]);
+  }, [user, safeMessageType, safeToolsUsed]);
 
   return {
     generateMessageId,
