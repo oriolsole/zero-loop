@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -11,12 +12,11 @@ import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
 import SessionsSidebar from './SessionsSidebar';
-import ToolProgressManager from './ToolProgressManager';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
 
-  // Use context for centralized state management
+  // Use simplified context
   const {
     messages,
     currentSessionId,
@@ -24,18 +24,13 @@ const AIAgentChat: React.FC = () => {
     setIsLoading,
     input,
     setInput,
-    tools,
-    setTools,
-    toolsActive,
-    setToolsActive,
+    activeTool,
     setCurrentSession,
-    addMessageToContext,
+    addMessage,
     persistMessage,
-    loadConversation,
-    addAssistantResponse
+    loadConversation
   } = useConversationContext();
 
-  // Use session manager for session operations
   const { 
     sessions,
     isLoadingSessions,
@@ -48,25 +43,17 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = React.useState(false);
   const [modelSettings, setModelSettings] = React.useState(getModelSettings());
 
-  // Request tracking to prevent duplicates
   const activeRequests = useRef<Set<string>>(new Set());
-  
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  // Handle tool progress updates from ToolProgressManager
-  const handleToolsUpdate = React.useCallback((updatedTools: any[], isActive: boolean) => {
-    setTools(updatedTools);
-    setToolsActive(isActive);
-  }, [setTools, setToolsActive]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [messages, tools]);
+  }, [messages, activeTool]);
 
-  // Load model settings on component mount
+  // Load model settings
   useEffect(() => {
     const loadSettings = () => {
       const settings = getModelSettings();
@@ -105,13 +92,11 @@ const AIAgentChat: React.FC = () => {
   const handleLoadSession = async (sessionId: string) => {
     console.log(`📂 Loading session: ${sessionId}`);
     
-    // Find session data from sessions list
     const sessionData = sessions.find(s => s.id === sessionId);
     if (sessionData) {
       setCurrentSession(sessionData);
     }
 
-    // Load messages for this session
     await loadConversation(sessionId);
   };
 
@@ -129,8 +114,8 @@ const AIAgentChat: React.FC = () => {
 
     console.log(`📤 Processing follow-up action: ${messageId}`);
     
-    // Add to context immediately for UX
-    addMessageToContext(followUpMessage);
+    // Add to context immediately
+    addMessage(followUpMessage);
     
     // Persist to database
     await persistMessage(followUpMessage);
@@ -141,7 +126,7 @@ const AIAgentChat: React.FC = () => {
 
   const processMessage = async (message: string, existingMessageId?: string) => {
     if (!user || !currentSessionId) {
-      console.error('❌ [PROCESS] Cannot process message - missing user or session');
+      console.error('❌ Cannot process message - missing user or session');
       return;
     }
 
@@ -151,16 +136,14 @@ const AIAgentChat: React.FC = () => {
     }, 0)).toString(36).substring(0, 8)}`;
     
     if (activeRequests.current.has(requestKey)) {
-      console.log('⚠️ [PROCESS] Request already in progress, skipping:', requestKey);
+      console.log('⚠️ Request already in progress, skipping:', requestKey);
       return;
     }
 
     activeRequests.current.add(requestKey);
     setIsLoading(true);
 
-    console.log(`🚀 [PROCESS] Processing message: ${requestKey}`);
-    console.log(`📝 [PROCESS] Current session: ${currentSessionId}`);
-    console.log(`👤 [PROCESS] User ID: ${user.id}`);
+    console.log(`🚀 Processing message: ${requestKey}`);
 
     try {
       const conversationHistory = messages
@@ -170,7 +153,7 @@ const AIAgentChat: React.FC = () => {
           content: msg.content
         }));
 
-      console.log(`📞 [PROCESS] Calling AI agent with ${conversationHistory.length} history messages`);
+      console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages`);
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
@@ -184,24 +167,17 @@ const AIAgentChat: React.FC = () => {
       });
 
       if (error) {
-        console.error('❌ [PROCESS] Supabase function error:', error);
+        console.error('❌ Supabase function error:', error);
         throw new Error(error.message);
       }
 
       if (!data || !data.success) {
-        console.error('❌ [PROCESS] AI agent returned error:', data);
+        console.error('❌ AI agent returned error:', data);
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
-      console.log('✅ [PROCESS] AI agent response received:', {
-        success: data.success,
-        messageLength: data.message?.length,
-        responseLength: data.response?.length,
-        loopIteration: data.loopIteration,
-        toolsUsed: data.toolsUsed?.length
-      });
+      console.log('✅ AI agent response received');
 
-      // CRITICAL FIX: Check for both 'message' and 'response' fields from backend
       const aiResponse = data.message || data.response;
       
       if (aiResponse) {
@@ -218,24 +194,14 @@ const AIAgentChat: React.FC = () => {
           improvementReasoning: data.improvementReasoning || undefined
         };
 
-        console.log(`🤖 [PROCESS] Creating assistant message for immediate UI display: ${assistantMessageId}`);
-        console.log(`📝 [PROCESS] Assistant message content preview: "${aiResponse.substring(0, 100)}..."`);
+        console.log(`🤖 Adding assistant response to context: ${assistantMessageId}`);
         
-        // Add to UI context first for immediate display
-        console.log(`➕ [PROCESS] Adding assistant response to context...`);
-        addAssistantResponse(assistantMessage);
-        console.log(`✅ [PROCESS] Assistant response added to context successfully`);
+        // Add to context immediately
+        addMessage(assistantMessage);
 
-        // Then persist to database (this will trigger real-time for other clients)
-        console.log(`💾 [PROCESS] Persisting assistant message to database...`);
+        // Persist to database
         const persistResult = await persistMessage(assistantMessage);
-        console.log(`${persistResult ? '✅' : '❌'} [PROCESS] Assistant message persistence ${persistResult ? 'succeeded' : 'failed'}`);
-      } else {
-        console.warn('⚠️ [PROCESS] No response content in AI agent data:', { 
-          hasMessage: !!data.message, 
-          hasResponse: !!data.response,
-          dataKeys: Object.keys(data)
-        });
+        console.log(`${persistResult ? '✅' : '❌'} Assistant message persistence ${persistResult ? 'succeeded' : 'failed'}`);
       }
       
       if (data.toolsUsed && data.toolsUsed.length > 0) {
@@ -246,7 +212,7 @@ const AIAgentChat: React.FC = () => {
       }
 
     } catch (error) {
-      console.error('❌ [PROCESS] Error processing message:', error);
+      console.error('❌ Error processing message:', error);
       
       toast.error('Failed to send message', {
         description: error.message || 'Please try again.',
@@ -262,24 +228,16 @@ const AIAgentChat: React.FC = () => {
         timestamp: new Date()
       };
 
-      console.log(`🚨 [PROCESS] Adding error message to context: ${errorMessageId}`);
-      addAssistantResponse(errorMessage);
+      addMessage(errorMessage);
       await persistMessage(errorMessage);
     } finally {
       setIsLoading(false);
       activeRequests.current.delete(requestKey);
-      console.log(`🏁 [PROCESS] Message processing completed for: ${requestKey}`);
     }
   };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !user || !currentSessionId) {
-      console.log('⚠️ [SEND] Cannot send message - invalid state:', {
-        hasInput: !!input.trim(),
-        isLoading,
-        hasUser: !!user,
-        hasSession: !!currentSessionId
-      });
       return;
     }
 
@@ -292,10 +250,10 @@ const AIAgentChat: React.FC = () => {
       timestamp: new Date()
     };
 
-    console.log(`📤 [SEND] Sending user message: ${messageId} - "${input}"`);
+    console.log(`📤 Sending user message: ${messageId}`);
 
-    // Add to context immediately for UX
-    addMessageToContext(userMessage);
+    // Add to context immediately
+    addMessage(userMessage);
     
     // Persist to database
     await persistMessage(userMessage);
@@ -306,20 +264,8 @@ const AIAgentChat: React.FC = () => {
     await processMessage(messageToProcess, messageId);
   };
 
-  // Debug effect to monitor messages state
-  useEffect(() => {
-    console.log(`🎯 [CHAT] Messages state updated. Count: ${messages.length}`);
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      console.log(`📨 [CHAT] Last message: ${lastMessage.id.substring(0, 8)} (${lastMessage.role}) - "${lastMessage.content.substring(0, 50)}..."`);
-    }
-  }, [messages]);
-
   return (
     <div className="flex h-full">
-      {/* Tool Progress Manager - handles tool state automatically */}
-      <ToolProgressManager onToolsUpdate={handleToolsUpdate} />
-      
       {showSessions && (
         <SessionsSidebar
           sessions={sessions}
@@ -341,11 +287,11 @@ const AIAgentChat: React.FC = () => {
         />
         
         <SimplifiedChatInterface
-          conversations={messages}
+          conversations={[]} // Not used anymore
           isLoading={isLoading}
           modelSettings={modelSettings}
-          tools={tools}
-          toolsActive={toolsActive}
+          tools={[]} // Not used anymore
+          toolsActive={false} // Not used anymore
           scrollAreaRef={scrollAreaRef}
           onFollowUpAction={handleFollowUpAction}
         />
