@@ -3,15 +3,45 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { ToolProgressItem } from '@/types/tools';
+
+interface Session {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface ConversationContextType {
+  // Messages
   messages: ConversationMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
   refreshMessages: () => Promise<void>;
-  sessionId: string | null;
-  setSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   addMessage: (message: ConversationMessage) => void;
   updateMessage: (messageId: string, updates: Partial<ConversationMessage>) => void;
+  
+  // Session management
+  sessionId: string | null;
+  setSessionId: React.Dispatch<React.SetStateAction<string | null>>;
+  currentSessionId: string | null;
+  currentSession: Session | null;
+  setCurrentSession: React.Dispatch<React.SetStateAction<Session | null>>;
+  sessions: Session[];
+  setSessions: React.Dispatch<React.SetStateAction<Session[]>>;
+  
+  // UI state
+  isLoading: boolean;
+  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  isLoadingSessions: boolean;
+  setIsLoadingSessions: React.Dispatch<React.SetStateAction<boolean>>;
+  input: string;
+  setInput: React.Dispatch<React.SetStateAction<string>>;
+  
+  // Tools
+  tools: ToolProgressItem[];
+  setTools: React.Dispatch<React.SetStateAction<ToolProgressItem[]>>;
+  toolsActive: boolean;
+  setToolsActive: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);
@@ -19,7 +49,56 @@ const ConversationContext = createContext<ConversationContextType | undefined>(u
 export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [currentSession, setCurrentSession] = useState<Session | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [input, setInput] = useState('');
+  const [tools, setTools] = useState<ToolProgressItem[]>([]);
+  const [toolsActive, setToolsActive] = useState(false);
   const { user } = useAuth();
+
+  // Helper to safely convert messageType
+  const safeMessageType = (messageType: any): ConversationMessage['messageType'] => {
+    const validTypes = [
+      'analysis', 'planning', 'execution', 'tool-update', 'response', 
+      'step-executing', 'step-completed', 'loop-start', 'loop-reflection', 
+      'loop-enhancement', 'loop-complete', 'tool-executing'
+    ];
+    return validTypes.includes(messageType) ? messageType : undefined;
+  };
+
+  // Helper to safely convert toolsUsed
+  const safeToolsUsed = (toolsUsed: any): ConversationMessage['toolsUsed'] => {
+    if (!toolsUsed) return undefined;
+    
+    try {
+      if (typeof toolsUsed === 'string') {
+        const parsed = JSON.parse(toolsUsed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((tool: any) => ({
+            name: tool.name || 'Unknown Tool',
+            success: Boolean(tool.success),
+            result: tool.result,
+            error: tool.error
+          }));
+        }
+      }
+      
+      if (Array.isArray(toolsUsed)) {
+        return toolsUsed.map((tool: any) => ({
+          name: tool.name || 'Unknown Tool',
+          success: Boolean(tool.success),
+          result: tool.result,
+          error: tool.error
+        }));
+      }
+    } catch (e) {
+      console.warn('Failed to parse toolsUsed:', e);
+    }
+    
+    return undefined;
+  };
 
   // Refresh messages from database
   const refreshMessages = useCallback(async () => {
@@ -46,9 +125,9 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           role: msg.role as 'user' | 'assistant',
           content: msg.content,
           timestamp: new Date(msg.created_at),
-          messageType: msg.message_type,
+          messageType: safeMessageType(msg.message_type),
           loopIteration: msg.loop_iteration || 0,
-          toolsUsed: msg.tools_used || [],
+          toolsUsed: safeToolsUsed(msg.tools_used),
           improvementReasoning: msg.improvement_reasoning
         }));
 
@@ -123,17 +202,17 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               role: payload.new.role,
               content: payload.new.content,
               timestamp: new Date(payload.new.created_at),
-              messageType: payload.new.message_type,
+              messageType: safeMessageType(payload.new.message_type),
               loopIteration: payload.new.loop_iteration || 0,
-              toolsUsed: payload.new.tools_used || [],
+              toolsUsed: safeToolsUsed(payload.new.tools_used),
               improvementReasoning: payload.new.improvement_reasoning
             };
             addMessage(newMessage);
           } else if (payload.eventType === 'UPDATE' && payload.new) {
             const updatedFields: Partial<ConversationMessage> = {
               content: payload.new.content,
-              messageType: payload.new.message_type,
-              toolsUsed: payload.new.tools_used || [],
+              messageType: safeMessageType(payload.new.message_type),
+              toolsUsed: safeToolsUsed(payload.new.tools_used),
               improvementReasoning: payload.new.improvement_reasoning
             };
             updateMessage(payload.new.id, updatedFields);
@@ -159,6 +238,21 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     refreshMessages,
     sessionId,
     setSessionId,
+    currentSessionId: sessionId,
+    currentSession,
+    setCurrentSession,
+    sessions,
+    setSessions,
+    isLoading,
+    setIsLoading,
+    isLoadingSessions,
+    setIsLoadingSessions,
+    input,
+    setInput,
+    tools,
+    setTools,
+    toolsActive,
+    setToolsActive,
     addMessage,
     updateMessage
   };

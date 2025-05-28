@@ -19,23 +19,24 @@ const AIAgentChat: React.FC = () => {
 
   // Use context for UI state
   const {
-    messages,
+    messages = [],
     currentSessionId,
-    isLoading,
+    isLoading = false,
     setIsLoading,
-    input,
+    input = '',
     setInput,
-    tools,
+    tools = [],
     setTools,
-    toolsActive,
+    toolsActive = false,
     setToolsActive,
-    setCurrentSession
+    setCurrentSession,
+    refreshMessages
   } = useConversationContext();
 
   // Use session manager for session operations
   const { 
-    sessions,
-    isLoadingSessions,
+    sessions = [],
+    isLoadingSessions = false,
     loadExistingSessions,
     startNewSession,
     deleteSession
@@ -44,8 +45,7 @@ const AIAgentChat: React.FC = () => {
   // Use message persistence hook
   const { 
     loadConversation,
-    addMessage: persistMessage,
-    refreshConversationState: refreshMessages
+    addMessage: persistMessage
   } = useMessagePersistence();
 
   const [showSessions, setShowSessions] = React.useState(false);
@@ -69,8 +69,10 @@ const AIAgentChat: React.FC = () => {
 
   // Sync tools from hook to context
   useEffect(() => {
-    setTools(hookTools);
-    setToolsActive(hookToolsActive);
+    if (setTools && setToolsActive) {
+      setTools(hookTools || []);
+      setToolsActive(hookToolsActive || false);
+    }
   }, [hookTools, hookToolsActive, setTools, setToolsActive]);
 
   // Auto-scroll to bottom when new messages arrive
@@ -115,11 +117,9 @@ const AIAgentChat: React.FC = () => {
   useEffect(() => {
     let refreshInterval: NodeJS.Timeout;
     
-    if (isLoading && currentSessionId) {
+    if (isLoading && currentSessionId && refreshMessages) {
       refreshInterval = setInterval(() => {
-        if (refreshMessages) {
-          refreshMessages();
-        }
+        refreshMessages();
       }, 4000);
     }
 
@@ -151,7 +151,7 @@ const AIAgentChat: React.FC = () => {
 
   // Enhanced session loading on mount
   useEffect(() => {
-    if (user && sessions.length === 0 && !isLoadingSessions) {
+    if (user && sessions.length === 0 && !isLoadingSessions && loadExistingSessions) {
       console.log('🔄 Loading sessions on mount');
       loadExistingSessions();
     }
@@ -159,7 +159,7 @@ const AIAgentChat: React.FC = () => {
 
   // Auto-start new session if none exists
   useEffect(() => {
-    if (user && !currentSessionId && sessions.length === 0 && !isLoadingSessions) {
+    if (user && !currentSessionId && sessions.length === 0 && !isLoadingSessions && startNewSession) {
       console.log('🆕 Auto-starting new session');
       startNewSession();
     }
@@ -181,7 +181,7 @@ const AIAgentChat: React.FC = () => {
     
     // Find session data from sessions list
     const sessionData = sessions.find(s => s.id === sessionId);
-    if (sessionData) {
+    if (sessionData && setCurrentSession) {
       setCurrentSession(sessionData);
     }
 
@@ -218,7 +218,9 @@ const AIAgentChat: React.FC = () => {
     if (persistMessage) {
       await persistMessage(followUpMessage);
     }
-    setInput('');
+    if (setInput) {
+      setInput('');
+    }
     
     await processMessage(action, messageId);
   };
@@ -236,7 +238,9 @@ const AIAgentChat: React.FC = () => {
     }
 
     activeRequests.current.add(requestKey);
-    setIsLoading(true);
+    if (setIsLoading) {
+      setIsLoading(true);
+    }
     clearTools();
 
     console.log(`🚀 Processing message: ${requestKey}`);
@@ -332,7 +336,9 @@ const AIAgentChat: React.FC = () => {
         await persistMessage(errorMessage);
       }
     } finally {
-      setIsLoading(false);
+      if (setIsLoading) {
+        setIsLoading(false);
+      }
       activeRequests.current.delete(requestKey);
       
       // Clean up processed messages after some time
@@ -370,7 +376,9 @@ const AIAgentChat: React.FC = () => {
     }
     
     const messageToProcess = input;
-    setInput('');
+    if (setInput) {
+      setInput('');
+    }
     
     await processMessage(messageToProcess, messageId);
   };
