@@ -2,14 +2,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
-import { generateSystemPrompt, createKnowledgeAwareMessages } from './system-prompts.ts';
 import { extractAssistantMessage } from './response-handler.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 import { reflectAndDecide, submitFollowUpMessage } from './reflection-handler.ts';
 
 /**
- * Pure atomic loop handler with autonomous reflection
- * Each call is atomic: receive → think → decide → execute → reflect → respond → (optionally continue)
+ * Pure atomic loop handler - LLM decides everything
  */
 export async function handleUnifiedQuery(
   message: string,
@@ -20,14 +18,14 @@ export async function handleUnifiedQuery(
   streaming: boolean,
   supabase: any
 ): Promise<any> {
-  console.log('🧠 Starting atomic loop with autonomous reflection');
+  console.log('🧠 Starting pure atomic LLM-driven loop');
 
   let finalResponse = '';
   let allToolsUsed: any[] = [];
   let assistantMessageId: string | null = null;
 
   try {
-    // 1. Get available tools (LLM will decide if/when to use them)
+    // 1. Get available tools
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
       .select('*')
@@ -39,18 +37,14 @@ export async function handleUnifiedQuery(
     }
 
     const tools = convertMCPsToTools(mcps);
-    const systemPrompt = generateAtomicSystemPrompt();
+    const systemPrompt = generatePureLLMSystemPrompt();
 
-    // 2. Create messages for atomic decision making
-    const messages = createKnowledgeAwareMessages(
-      systemPrompt,
-      conversationHistory,
-      message
-    );
+    // 2. Create messages
+    const messages = createPureMessages(systemPrompt, conversationHistory, message);
 
-    console.log('🎯 LLM making atomic decision for:', message);
+    console.log('🎯 LLM making pure decision for:', message);
 
-    // 3. Single atomic LLM call - decides everything
+    // 3. Single atomic LLM call
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
@@ -84,9 +78,9 @@ export async function handleUnifiedQuery(
     const data = response.data;
     finalResponse = extractAssistantMessage(data) || '';
 
-    // 4. Execute tools atomically if LLM chose them
+    // 4. Execute tools if LLM chose them
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
-      console.log('⚡ Executing', data.choices[0].message.tool_calls.length, 'atomic tools');
+      console.log('⚡ LLM chose to use', data.choices[0].message.tool_calls.length, 'tools');
       
       const { toolResults, toolsUsed } = await executeTools(
         data.choices[0].message.tool_calls,
@@ -97,26 +91,48 @@ export async function handleUnifiedQuery(
       
       allToolsUsed = toolsUsed;
       
-      // 5. Synthesize atomically if tools were used
+      // 5. Let LLM naturally incorporate results
       if (toolsUsed.length > 0) {
-        console.log('🔄 Atomic synthesis of tool results');
-        const synthesizedResponse = await synthesizeAtomically(
-          message,
-          toolsUsed,
-          finalResponse,
-          modelSettings,
-          supabase
-        );
+        console.log('🔄 LLM incorporating tool results naturally');
         
-        if (synthesizedResponse && synthesizedResponse.trim()) {
-          finalResponse = synthesizedResponse;
+        const toolResultMessage = toolsUsed.map(tool => {
+          if (tool.success && tool.result) {
+            return `Tool ${tool.name} result: ${typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result)}`;
+          }
+          return `Tool ${tool.name} failed: ${tool.error || 'Unknown error'}`;
+        }).join('\n\n');
+
+        const followUpMessages = [
+          ...messages,
+          { role: 'assistant', content: finalResponse },
+          { role: 'user', content: `Tool results:\n${toolResultMessage}\n\nPlease provide a complete response incorporating these results.` }
+        ];
+
+        const followUpResponse = await supabase.functions.invoke('ai-model-proxy', {
+          body: {
+            messages: followUpMessages,
+            temperature: 0.3,
+            max_tokens: 1500,
+            ...(modelSettings && {
+              provider: modelSettings.provider,
+              model: modelSettings.selectedModel,
+              localModelUrl: modelSettings.localModelUrl
+            })
+          }
+        });
+        
+        if (!followUpResponse.error) {
+          const incorporatedResponse = extractAssistantMessage(followUpResponse.data);
+          if (incorporatedResponse && incorporatedResponse.trim()) {
+            finalResponse = incorporatedResponse;
+          }
         }
       }
     } else {
-      console.log('💭 LLM responded directly (no tools needed)');
+      console.log('💭 LLM responded directly without tools');
     }
 
-    // 6. Persist insights atomically if valuable
+    // 6. Persist insights if valuable
     if (userId && allToolsUsed.length > 0) {
       try {
         await persistInsightAsKnowledgeNode(
@@ -134,10 +150,10 @@ export async function handleUnifiedQuery(
 
     // 7. Ensure response quality
     if (!finalResponse || !finalResponse.trim()) {
-      finalResponse = createAtomicFallback(message, allToolsUsed);
+      finalResponse = createFallbackResponse(message, allToolsUsed);
     }
 
-    // 8. Store atomic result and get message ID
+    // 8. Store result
     if (userId && sessionId) {
       const { data: messageData, error: insertError } = await supabase
         .from('agent_conversations')
@@ -146,7 +162,6 @@ export async function handleUnifiedQuery(
           session_id: sessionId,
           role: 'assistant',
           content: finalResponse,
-          tools_used: allToolsUsed,
           created_at: new Date().toISOString()
         })
         .select('id')
@@ -157,8 +172,8 @@ export async function handleUnifiedQuery(
       }
     }
 
-    // 9. 🧠 AUTONOMOUS REFLECTION - Decide if we should continue
-    console.log('🤔 Starting autonomous reflection phase');
+    // 9. 🧠 PURE LLM REFLECTION - Let LLM decide if it should continue
+    console.log('🤔 Starting pure LLM reflection');
     const reflectionDecision = await reflectAndDecide(
       message,
       finalResponse,
@@ -168,19 +183,18 @@ export async function handleUnifiedQuery(
     );
 
     if (reflectionDecision.continue && reflectionDecision.nextAction && assistantMessageId) {
-      console.log('🔄 Reflection decided to continue with:', reflectionDecision.nextAction);
+      console.log('🔄 LLM decided to continue with:', reflectionDecision.nextAction);
       
-      // Submit autonomous follow-up message
       await submitFollowUpMessage(
         reflectionDecision.nextAction,
         userId,
         sessionId,
         assistantMessageId,
-        reflectionDecision.reasoning || 'Autonomous follow-up',
+        reflectionDecision.reasoning || 'LLM autonomous follow-up',
         supabase
       );
     } else {
-      console.log('✅ Reflection decided the response is complete');
+      console.log('✅ LLM decided the response is complete');
     }
 
     return {
@@ -193,7 +207,7 @@ export async function handleUnifiedQuery(
     };
 
   } catch (error) {
-    console.error('❌ Atomic loop error:', error);
+    console.error('❌ Pure atomic loop error:', error);
     
     finalResponse = `I encountered an issue processing "${message}". Let me try a different approach.`;
     
@@ -204,11 +218,10 @@ export async function handleUnifiedQuery(
           session_id: sessionId,
           role: 'assistant',
           content: finalResponse,
-          tools_used: [],
           created_at: new Date().toISOString()
         });
       } catch (dbError) {
-        console.error('Failed to store atomic fallback:', dbError);
+        console.error('Failed to store fallback:', dbError);
       }
     }
 
@@ -218,25 +231,22 @@ export async function handleUnifiedQuery(
       atomicLoop: true,
       toolsUsed: [],
       sessionId,
-      error: 'Atomic fallback used'
+      error: 'Fallback used'
     };
   }
 }
 
 /**
- * Generate system prompt for atomic decision making
+ * Pure LLM-native system prompt
  */
-function generateAtomicSystemPrompt(): string {
-  return `You are an intelligent AI assistant that makes atomic decisions.
+function generatePureLLMSystemPrompt(): string {
+  return `You are an autonomous AI assistant. You think step-by-step and decide what to do.
 
-**🎯 ATOMIC DECISION PROCESS:**
-Each interaction is atomic: receive → think → decide → execute → respond
-
-**💭 DECISION GUIDELINES:**
-- Answer directly if you have sufficient knowledge
-- Use tools only when they add clear value
-- Make one atomic decision per interaction
-- Be decisive and efficient
+**🧠 PURE REASONING:**
+- Answer directly from knowledge when possible
+- Use tools when they add clear value
+- Think out loud about your process
+- Be natural and conversational
 
 **🛠️ AVAILABLE TOOLS:**
 - Knowledge Search: Access previous learnings and documents
@@ -245,95 +255,66 @@ Each interaction is atomic: receive → think → decide → execute → respond
 - Jira Tools: Access project management data
 - Web Scraper: Extract content from web pages
 
-**⚡ ATOMIC EXECUTION:**
-1. Understand the request completely
-2. Decide if tools are needed (yes/no)
-3. If yes: choose the minimal set of tools needed
-4. If no: respond directly from knowledge
-5. Execute atomically and synthesize results
+**💭 DECISION PROCESS:**
+1. Understand what the user is asking
+2. Think: "Do I need external information for this?"
+3. If yes: choose the right tool(s)
+4. If no: answer from my knowledge
+5. Always be helpful and complete
 
-**📋 RESPONSE STYLE:**
-- Direct and helpful
-- Use tools purposefully, not habitually  
-- Integrate results naturally
-- Complete the atomic loop efficiently
+**🎯 COMMUNICATION:**
+- Be direct and natural
+- Show your thinking process
+- Use emojis to indicate actions (🔍 for searching, ✅ for completion)
+- Complete your response fully
 
-Remember: Each interaction should complete atomically. Think → Decide → Execute → Respond.`;
+Remember: You are in control. Make decisions based on what will best help the user.`;
 }
 
 /**
- * Atomic synthesis of tool results
+ * Create simple message array without complex injection
  */
-async function synthesizeAtomically(
-  originalMessage: string,
-  toolsUsed: any[],
-  originalResponse: string,
-  modelSettings: any,
-  supabase: any
-): Promise<string | null> {
-  try {
-    const toolSummary = toolsUsed.map(tool => {
-      if (tool.success && tool.result) {
-        const preview = typeof tool.result === 'string' 
-          ? tool.result.substring(0, 300) + (tool.result.length > 300 ? '...' : '')
-          : JSON.stringify(tool.result).substring(0, 300);
-        return `${tool.name}: ${preview}`;
-      }
-      return `${tool.name}: No result`;
-    }).join('\n');
+function createPureMessages(
+  systemPrompt: string,
+  conversationHistory: any[],
+  userMessage: string
+): any[] {
+  const messages = [
+    {
+      role: 'system',
+      content: systemPrompt
+    }
+  ];
 
-    const synthesisMessages = [
-      {
-        role: 'system',
-        content: `Synthesize a complete, helpful response based on the tool results.
-
-Original question: "${originalMessage}"
-
-Tool results:
-${toolSummary}
-
-Provide a clear, comprehensive answer that integrates this information naturally.`
-      },
-      {
-        role: 'user',
-        content: originalMessage
-      }
-    ];
-
-    const synthesisResponse = await supabase.functions.invoke('ai-model-proxy', {
-      body: {
-        messages: synthesisMessages,
-        temperature: 0.3,
-        max_tokens: 1000,
-        ...(modelSettings && {
-          provider: modelSettings.provider,
-          model: modelSettings.selectedModel,
-          localModelUrl: modelSettings.localModelUrl
-        })
+  // Add conversation history
+  if (conversationHistory && Array.isArray(conversationHistory)) {
+    conversationHistory.forEach(historyMessage => {
+      if (historyMessage && historyMessage.role && historyMessage.content) {
+        messages.push({
+          role: historyMessage.role,
+          content: historyMessage.content
+        });
       }
     });
-    
-    if (synthesisResponse.error) {
-      console.error('Atomic synthesis failed:', synthesisResponse.error);
-      return null;
-    }
-    
-    return extractAssistantMessage(synthesisResponse.data);
-    
-  } catch (error) {
-    console.error('Error in atomic synthesis:', error);
-    return null;
   }
+
+  // Add current user message
+  messages.push({
+    role: 'user',
+    content: userMessage || 'Empty message'
+  });
+
+  return messages;
 }
 
 /**
- * Create atomic fallback response
+ * Create fallback response
  */
-function createAtomicFallback(message: string, toolsUsed: any[]): string {
+function createFallbackResponse(message: string, toolsUsed: any[]): string {
   if (toolsUsed && toolsUsed.length > 0) {
     const successfulTools = toolsUsed.filter(t => t.success);
     if (successfulTools.length > 0) {
-      return `I processed "${message}" using ${successfulTools.length} tool(s) successfully, but need to refine my response. Let me try again.`;
+      return `I processed "${message}" using ${successfulTools.length} tool(s), but need to refine my response. Let me try again.`;
     }
   }
   

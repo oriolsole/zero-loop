@@ -1,29 +1,14 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ConversationMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'error';
   content: string;
   timestamp: Date;
-  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed' | 'reflection';
-  isStreaming?: boolean;
   isAutonomous?: boolean;
-  toolsUsed?: Array<{
-    name: string;
-    success: boolean;
-    result?: any;
-    error?: string;
-  }>;
-  selfReflection?: string;
-  toolDecision?: {
-    reasoning: string;
-    selectedTools: string[];
-  };
-  executionPlan?: any;
-  aiReasoning?: string;
-  followUpSuggestions?: string[];
 }
 
 export interface ConversationSession {
@@ -178,11 +163,6 @@ export const useAgentConversation = () => {
             user_id: user.id,
             role: message.role,
             content: message.content,
-            message_type: message.messageType || null,
-            tools_used: message.toolsUsed || null,
-            self_reflection: message.selfReflection || null,
-            tool_decision: message.toolDecision || null,
-            ai_reasoning: message.aiReasoning || null,
             created_at: message.timestamp.toISOString()
           });
       } catch (error) {
@@ -217,17 +197,7 @@ export const useAgentConversation = () => {
         role: row.role as ConversationMessage['role'],
         content: row.content,
         timestamp: new Date(row.created_at),
-        messageType: row.message_type as ConversationMessage['messageType'] || undefined,
-        toolsUsed: Array.isArray(row.tools_used) ? row.tools_used as Array<{
-          name: string;
-          success: boolean;
-          result?: any;
-          error?: string;
-        }> : undefined,
-        selfReflection: row.self_reflection || undefined,
-        toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 
-          row.tool_decision as { reasoning: string; selectedTools: string[]; } : undefined,
-        aiReasoning: row.ai_reasoning || undefined
+        isAutonomous: row.message_type === 'reflection'
       }));
 
       setConversations(messages);
@@ -265,7 +235,7 @@ export const useAgentConversation = () => {
     }));
   }, [conversations]);
 
-  // New function to listen for autonomous messages
+  // Listen for autonomous messages
   const startListeningForAutonomousMessages = useCallback(() => {
     if (!currentSessionId || !user) return;
 
@@ -284,30 +254,23 @@ export const useAgentConversation = () => {
         (payload) => {
           const newRow = payload.new as any;
           
-          // Only handle assistant messages with reflection type (autonomous messages)
-          if (newRow.role === 'assistant' && newRow.message_type === 'reflection') {
-            console.log('🤖 Received autonomous message:', newRow.content);
+          if (newRow.role === 'assistant') {
+            console.log('🤖 Received message:', newRow.content);
             
             const autonomousMessage: ConversationMessage = {
               id: newRow.id.toString(),
               role: 'assistant',
               content: newRow.content,
               timestamp: new Date(newRow.created_at),
-              messageType: 'reflection',
-              isAutonomous: true,
-              aiReasoning: newRow.ai_reasoning || undefined,
-              toolsUsed: Array.isArray(newRow.tools_used) ? newRow.tools_used : undefined
+              isAutonomous: newRow.message_type === 'reflection'
             };
 
             setConversations(prev => {
-              // Check if message already exists to avoid duplicates
               const exists = prev.some(msg => msg.id === autonomousMessage.id);
               if (exists) return prev;
-              
               return [...prev, autonomousMessage];
             });
 
-            // Update session
             setSessions(prev => prev.map(session => 
               session.id === currentSessionId 
                 ? { 
@@ -340,7 +303,6 @@ export const useAgentConversation = () => {
     }
   }, [user, currentSessionId, sessions.length, startNewSession, isLoadingSessions]);
 
-  // Start listening for autonomous messages when session is active
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     

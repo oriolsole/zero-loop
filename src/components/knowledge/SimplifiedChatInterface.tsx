@@ -4,21 +4,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Bot, MessageSquare, Search, Github, Brain } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
-import { ModelProvider } from '@/services/modelProviderService';
-import { AtomicTool } from '@/types/tools';
 import AIAgentMessage from './AIAgentMessage';
-import AtomicToolCard from './AtomicToolCard';
-import StatusMessage from './StatusMessage';
 
 interface SimplifiedChatInterfaceProps {
   conversations: ConversationMessage[];
   isLoading: boolean;
-  modelSettings: {
-    provider: ModelProvider;
-    selectedModel?: string;
-  };
-  tools: AtomicTool[];
-  toolsActive: boolean;
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   onFollowUpAction?: (action: string) => void;
 }
@@ -26,8 +16,6 @@ interface SimplifiedChatInterfaceProps {
 const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   conversations,
   isLoading,
-  tools,
-  toolsActive,
   scrollAreaRef,
   onFollowUpAction
 }) => {
@@ -117,23 +105,14 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             ))}
           </div>
           
-          {toolsActive && tools.length > 0 && (
-            <div className="mt-8 space-y-3">
-              {tools.map((tool) => (
-                <AtomicToolCard 
-                  key={tool.id} 
-                  tool={tool}
-                />
-              ))}
-            </div>
-          )}
-          
-          {isLoading && !toolsActive && (
-            <div className="mt-8">
-              <StatusMessage 
-                content="Thinking..."
-                type="thinking"
-              />
+          {isLoading && (
+            <div className="mt-8 flex items-center justify-center">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                <span className="ml-2 text-sm">Thinking...</span>
+              </div>
             </div>
           )}
         </div>

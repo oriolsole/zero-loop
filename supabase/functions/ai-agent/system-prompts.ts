@@ -2,11 +2,11 @@
 import { createMCPSummary, formatMCPForPrompt } from './mcp-summary.ts';
 
 /**
- * System prompt generation utilities for unified knowledge-first approach
+ * Pure LLM-native system prompt generation
  */
 
 /**
- * Generates a comprehensive system prompt with unified strategy
+ * Generates a pure LLM-driven system prompt
  */
 export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): string {
   const mcpSummaries = mcps?.map(mcp => createMCPSummary(mcp)) || [];
@@ -15,41 +15,39 @@ export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): st
     .map(summary => formatMCPForPrompt(summary))
     .join('\n\n');
 
-  return `You are an intelligent AI assistant with access to powerful tools and previous knowledge.
+  return `You are an autonomous AI assistant. You think, decide, and act naturally.
 
-**🧠 UNIFIED RESPONSE STRATEGY:**
-1. **ANSWER DIRECTLY** from your general knowledge for simple questions
-2. **USE TOOLS WHEN VALUABLE** for:
-   - Current/real-time information
-   - Searching your previous knowledge and uploaded documents
-   - External data not in your general knowledge
-   - Multi-step research or analysis
-   - Specific data from external sources
+**🧠 PURE INTELLIGENCE:**
+You have access to both extensive knowledge and powerful tools. Use your judgment to decide when each is appropriate.
 
 **🛠️ Available Tools:**
 ${toolDescriptions}
 
-**💡 Natural Decision Making:**
-- For simple greetings or basic questions, respond directly
-- Use the Knowledge Search tool when you need to access previous learnings or uploaded documents
-- Use Web Search for current information or external data
-- Use multiple tools progressively if needed
-- Build comprehensive answers step by step
-- Work efficiently - don't overuse tools when direct knowledge suffices
+**💭 NATURAL DECISION MAKING:**
+- For simple questions, answer directly from your knowledge
+- For current information or research, use web search
+- For accessing previous conversations or uploaded documents, use knowledge search
+- For code analysis, use GitHub tools
+- Think out loud about your process
+- Be conversational and helpful
 
-**📋 Response Guidelines:**
-- Be direct and conversational in your responses
-- Only use tools when they add clear value
-- Integrate tool results naturally into your answers
-- Provide actionable, helpful information
-- Cite sources when using external data
+**🎯 COMMUNICATION STYLE:**
+- Use emojis naturally to show what you're doing (🔍 searching, ✅ found results, 🤔 thinking)
+- Be direct but friendly
+- Show your reasoning process
+- Complete your responses thoroughly
 
-Remember: You have both comprehensive general knowledge and powerful tools. Use your judgment about when tools add value.`;
+**🔄 AUTONOMOUS BEHAVIOR:**
+- You can continue working on a topic if you think it would be valuable
+- You can search for additional information if needed
+- You decide when a response is complete
+- Always prioritize being helpful
+
+Remember: You are in full control. Make intelligent decisions about when and how to help the user.`;
 }
 
 /**
- * Create messages array for AI model with proper content validation
- * No longer forces knowledge injection
+ * Create pure message array for LLM
  */
 export function createKnowledgeAwareMessages(
   systemPrompt: string,
@@ -64,31 +62,7 @@ export function createKnowledgeAwareMessages(
     }
   ];
 
-  // Only inject knowledge if explicitly provided (from knowledge search tool results)
-  if (relevantKnowledge && relevantKnowledge.length > 0) {
-    relevantKnowledge.forEach(knowledge => {
-      let knowledgeContent = '';
-      
-      if (knowledge.snippet && typeof knowledge.snippet === 'string' && knowledge.snippet.trim()) {
-        knowledgeContent = knowledge.snippet;
-      } else if (knowledge.description && typeof knowledge.description === 'string' && knowledge.description.trim()) {
-        knowledgeContent = knowledge.description;
-      } else if (knowledge.content && typeof knowledge.content === 'string' && knowledge.content.trim()) {
-        knowledgeContent = knowledge.content;
-      } else {
-        knowledgeContent = `Knowledge item: ${knowledge.title || 'Untitled'} - Content not available`;
-        console.warn('Knowledge item has no valid content:', knowledge);
-      }
-      
-      const knowledgeMessage = {
-        role: 'assistant',
-        content: `From knowledge base: ${knowledge.title || 'Untitled Knowledge'}\n${knowledgeContent}`
-      };
-      
-      messages.push(knowledgeMessage);
-    });
-  }
-
+  // Add conversation history
   if (conversationHistory && Array.isArray(conversationHistory)) {
     conversationHistory.forEach(historyMessage => {
       if (historyMessage && typeof historyMessage === 'object' && historyMessage.role) {
@@ -96,10 +70,8 @@ export function createKnowledgeAwareMessages(
         
         if (content === null || content === undefined) {
           content = `[Content unavailable for ${historyMessage.role} message]`;
-          console.warn('History message has null/undefined content, using placeholder');
         } else if (typeof content !== 'string') {
           content = String(content);
-          console.warn('History message content was not a string, converted');
         } else if (!content.trim()) {
           content = `[Empty ${historyMessage.role} message]`;
         }
@@ -108,16 +80,14 @@ export function createKnowledgeAwareMessages(
           role: historyMessage.role,
           content: content
         });
-      } else {
-        console.warn('Invalid history message found, skipping:', historyMessage);
       }
     });
   }
 
+  // Add current user message
   let validatedUserMessage = userMessage;
   if (!validatedUserMessage || typeof validatedUserMessage !== 'string') {
     validatedUserMessage = String(validatedUserMessage || 'Empty message');
-    console.warn('User message was not a valid string, converted');
   }
   
   messages.push({
@@ -125,15 +95,12 @@ export function createKnowledgeAwareMessages(
     content: validatedUserMessage
   });
 
+  // Filter out any invalid messages
   const validatedMessages = messages.filter(msg => {
-    if (!msg || !msg.role || !msg.content || typeof msg.content !== 'string' || !msg.content.trim()) {
-      console.warn('Removing invalid message:', msg);
-      return false;
-    }
-    return true;
+    return msg && msg.role && msg.content && typeof msg.content === 'string' && msg.content.trim();
   });
 
-  console.log(`Message validation: ${messages.length} -> ${validatedMessages.length} messages`);
+  console.log(`Pure message creation: ${messages.length} -> ${validatedMessages.length} messages`);
   
   return validatedMessages;
 }
