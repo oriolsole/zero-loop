@@ -13,12 +13,12 @@ export const useMessageDeduplication = () => {
   const processedMessages = useRef<Map<string, MessageHash>>(new Map());
   const requestsInProgress = useRef<Set<string>>(new Set());
 
-  // Create a safe hash for message deduplication (avoiding btoa unicode issues)
+  // Create a safe hash for message deduplication
   const createMessageHash = useCallback((message: ConversationMessage): string => {
     const content = message.content.substring(0, 200); // Use first 200 chars for hash
     const key = `${message.role}-${content}-${message.messageType || 'none'}-${message.loopIteration || 0}`;
     
-    // Use a simple hash function instead of btoa to avoid unicode issues
+    // Use a simple hash function
     let hash = 0;
     for (let i = 0; i < key.length; i++) {
       const char = key.charCodeAt(i);
@@ -46,9 +46,9 @@ export const useMessageDeduplication = () => {
       return true;
     }
 
-    // Check if it's a recent duplicate (within 10 seconds)
+    // Check if it's a recent duplicate (within 5 seconds)
     const timeDiff = message.timestamp.getTime() - existing.timestamp;
-    if (timeDiff < 10000) {
+    if (timeDiff < 5000) {
       console.log(`❌ Skipping duplicate message: ${hash} (${timeDiff}ms ago)`);
       return false;
     }
@@ -83,12 +83,12 @@ export const useMessageDeduplication = () => {
 
   // Clean up old processed messages (keep only last 100)
   const cleanupProcessedMessages = useCallback((): void => {
-    if (processedMessages.current.size > 100) {
+    if (processedMessages.current.size > 50) {
       const sortedEntries = Array.from(processedMessages.current.entries())
         .sort(([, a], [, b]) => b.timestamp - a.timestamp);
       
       processedMessages.current.clear();
-      sortedEntries.slice(0, 100).forEach(([key, value]) => {
+      sortedEntries.slice(0, 50).forEach(([key, value]) => {
         processedMessages.current.set(key, value);
       });
       console.log('🧹 Cleaned up old processed messages');
