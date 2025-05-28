@@ -53,35 +53,39 @@ export const ToolProgressManager: React.FC<ToolProgressManagerProps> = ({ onTool
           }
         } else if (toolData.status === 'completed') {
           // Complete the tool
-          const existingTool = tools.find(t => t.name === toolData.toolName);
-          if (existingTool) {
-            console.log(`✅ [TOOL-MANAGER] Completing tool: ${toolData.toolName}`, toolData.result);
-            completeTool(existingTool.id, toolData.result);
-          } else {
-            console.log(`⚠️ [TOOL-MANAGER] Cannot complete tool - not found: ${toolData.toolName}`);
-            // Start and immediately complete if tool wasn't tracked
+          let existingTool = tools.find(t => t.name === toolData.toolName);
+          
+          if (!existingTool) {
+            // If tool wasn't tracked during execution, create it now
+            console.log(`🔧 [TOOL-MANAGER] Creating and completing tool: ${toolData.toolName}`);
             const newToolId = startTool(
               toolData.toolName,
               toolData.displayName || toolData.toolName,
               toolData.parameters
             );
-            setTimeout(() => completeTool(newToolId, toolData.result), 100);
+            // Complete immediately
+            setTimeout(() => completeTool(newToolId, toolData.result), 50);
+          } else {
+            console.log(`✅ [TOOL-MANAGER] Completing existing tool: ${toolData.toolName}`, toolData.result);
+            completeTool(existingTool.id, toolData.result);
           }
         } else if (toolData.status === 'failed') {
           // Fail the tool
-          const existingTool = tools.find(t => t.name === toolData.toolName);
-          if (existingTool) {
-            console.log(`❌ [TOOL-MANAGER] Failing tool: ${toolData.toolName}`);
-            failTool(existingTool.id, toolData.error);
-          } else {
-            console.log(`⚠️ [TOOL-MANAGER] Cannot fail tool - not found: ${toolData.toolName}`);
-            // Start and immediately fail if tool wasn't tracked
+          let existingTool = tools.find(t => t.name === toolData.toolName);
+          
+          if (!existingTool) {
+            // If tool wasn't tracked during execution, create it now
+            console.log(`🔧 [TOOL-MANAGER] Creating and failing tool: ${toolData.toolName}`);
             const newToolId = startTool(
               toolData.toolName,
               toolData.displayName || toolData.toolName,
               toolData.parameters
             );
-            setTimeout(() => failTool(newToolId, toolData.error), 100);
+            // Fail immediately
+            setTimeout(() => failTool(newToolId, toolData.error), 50);
+          } else {
+            console.log(`❌ [TOOL-MANAGER] Failing existing tool: ${toolData.toolName}`);
+            failTool(existingTool.id, toolData.error);
           }
         }
       } catch (e) {

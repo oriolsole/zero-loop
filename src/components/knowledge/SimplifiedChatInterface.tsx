@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -44,8 +43,12 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
     );
   }, [messages]);
 
-  // Filter out tool execution messages from regular display (they're handled by ToolProgressManager)
-  const displayMessages = messages.filter(msg => msg.messageType !== 'tool-executing');
+  // Show ALL messages except tool-executing (those are handled by ToolProgressManager)
+  // But keep loop messages visible for progression tracking
+  const displayMessages = messages.filter(msg => {
+    // Only filter out tool-executing messages, show everything else including loop messages
+    return msg.messageType !== 'tool-executing';
+  });
 
   // Group messages by loop iteration to show progression
   const groupMessagesByLoop = (messages: ConversationMessage[]) => {
@@ -162,6 +165,28 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
                   {/* Messages in this loop */}
                   {loopMessages.map((message) => {
                     console.log(`🎨 [INTERFACE] Rendering message: ${message.id.substring(0, 8)} (${message.role}): ${message.content.substring(0, 50)}...`);
+                    
+                    // Show loop progression messages with special styling
+                    if (message.messageType && ['loop-start', 'loop-reflection', 'loop-enhancement', 'loop-complete'].includes(message.messageType)) {
+                      return (
+                        <div key={message.id} className="border-l-4 border-blue-500/50 pl-4 py-2 bg-blue-50/50 dark:bg-blue-950/20 rounded-r-lg">
+                          <div className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-1">
+                            {message.messageType === 'loop-start' && '🔄 Loop Started'}
+                            {message.messageType === 'loop-reflection' && '🤔 Reflecting on Response'}
+                            {message.messageType === 'loop-enhancement' && '✨ Enhancing Response'}
+                            {message.messageType === 'loop-complete' && '✅ Loop Complete'}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Loop {message.loopIteration || 0}
+                            {message.improvementReasoning && (
+                              <span className="ml-2">- {message.improvementReasoning}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    // Regular message display
                     return (
                       <AIAgentMessage 
                         key={message.id}
