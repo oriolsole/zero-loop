@@ -100,16 +100,42 @@ export const useMessagePersistence = () => {
 
     console.log(`➕ Adding message to session ${sessionId}:`, message.id);
 
-    // Update context state immediately for better UX
-    const currentMessages = [...messages];
-    const exists = currentMessages.some(m => m.id === message.id);
-    if (!exists) {
-      const updatedMessages = [...currentMessages, message];
-      setMessages(updatedMessages);
-      console.log(`✅ Message ${message.id} added to context`);
-    } else {
-      console.log(`⚠️ Message ${message.id} already exists in context`);
+    // Check if message already exists in context to prevent duplicates
+    const existsInContext = messages.some(m => m.id === message.id);
+    if (existsInContext) {
+      console.log(`⚠️ Message ${message.id} already exists in context, skipping`);
+      return;
     }
+
+    // Check if similar message already exists in database (same content, role, session within last 5 minutes)
+    try {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      
+      const { data: existingMessages, error: checkError } = await supabase
+        .from('agent_conversations')
+        .select('id, content, role')
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id)
+        .eq('content', message.content)
+        .eq('role', message.role)
+        .gte('created_at', fiveMinutesAgo)
+        .limit(1);
+
+      if (checkError) {
+        console.error('Error checking for duplicate messages:', checkError);
+      } else if (existingMessages && existingMessages.length > 0) {
+        console.log(`⚠️ Similar message already exists in database, skipping: ${existingMessages[0].id}`);
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking for duplicates:', error);
+      // Continue with insertion if check fails
+    }
+
+    // Update context state immediately for better UX
+    const updatedMessages = [...messages, message];
+    setMessages(updatedMessages);
+    console.log(`✅ Message ${message.id} added to context`);
 
     // Save to database
     try {
@@ -133,9 +159,8 @@ export const useMessagePersistence = () => {
 
       if (error) {
         console.error('❌ Error saving message:', error);
-        // Don't remove from local state if it's a duplicate constraint error
+        // Remove from local state if database save failed (unless it's a duplicate constraint error)
         if (!error.message.includes('unique constraint') && !error.message.includes('duplicate')) {
-          // Remove from local state if it's not a duplicate error
           const filteredMessages = messages.filter(m => m.id !== message.id);
           setMessages(filteredMessages);
         }
@@ -144,6 +169,9 @@ export const useMessagePersistence = () => {
       }
     } catch (error) {
       console.error('❌ Error saving message:', error);
+      // Remove from local state on error
+      const filteredMessages = messages.filter(m => m.id !== message.id);
+      setMessages(filteredMessages);
     }
   }, [currentSession, currentSessionId, user, messages, setMessages]);
 
@@ -177,9 +205,14 @@ export const useMessagePersistence = () => {
           shouldContinueLoop: row.should_continue_loop || undefined
         }));
 
-        if (newMessages.length > 0) {
-          const updatedMessages = [...messages, ...newMessages];
+        // Filter out messages that already exist in context to prevent duplicates
+        const existingIds = new Set(messages.map(m => m.id));
+        const actuallyNewMessages = newMessages.filter(m => !existingIds.has(m.id));
+
+        if (actuallyNewMessages.length > 0) {
+          const updatedMessages = [...messages, ...actuallyNewMessages];
           setMessages(updatedMessages);
+          console.log(`🔄 Added ${actuallyNewMessages.length} new messages from refresh`);
         }
       }
     } catch (error) {

@@ -179,8 +179,11 @@ const AIAgentChat: React.FC = () => {
   const handleFollowUpAction = async (action: string) => {
     if (!user || !currentSessionId) return;
 
+    // Create unique message ID to prevent duplicates
+    const messageId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
     const followUpMessage: ConversationMessage = {
-      id: Date.now().toString(),
+      id: messageId,
       role: 'user',
       content: action,
       timestamp: new Date()
@@ -244,8 +247,10 @@ const AIAgentChat: React.FC = () => {
         }, 2000);
       } else {
         // Fallback: add traditional single response message
+        const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
         const assistantMessage: ConversationMessage = {
-          id: (Date.now() + 1).toString(),
+          id: assistantMessageId,
           role: 'assistant',
           content: data.message,
           timestamp: new Date(),
@@ -275,8 +280,10 @@ const AIAgentChat: React.FC = () => {
         duration: 10000
       });
 
+      const errorMessageId = `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
       const errorMessage: ConversationMessage = {
-        id: (Date.now() + 1).toString(),
+        id: errorMessageId,
         role: 'assistant',
         content: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
         timestamp: new Date()
@@ -294,8 +301,11 @@ const AIAgentChat: React.FC = () => {
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !user || !currentSessionId) return;
 
+    // Create unique message ID to prevent duplicates
+    const messageId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     const userMessage: ConversationMessage = {
-      id: Date.now().toString(),
+      id: messageId,
       role: 'user',
       content: input,
       timestamp: new Date()
