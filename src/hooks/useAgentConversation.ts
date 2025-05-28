@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -158,10 +159,10 @@ export const useAgentConversation = () => {
           .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
 
         setSessions(sessionsArray);
-        console.log(`Loaded ${sessionsArray.length} existing sessions`);
+        console.log(`📁 Loaded ${sessionsArray.length} existing sessions`);
       }
     } catch (error) {
-      console.error('Error loading existing sessions:', error);
+      console.error('❌ Error loading existing sessions:', error);
     } finally {
       setIsLoadingSessions(false);
     }
@@ -186,6 +187,7 @@ export const useAgentConversation = () => {
     };
     
     setSessions(prev => [newSession, ...prev]);
+    console.log(`🆕 Started new session: ${sessionId}`);
   }, [user, clearProcessedMessages]);
 
   const addMessage = useCallback(async (message: ConversationMessage) => {
@@ -193,16 +195,20 @@ export const useAgentConversation = () => {
 
     // Check for duplicates using the deduplication hook - ONLY for new real-time messages
     if (!shouldProcessMessage(message)) {
-      console.log(`Duplicate message filtered: ${message.id}`);
+      console.log(`🚫 Duplicate message filtered: ${message.id}`);
       return;
     }
+
+    console.log(`➕ Adding message to session ${currentSessionId}:`, message.id);
 
     // Update local state immediately for better UX
     setConversations(prev => {
       const exists = prev.some(m => m.id === message.id);
       if (exists) {
+        console.log(`⚠️ Message ${message.id} already exists in conversations`);
         return prev;
       }
+      console.log(`✅ Message ${message.id} added to conversations`);
       return [...prev, message];
     });
 
@@ -253,15 +259,17 @@ export const useAgentConversation = () => {
         });
 
       if (error) {
-        console.error('Error saving message:', error);
+        console.error('❌ Error saving message:', error);
         // Don't remove from local state if it's a duplicate constraint error
         if (!error.message.includes('unique constraint') && !error.message.includes('duplicate')) {
           // Remove from local state if it's not a duplicate error
           setConversations(prev => prev.filter(m => m.id !== message.id));
         }
+      } else {
+        console.log(`💾 Message ${message.id} saved to database`);
       }
     } catch (error) {
-      console.error('Error saving message:', error);
+      console.error('❌ Error saving message:', error);
     }
 
     // Cleanup old processed messages periodically
@@ -269,6 +277,7 @@ export const useAgentConversation = () => {
   }, [currentSessionId, user, conversations.length, shouldProcessMessage, cleanupProcessedMessages]);
 
   const updateMessage = useCallback((messageId: string, updates: Partial<ConversationMessage>) => {
+    console.log(`🔄 Updating message: ${messageId}`);
     setConversations(prev => prev.map(msg => 
       msg.id === messageId ? { ...msg, ...updates } : msg
     ));
@@ -277,6 +286,7 @@ export const useAgentConversation = () => {
   const loadSession = useCallback(async (sessionId: string) => {
     if (!user) return;
 
+    console.log(`📂 Loading session: ${sessionId}`);
     setCurrentSessionId(sessionId);
     
     // Clear deduplication state when switching sessions
@@ -292,8 +302,9 @@ export const useAgentConversation = () => {
 
       if (error) throw error;
 
-      // Load ALL messages from database WITHOUT deduplication filtering
-      // Deduplication should only apply to real-time additions, not database loading
+      console.log(`📄 Raw database data for session ${sessionId}:`, data);
+
+      // Load ALL messages from database WITHOUT any deduplication filtering
       const messages: ConversationMessage[] = data.map(row => ({
         id: row.id.toString(),
         role: row.role as ConversationMessage['role'],
@@ -310,20 +321,15 @@ export const useAgentConversation = () => {
         shouldContinueLoop: row.should_continue_loop || undefined
       }));
 
+      console.log(`💬 Converted ${messages.length} messages for session ${sessionId}:`, messages);
+
       setConversations(messages);
-      console.log(`Loaded ${messages.length} messages for session ${sessionId}`);
+      console.log(`✅ Successfully loaded ${messages.length} messages for session ${sessionId}`);
       
-      // Optional: Log if we're loading messages that would have been filtered for debugging
-      if (process.env.NODE_ENV === 'development') {
-        const wouldBeFiltered = messages.filter(msg => !shouldProcessMessage(msg));
-        if (wouldBeFiltered.length > 0) {
-          console.warn(`Would have filtered ${wouldBeFiltered.length} database messages (but loaded them anyway)`);
-        }
-      }
     } catch (error) {
-      console.error('Error loading session:', error);
+      console.error(`❌ Error loading session ${sessionId}:`, error);
     }
-  }, [user, convertToolsUsed, clearProcessedMessages, shouldProcessMessage]);
+  }, [user, convertToolsUsed, clearProcessedMessages]);
 
   const deleteSession = useCallback(async (sessionId: string) => {
     if (!user) return;
@@ -414,6 +420,11 @@ export const useAgentConversation = () => {
       startNewSession();
     }
   }, [user, currentSessionId, sessions.length, startNewSession, isLoadingSessions]);
+
+  // Debug effect to track conversations changes
+  useEffect(() => {
+    console.log(`🔄 Conversations state updated, now has ${conversations.length} messages:`, conversations.map(m => ({ id: m.id, role: m.role, content: m.content.substring(0, 50) })));
+  }, [conversations]);
 
   return {
     currentSessionId,

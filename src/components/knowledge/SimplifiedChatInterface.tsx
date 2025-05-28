@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Bot, Loader2, MessageSquare, Search, Github, Code, Brain } from 'lucide-react';
@@ -32,6 +32,13 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   scrollAreaRef,
   onFollowUpAction
 }) => {
+  // Debug effect to track conversations prop changes
+  useEffect(() => {
+    console.log(`🎯 SimplifiedChatInterface received ${conversations.length} conversations:`, 
+      conversations.map(c => ({ id: c.id, role: c.role, content: c.content.substring(0, 50) + '...' }))
+    );
+  }, [conversations]);
+
   const suggestedActions = [
     {
       icon: <MessageSquare className="h-4 w-4" />,
@@ -109,13 +116,16 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
           )}
 
           <div className="space-y-8">
-            {conversations.map((message) => (
-              <AIAgentMessage 
-                key={message.id}
-                message={message}
-                onFollowUpAction={onFollowUpAction}
-              />
-            ))}
+            {conversations.map((message) => {
+              console.log(`🎨 Rendering message: ${message.id} (${message.role}): ${message.content.substring(0, 50)}...`);
+              return (
+                <AIAgentMessage 
+                  key={message.id}
+                  message={message}
+                  onFollowUpAction={onFollowUpAction}
+                />
+              );
+            })}
           </div>
           
           {toolsActive && tools.length > 0 && (
