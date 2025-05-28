@@ -51,7 +51,6 @@ export const useAgentConversation = () => {
     const newSessionId = generateSessionId();
     setCurrentSessionId(newSessionId);
     setConversations([]);
-    console.log('🔄 Starting new session:', newSessionId);
 
     try {
       const { error } = await supabase
@@ -65,7 +64,6 @@ export const useAgentConversation = () => {
 
       if (error) {
         console.error('Error creating session:', error);
-        console.log('Using local session management as fallback');
       }
 
       await loadSessions();
@@ -139,7 +137,6 @@ export const useAgentConversation = () => {
         : [];
       
       setConversations(parsedMessages);
-      console.log('📥 Loaded session with messages:', parsedMessages.length);
     } catch (error) {
       console.error('Error loading session:', error);
     }
@@ -174,44 +171,29 @@ export const useAgentConversation = () => {
     }
   };
 
-  // Add a message to the current conversation with extensive debugging
+  // Add a message to the current conversation with fixed database persistence
   const addMessage = async (message: ConversationMessage) => {
     if (!currentSessionId || !user) {
       console.error('❌ Cannot add message: missing sessionId or user');
       return;
     }
 
-    console.log('📨 Adding message:', {
-      id: message.id,
-      role: message.role,
-      type: message.messageType,
-      content: message.content.substring(0, 50) + '...',
-      timestamp: message.timestamp
-    });
-
     // Use functional update to ensure we get the latest state
     setConversations(prevConversations => {
       const newConversations = [...prevConversations, message];
-      console.log('💬 Conversations updated:', {
-        previousCount: prevConversations.length,
-        newCount: newConversations.length,
-        latestMessage: {
-          id: message.id,
-          role: message.role,
-          type: message.messageType || 'response'
-        }
-      });
       
-      // Log all message IDs for debugging
-      console.log('📋 All message IDs:', newConversations.map(m => ({ id: m.id, role: m.role, type: m.messageType })));
+      // Save to database with the updated conversations state
+      saveToDatabase(newConversations, message);
       
       return newConversations;
     });
+  };
+
+  // Save conversations to database - extracted to fix persistence bug
+  const saveToDatabase = async (updatedConversations: ConversationMessage[], latestMessage: ConversationMessage) => {
+    if (!currentSessionId || !user) return;
 
     try {
-      // Get the updated conversations for saving
-      const updatedConversations = [...conversations, message];
-      
       const { error } = await supabase
         .from('agent_sessions')
         .update({
@@ -229,10 +211,10 @@ export const useAgentConversation = () => {
       }
 
       // Update session title if this is the first user message
-      if (message.role === 'user' && updatedConversations.filter(m => m.role === 'user').length === 1) {
-        const title = message.content.length > 50 
-          ? message.content.substring(0, 47) + '...'
-          : message.content;
+      if (latestMessage.role === 'user' && updatedConversations.filter(m => m.role === 'user').length === 1) {
+        const title = latestMessage.content.length > 50 
+          ? latestMessage.content.substring(0, 47) + '...'
+          : latestMessage.content;
         
         await supabase
           .from('agent_sessions')
@@ -247,44 +229,23 @@ export const useAgentConversation = () => {
 
   // Update an existing message
   const updateMessage = async (messageId: string, updates: Partial<ConversationMessage>) => {
-    console.log('🔄 Updating message:', messageId, updates);
-    
     setConversations(prevConversations => {
       const updatedConversations = prevConversations.map(msg => 
         msg.id === messageId ? { ...msg, ...updates } : msg
       );
       
-      console.log('📝 Message updated in conversations');
+      // Save updated conversations to database
+      if (currentSessionId && user) {
+        saveToDatabase(updatedConversations, updatedConversations.find(m => m.id === messageId)!);
+      }
+      
       return updatedConversations;
     });
-
-    if (currentSessionId && user) {
-      try {
-        // Use current conversations state for saving
-        const updatedConversations = conversations.map(msg => 
-          msg.id === messageId ? { ...msg, ...updates } : msg
-        );
-        
-        await supabase
-          .from('agent_sessions')
-          .update({
-            messages: updatedConversations.map(msg => ({
-              ...msg,
-              timestamp: msg.timestamp.toISOString()
-            })),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', currentSessionId)
-          .eq('user_id', user.id);
-      } catch (error) {
-        console.error('Error updating message:', error);
-      }
-    }
   };
 
-  // Get conversation history for API calls
+  // Get conversation history for API calls - optimized
   const getConversationHistory = () => {
-    const history = conversations
+    return conversations
       .filter(msg => msg.messageType !== 'step-announcement' && 
                     msg.messageType !== 'partial-result' && 
                     msg.messageType !== 'tool-announcement')
@@ -292,27 +253,15 @@ export const useAgentConversation = () => {
         role: msg.role,
         content: msg.content
       }));
-    
-    console.log('📖 Getting conversation history:', history.length, 'messages');
-    return history;
   };
 
   // Initialize session on user change
   useEffect(() => {
     if (user && !currentSessionId) {
-      console.log('🚀 Initializing session for user:', user.id);
       startNewSession();
       loadSessions();
     }
   }, [user]);
-
-  // Debug log whenever conversations change
-  useEffect(() => {
-    console.log('🔍 Conversations state changed:', {
-      count: conversations.length,
-      messages: conversations.map(m => ({ id: m.id, role: m.role, type: m.messageType, content: m.content.substring(0, 30) + '...' }))
-    });
-  }, [conversations]);
 
   return {
     currentSessionId,
