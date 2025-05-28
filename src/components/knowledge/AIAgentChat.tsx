@@ -2,12 +2,13 @@
 import React, { useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
-import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
+import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
 import { useConversationContext } from '@/contexts/ConversationContext';
 import { useMessagePersistence } from '@/hooks/conversation/useMessagePersistence';
+import { useSessionManager } from '@/hooks/conversation/useSessionManager';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
@@ -15,22 +16,11 @@ import SessionsSidebar from './SessionsSidebar';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
-  const {
-    currentSessionId,
-    sessions,
-    isLoadingSessions,
-    startNewSession,
-    deleteSession,
-    refreshConversationState
-  } = useAgentConversation();
 
   // Use context for UI state
   const {
     messages,
-    currentSession,
-    setCurrentSession,
-    sessions: contextSessions,
-    setSessions,
+    currentSessionId,
     isLoading,
     setIsLoading,
     input,
@@ -38,8 +28,18 @@ const AIAgentChat: React.FC = () => {
     tools,
     setTools,
     toolsActive,
-    setToolsActive
+    setToolsActive,
+    setCurrentSession
   } = useConversationContext();
+
+  // Use session manager for session operations
+  const { 
+    sessions,
+    isLoadingSessions,
+    loadExistingSessions,
+    startNewSession,
+    deleteSession
+  } = useSessionManager();
 
   // Use message persistence hook
   const { 
@@ -65,11 +65,6 @@ const AIAgentChat: React.FC = () => {
   } = useToolProgress();
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  // Sync sessions from hook to context
-  useEffect(() => {
-    setSessions(sessions);
-  }, [sessions, setSessions]);
 
   // Sync tools from hook to context
   useEffect(() => {
@@ -153,12 +148,26 @@ const AIAgentChat: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  // Load sessions on mount
+  useEffect(() => {
+    if (user && sessions.length === 0 && !isLoadingSessions) {
+      loadExistingSessions();
+    }
+  }, [user, sessions.length, loadExistingSessions, isLoadingSessions]);
+
+  // Auto-start new session if none exists
+  useEffect(() => {
+    if (user && !currentSessionId && sessions.length === 0 && !isLoadingSessions) {
+      startNewSession();
+    }
+  }, [user, currentSessionId, sessions.length, startNewSession, isLoadingSessions]);
+
   // Handle session loading with new persistence hook
   const handleLoadSession = async (sessionId: string) => {
     if (!loadConversation) return;
     
     // Find session data from sessions list
-    const sessionData = contextSessions.find(s => s.id === sessionId);
+    const sessionData = sessions.find(s => s.id === sessionId);
     if (sessionData) {
       setCurrentSession(sessionData);
     }
@@ -305,7 +314,7 @@ const AIAgentChat: React.FC = () => {
     <div className="flex h-full">
       {showSessions && (
         <SessionsSidebar
-          sessions={contextSessions}
+          sessions={sessions}
           currentSessionId={currentSessionId}
           onStartNewSession={startNewSession}
           onLoadSession={handleLoadSession}

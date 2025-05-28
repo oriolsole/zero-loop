@@ -12,7 +12,7 @@ import ToolExecutionCard from './ToolExecutionCard';
 import StatusMessage from './StatusMessage';
 
 interface SimplifiedChatInterfaceProps {
-  conversations: ConversationMessage[];
+  conversations: ConversationMessage[]; // Keep for compatibility, but won't use
   isLoading: boolean;
   modelSettings: {
     provider: ModelProvider;
@@ -25,7 +25,6 @@ interface SimplifiedChatInterfaceProps {
 }
 
 const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
-  conversations,
   isLoading,
   modelSettings,
   tools,
@@ -33,18 +32,15 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   scrollAreaRef,
   onFollowUpAction
 }) => {
-  // Use context for centralized state access
+  // Use context for centralized state access - this is now the single source of truth
   const { messages } = useConversationContext();
 
-  // Debug effect to track conversations prop changes
+  // Debug effect to track messages from context
   useEffect(() => {
     console.log(`🎯 SimplifiedChatInterface using context messages: ${messages.length}`, 
       messages.map(c => ({ id: c.id, role: c.role, content: c.content.substring(0, 50) + '...' }))
     );
   }, [messages]);
-
-  // Use messages from context as the single source of truth
-  const displayMessages = messages;
 
   const suggestedActions = [
     {
@@ -77,7 +73,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
     <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
       <ScrollArea className="h-full" ref={scrollAreaRef}>
         <div className="max-w-4xl mx-auto px-6 py-8">
-          {displayMessages.length === 0 && (
+          {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
               <div className="w-20 h-20 mb-8 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center shadow-lg">
                 <Bot className="h-10 w-10 text-primary" />
@@ -123,7 +119,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
           )}
 
           <div className="space-y-8">
-            {displayMessages.map((message) => {
+            {messages.map((message) => {
               console.log(`🎨 Rendering message: ${message.id} (${message.role}): ${message.content.substring(0, 50)}...`);
               return (
                 <AIAgentMessage 

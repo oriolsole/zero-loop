@@ -13,6 +13,8 @@ interface ConversationContextType {
   // Session state
   currentSession: ConversationSession | null;
   setCurrentSession: (session: ConversationSession | null) => void;
+  currentSessionId: string | null; // Add for compatibility
+  setCurrentSessionId: (id: string | null) => void;
   sessions: ConversationSession[];
   setSessions: (sessions: ConversationSession[]) => void;
   
@@ -44,6 +46,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Message state
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [currentSession, setCurrentSession] = useState<ConversationSession | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   
   // Loading states
@@ -56,6 +59,25 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   
   // Input state
   const [input, setInput] = useState('');
+
+  // Sync session states when currentSession changes
+  const handleSetCurrentSession = useCallback((session: ConversationSession | null) => {
+    setCurrentSession(session);
+    setCurrentSessionId(session?.id || null);
+  }, []);
+
+  // Sync session states when currentSessionId changes
+  const handleSetCurrentSessionId = useCallback((id: string | null) => {
+    setCurrentSessionId(id);
+    if (id) {
+      const session = sessions.find(s => s.id === id);
+      if (session) {
+        setCurrentSession(session);
+      }
+    } else {
+      setCurrentSession(null);
+    }
+  }, [sessions]);
 
   // Message operations
   const addMessage = useCallback((message: ConversationMessage) => {
@@ -86,7 +108,9 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     
     // Session state
     currentSession,
-    setCurrentSession,
+    setCurrentSession: handleSetCurrentSession,
+    currentSessionId,
+    setCurrentSessionId: handleSetCurrentSessionId,
     sessions,
     setSessions,
     

@@ -7,7 +7,12 @@ import { ConversationMessage } from '@/hooks/useAgentConversation';
 
 export const useMessagePersistence = () => {
   const { user } = useAuth();
-  const { messages, setMessages, addMessage: addToContext, currentSession } = useConversationContext();
+  const { 
+    messages, 
+    setMessages, 
+    currentSession, 
+    currentSessionId 
+  } = useConversationContext();
 
   // Helper function to safely convert tools_used from database
   const convertToolsUsed = useCallback((toolsUsed: any): Array<{name: string; success: boolean; result?: any; error?: string;}> => {
@@ -85,9 +90,15 @@ export const useMessagePersistence = () => {
   }, [user, convertToolsUsed, setMessages]);
 
   const addMessage = useCallback(async (message: ConversationMessage) => {
-    if (!currentSession || !user) return;
+    // Use either currentSession or currentSessionId, prioritizing currentSession
+    const sessionId = currentSession?.id || currentSessionId;
+    
+    if (!sessionId || !user) {
+      console.error('❌ No session or user available for message persistence');
+      return;
+    }
 
-    console.log(`➕ Adding message to session ${currentSession.id}:`, message.id);
+    console.log(`➕ Adding message to session ${sessionId}:`, message.id);
 
     // Update context state immediately for better UX
     const currentMessages = [...messages];
@@ -105,7 +116,7 @@ export const useMessagePersistence = () => {
       const { error } = await supabase
         .from('agent_conversations')
         .insert({
-          session_id: currentSession.id,
+          session_id: sessionId,
           user_id: user.id,
           role: message.role,
           content: message.content,
@@ -134,10 +145,12 @@ export const useMessagePersistence = () => {
     } catch (error) {
       console.error('❌ Error saving message:', error);
     }
-  }, [currentSession, user, messages, setMessages]);
+  }, [currentSession, currentSessionId, user, messages, setMessages]);
 
   const refreshConversationState = useCallback(async () => {
-    if (!currentSession || !user) return;
+    const sessionId = currentSession?.id || currentSessionId;
+    
+    if (!sessionId || !user) return;
 
     try {
       const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -146,7 +159,7 @@ export const useMessagePersistence = () => {
       const { data, error } = await supabase
         .from('agent_conversations')
         .select('*')
-        .eq('session_id', currentSession.id)
+        .eq('session_id', sessionId)
         .eq('user_id', user.id)
         .gt('created_at', sinceTime)
         .order('created_at', { ascending: true });
@@ -172,7 +185,7 @@ export const useMessagePersistence = () => {
     } catch (error) {
       console.warn('Error refreshing conversation:', error);
     }
-  }, [currentSession, user, messages, convertToolsUsed, setMessages]);
+  }, [currentSession, currentSessionId, user, messages, convertToolsUsed, setMessages]);
 
   return {
     loadConversation,
