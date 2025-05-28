@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -387,11 +388,6 @@ export const useAgentConversation = () => {
       syncInProgress.current = false;
     }
   }, [currentSessionId, user, conversations, convertToolsUsed, shouldProcessMessage]);
-
-  // Reset processed messages when session changes
-  useEffect(() => {
-    processedMessageIds.current.clear();
-  }, [currentSessionId]);
 
   useEffect(() => {
     if (user && sessions.length === 0 && !isLoadingSessions) {
