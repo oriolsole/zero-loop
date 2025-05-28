@@ -51,7 +51,12 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       // Bracket links [text] - but not markdown links [text](url) - now safe since markdown links are already processed
       .replace(/\[([^\]]+)\]/g, '<button class="text-blue-400 hover:text-blue-300 underline cursor-pointer font-medium" onclick="window.handleBracketClick(\'$1\')">[$1]</button>')
       // URLs (make them clickable) - improved regex for better URL detection
-      .replace(/(https?:\/\/[^\s<>"{}|\\^`[\]\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline break-all">$1</a>')
+      // This regex looks for URLs that are NOT already inside href attributes
+      .replace(/(?<!href=["'])(?<!href=)https?:\/\/[^\s<>"{}|\\^`[\]]+(?=[\s<>"{}|\\^`[\]]*(?:[^>]*>|$))/g, (match) => {
+        // Clean the URL by removing any trailing punctuation or HTML-like content
+        const cleanUrl = match.replace(/[<>"{}|\\^`[\]]+.*$/, '').replace(/[.,;:!?]+$/, '');
+        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline break-all">${cleanUrl}</a>`;
+      })
       // Bullet lists (- item or * item)
       .replace(/^[\s]*[-*]\s+(.*)$/gm, '<li class="ml-4">$1</li>')
       // Numbered lists (1. item)
