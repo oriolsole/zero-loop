@@ -77,13 +77,13 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   const getMessageTypeLabel = () => {
     switch (message.messageType) {
       case 'thinking':
-        return 'Analyzing...';
+        return `Step ${message.stepNumber || 1}: Analyzing...`;
       case 'tool-usage':
-        return 'Using Tools...';
+        return `Step ${message.stepNumber || 2}: Using Tools...`;
       case 'tool-result':
-        return 'Results';
+        return `Step ${message.stepNumber || 3}: Results`;
       case 'reflection':
-        return 'Reflecting...';
+        return `Step ${message.stepNumber || 4}: Reflecting...`;
       case 'autonomous':
         return 'Autonomous Follow-up';
       default:
@@ -125,6 +125,11 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
             <span className="text-xs font-medium uppercase tracking-wide">
               {getMessageTypeLabel()}
             </span>
+            {message.toolName && (
+              <span className="text-xs opacity-70">
+                ({message.toolName})
+              </span>
+            )}
           </div>
         )}
 

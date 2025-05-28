@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Bot, MessageSquare, Search, Github, Brain } from 'lucide-react';
@@ -19,6 +19,21 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   scrollAreaRef,
   onFollowUpAction
 }) => {
+  // Debug conversations when they change
+  useEffect(() => {
+    console.log('🎨 SimplifiedChatInterface conversations updated:', {
+      total: conversations.length,
+      byType: conversations.reduce((acc, msg) => {
+        const type = msg.messageType || 'standard';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      atomicSteps: conversations.filter(msg => 
+        msg.messageType && ['thinking', 'tool-usage', 'tool-result', 'reflection'].includes(msg.messageType)
+      ).length
+    });
+  }, [conversations]);
+
   const suggestedActions = [
     {
       icon: <MessageSquare className="h-4 w-4" />,
@@ -96,13 +111,31 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
           )}
 
           <div className="space-y-8">
-            {conversations.map((message) => (
-              <AIAgentMessage 
-                key={message.id}
-                message={message}
-                onFollowUpAction={onFollowUpAction}
-              />
-            ))}
+            {conversations
+              .sort((a, b) => {
+                // Sort by timestamp first
+                const timeSort = a.timestamp.getTime() - b.timestamp.getTime();
+                if (timeSort !== 0) return timeSort;
+                
+                // If same timestamp, sort by step number (atomic steps)
+                if (a.stepNumber && b.stepNumber) {
+                  return a.stepNumber - b.stepNumber;
+                }
+                
+                // Put atomic steps before standard messages at same timestamp
+                if (a.stepNumber && !b.stepNumber) return -1;
+                if (!a.stepNumber && b.stepNumber) return 1;
+                
+                return 0;
+              })
+              .map((message) => (
+                <AIAgentMessage 
+                  key={`${message.id}-${message.stepNumber || 0}`}
+                  message={message}
+                  onFollowUpAction={onFollowUpAction}
+                />
+              ))
+            }
           </div>
           
           {isLoading && (
