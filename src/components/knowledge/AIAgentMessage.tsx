@@ -69,7 +69,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
             ? 'bg-primary text-primary-foreground ml-12' 
             : isSpecialLoopMessage
             ? `${getMessageTypeStyles()} mr-12`
-            : 'bg-secondary/50 mr-12 dark:bg-secondary/30'
+            : 'bg-secondary mr-12 dark:bg-secondary'
           }
         `}>
           {/* Loop iteration and message type indicator */}
