@@ -22,7 +22,9 @@ const AIAgentChat: React.FC = () => {
     addMessage,
     updateMessage,
     getConversationHistory,
-    deleteSession
+    deleteSession,
+    addAtomicStep,
+    updateAtomicStep
   } = useAgentConversation();
 
   const [input, setInput] = useState('');
@@ -80,8 +82,12 @@ const AIAgentChat: React.FC = () => {
     setIsLoading(true);
 
     try {
+      // Step 1: Show thinking step
+      await addAtomicStep('thinking', '🧠 Analyzing your request and determining the best approach...', undefined, 1);
+
       const conversationHistory = getConversationHistory();
 
+      // Call the AI agent with atomic processing enabled
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
           message,
@@ -89,7 +95,8 @@ const AIAgentChat: React.FC = () => {
           userId: user.id,
           sessionId: currentSessionId,
           streaming: false,
-          modelSettings: modelSettings
+          modelSettings: modelSettings,
+          atomicMode: true // Enable atomic step processing
         }
       });
 
@@ -101,11 +108,14 @@ const AIAgentChat: React.FC = () => {
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
+      // The backend will now handle adding atomic steps through real-time updates
+      // Main response comes back here
       const assistantMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.message,
-        timestamp: new Date()
+        timestamp: new Date(),
+        messageType: 'standard'
       };
 
       addMessage(assistantMessage);

@@ -1,4 +1,3 @@
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
@@ -7,7 +6,7 @@ import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 import { reflectAndDecide, submitFollowUpMessage } from './reflection-handler.ts';
 
 /**
- * Pure atomic loop handler - LLM decides everything
+ * Enhanced atomic loop handler - shows each step to the user
  */
 export async function handleUnifiedQuery(
   message: string,
@@ -16,15 +15,47 @@ export async function handleUnifiedQuery(
   sessionId: string | null,
   modelSettings: any,
   streaming: boolean,
-  supabase: any
+  supabase: any,
+  atomicMode: boolean = false
 ): Promise<any> {
-  console.log('🧠 Starting pure atomic LLM-driven loop');
+  console.log('🧠 Starting atomic LLM-driven loop with step visibility');
 
   let finalResponse = '';
   let allToolsUsed: any[] = [];
   let assistantMessageId: string | null = null;
+  let stepNumber = 2; // Step 1 was thinking, handled by frontend
+
+  const addAtomicStep = async (
+    messageType: 'thinking' | 'tool-usage' | 'tool-result' | 'reflection',
+    content: string,
+    toolName?: string
+  ) => {
+    if (!atomicMode || !userId || !sessionId) return;
+
+    try {
+      await supabase
+        .from('agent_conversations')
+        .insert({
+          session_id: sessionId,
+          user_id: userId,
+          role: 'assistant',
+          content,
+          message_type: messageType,
+          tool_name: toolName,
+          step_number: stepNumber++,
+          created_at: new Date().toISOString()
+        });
+    } catch (error) {
+      console.warn('Failed to add atomic step:', error);
+    }
+  };
 
   try {
+    // Step 2: Tool preparation
+    if (atomicMode) {
+      await addAtomicStep('tool-usage', '🔧 Preparing available tools and analyzing requirements...');
+    }
+
     // 1. Get available tools
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
@@ -43,6 +74,11 @@ export async function handleUnifiedQuery(
     const messages = createPureMessages(systemPrompt, conversationHistory, message);
 
     console.log('🎯 LLM making pure decision for:', message);
+
+    // Step 3: LLM reasoning
+    if (atomicMode) {
+      await addAtomicStep('thinking', '🤔 Analyzing request and deciding on the best approach...');
+    }
 
     // 3. Single atomic LLM call
     const modelRequestBody = {
@@ -82,6 +118,12 @@ export async function handleUnifiedQuery(
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
       console.log('⚡ LLM chose to use', data.choices[0].message.tool_calls.length, 'tools');
       
+      // Step 4: Tool execution
+      if (atomicMode) {
+        const toolNames = data.choices[0].message.tool_calls.map((call: any) => call.function.name).join(', ');
+        await addAtomicStep('tool-usage', `🔍 Executing tools: ${toolNames}...`);
+      }
+      
       const { toolResults, toolsUsed } = await executeTools(
         data.choices[0].message.tool_calls,
         mcps,
@@ -91,9 +133,29 @@ export async function handleUnifiedQuery(
       
       allToolsUsed = toolsUsed;
       
+      // Step 5: Tool results
+      if (atomicMode && toolsUsed.length > 0) {
+        const successfulTools = toolsUsed.filter(t => t.success);
+        const failedTools = toolsUsed.filter(t => !t.success);
+        
+        let resultContent = '✅ Tool execution completed:\n\n';
+        if (successfulTools.length > 0) {
+          resultContent += `✅ Successful: ${successfulTools.map(t => t.name).join(', ')}\n`;
+        }
+        if (failedTools.length > 0) {
+          resultContent += `❌ Failed: ${failedTools.map(t => t.name).join(', ')}\n`;
+        }
+        
+        await addAtomicStep('tool-result', resultContent);
+      }
+      
       // 5. Let LLM naturally incorporate results
       if (toolsUsed.length > 0) {
         console.log('🔄 LLM incorporating tool results naturally');
+        
+        if (atomicMode) {
+          await addAtomicStep('thinking', '🧠 Processing tool results and synthesizing response...');
+        }
         
         const toolResultMessage = toolsUsed.map(tool => {
           if (tool.success && tool.result) {
@@ -153,7 +215,7 @@ export async function handleUnifiedQuery(
       finalResponse = createFallbackResponse(message, allToolsUsed);
     }
 
-    // 8. Store result
+    // 8. Store main result
     if (userId && sessionId) {
       const { data: messageData, error: insertError } = await supabase
         .from('agent_conversations')
@@ -162,6 +224,7 @@ export async function handleUnifiedQuery(
           session_id: sessionId,
           role: 'assistant',
           content: finalResponse,
+          message_type: 'standard',
           created_at: new Date().toISOString()
         })
         .select('id')
@@ -172,7 +235,11 @@ export async function handleUnifiedQuery(
       }
     }
 
-    // 9. 🧠 PURE LLM REFLECTION - Let LLM decide if it should continue
+    // 9. 🧠 REFLECTION STEP
+    if (atomicMode) {
+      await addAtomicStep('reflection', '🤔 Evaluating response completeness and considering follow-up actions...');
+    }
+    
     console.log('🤔 Starting pure LLM reflection');
     const reflectionDecision = await reflectAndDecide(
       message,
@@ -185,6 +252,10 @@ export async function handleUnifiedQuery(
     if (reflectionDecision.continue && reflectionDecision.nextAction && assistantMessageId) {
       console.log('🔄 LLM decided to continue with:', reflectionDecision.nextAction);
       
+      if (atomicMode) {
+        await addAtomicStep('reflection', `🚀 Planning autonomous follow-up: ${reflectionDecision.nextAction}`);
+      }
+      
       await submitFollowUpMessage(
         reflectionDecision.nextAction,
         userId,
@@ -195,6 +266,10 @@ export async function handleUnifiedQuery(
       );
     } else {
       console.log('✅ LLM decided the response is complete');
+      
+      if (atomicMode) {
+        await addAtomicStep('reflection', '✅ Response is complete and comprehensive. No further action needed.');
+      }
     }
 
     return {
@@ -207,7 +282,7 @@ export async function handleUnifiedQuery(
     };
 
   } catch (error) {
-    console.error('❌ Pure atomic loop error:', error);
+    console.error('❌ Atomic loop error:', error);
     
     finalResponse = `I encountered an issue processing "${message}". Let me try a different approach.`;
     
@@ -218,6 +293,7 @@ export async function handleUnifiedQuery(
           session_id: sessionId,
           role: 'assistant',
           content: finalResponse,
+          message_type: 'standard',
           created_at: new Date().toISOString()
         });
       } catch (dbError) {

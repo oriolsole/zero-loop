@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,6 +8,9 @@ export interface ConversationMessage {
   content: string;
   timestamp: Date;
   isAutonomous?: boolean;
+  messageType?: 'thinking' | 'tool-usage' | 'tool-result' | 'reflection' | 'autonomous' | 'standard';
+  toolName?: string;
+  stepNumber?: number;
 }
 
 export interface ConversationSession {
@@ -34,6 +36,53 @@ export const useAgentConversation = () => {
     return truncated;
   };
 
+  // Add atomic step message
+  const addAtomicStep = useCallback(async (
+    messageType: 'thinking' | 'tool-usage' | 'tool-result' | 'reflection',
+    content: string,
+    toolName?: string,
+    stepNumber?: number
+  ) => {
+    if (!currentSessionId || !user) return;
+
+    const atomicMessage: ConversationMessage = {
+      id: `${messageType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      role: 'assistant',
+      content,
+      timestamp: new Date(),
+      messageType,
+      toolName,
+      stepNumber
+    };
+
+    setConversations(prev => [...prev, atomicMessage]);
+
+    // Store in database for persistence
+    try {
+      await supabase
+        .from('agent_conversations')
+        .insert({
+          session_id: currentSessionId,
+          user_id: user.id,
+          role: 'assistant',
+          content,
+          message_type: messageType,
+          tool_name: toolName,
+          step_number: stepNumber,
+          created_at: atomicMessage.timestamp.toISOString()
+        });
+    } catch (error) {
+      console.error('Error saving atomic step:', error);
+    }
+  }, [currentSessionId, user]);
+
+  // Update existing message (for streaming updates)
+  const updateAtomicStep = useCallback((messageId: string, content: string) => {
+    setConversations(prev => prev.map(msg => 
+      msg.id === messageId ? { ...msg, content } : msg
+    ));
+  }, []);
+
   const loadExistingSessions = useCallback(async () => {
     if (!user || isLoadingSessions) return;
 
@@ -42,7 +91,7 @@ export const useAgentConversation = () => {
     try {
       const { data: sessionData, error } = await supabase
         .from('agent_conversations')
-        .select('session_id, created_at, content, role')
+        .select('session_id, created_at, content, role, message_type')
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
 
@@ -153,7 +202,7 @@ export const useAgentConversation = () => {
       ));
     }
 
-    // Only store user messages here - assistant messages are handled by the backend
+    // Only store user messages here - assistant messages are handled by the backend or atomic steps
     if (message.role === 'user') {
       try {
         await supabase
@@ -197,7 +246,10 @@ export const useAgentConversation = () => {
         role: row.role as ConversationMessage['role'],
         content: row.content,
         timestamp: new Date(row.created_at),
-        isAutonomous: row.message_type === 'reflection'
+        isAutonomous: row.message_type === 'reflection' || row.message_type === 'autonomous',
+        messageType: row.message_type as ConversationMessage['messageType'] || 'standard',
+        toolName: row.tool_name,
+        stepNumber: row.step_number
       }));
 
       setConversations(messages);
@@ -229,10 +281,12 @@ export const useAgentConversation = () => {
   }, [user, currentSessionId]);
 
   const getConversationHistory = useCallback(() => {
-    return conversations.filter(msg => msg.role === 'user' || msg.role === 'assistant').map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }));
+    return conversations
+      .filter(msg => (msg.role === 'user' || msg.role === 'assistant') && msg.messageType !== 'thinking' && msg.messageType !== 'tool-usage' && msg.messageType !== 'reflection')
+      .map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
   }, [conversations]);
 
   // Listen for autonomous messages
@@ -262,7 +316,10 @@ export const useAgentConversation = () => {
               role: 'assistant',
               content: newRow.content,
               timestamp: new Date(newRow.created_at),
-              isAutonomous: newRow.message_type === 'reflection'
+              isAutonomous: newRow.message_type === 'reflection' || newRow.message_type === 'autonomous',
+              messageType: newRow.message_type as ConversationMessage['messageType'] || 'standard',
+              toolName: newRow.tool_name,
+              stepNumber: newRow.step_number
             };
 
             setConversations(prev => {
@@ -326,6 +383,8 @@ export const useAgentConversation = () => {
     updateMessage,
     deleteSession,
     getConversationHistory,
-    loadExistingSessions
+    loadExistingSessions,
+    addAtomicStep,
+    updateAtomicStep
   };
 };
