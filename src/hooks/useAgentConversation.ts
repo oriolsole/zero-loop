@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -104,65 +103,80 @@ export const useAgentConversation = () => {
     setIsLoadingSessions(true);
     
     try {
+      console.log('🔍 Loading existing sessions for user:', user.id);
+      
+      // Get all session data with better ordering
       const { data: sessionData, error } = await supabase
         .from('agent_conversations')
         .select('session_id, created_at, content, role')
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error loading session data:', error);
+        throw error;
+      }
+
+      console.log(`📊 Raw session data: ${sessionData?.length || 0} messages`);
 
       if (sessionData && sessionData.length > 0) {
-        const sessionMap = new Map<string, {
-          id: string;
-          firstMessage: string;
-          lastMessage: string;
-          messageCount: number;
-          created_at: Date;
-          updated_at: Date;
-        }>();
-
+        // Group messages by session_id
+        const sessionGroups = new Map<string, any[]>();
+        
         sessionData.forEach((row) => {
           const sessionId = row.session_id;
-          const createdAt = new Date(row.created_at);
-          
-          if (!sessionMap.has(sessionId)) {
-            sessionMap.set(sessionId, {
-              id: sessionId,
-              firstMessage: row.role === 'user' ? row.content : '',
-              lastMessage: row.content,
-              messageCount: 0,
-              created_at: createdAt,
-              updated_at: createdAt
-            });
+          if (!sessionGroups.has(sessionId)) {
+            sessionGroups.set(sessionId, []);
           }
-          
-          const session = sessionMap.get(sessionId)!;
-          session.messageCount++;
-          session.updated_at = createdAt > session.updated_at ? createdAt : session.updated_at;
-          session.lastMessage = row.content;
-          
-          if (row.role === 'user' && !session.firstMessage) {
-            session.firstMessage = row.content;
-          }
+          sessionGroups.get(sessionId)!.push(row);
         });
 
-        const sessionsArray: ConversationSession[] = Array.from(sessionMap.values())
-          .map(session => ({
-            id: session.id,
-            title: generateSessionTitle(session.firstMessage || session.lastMessage),
-            created_at: session.created_at,
-            updated_at: session.updated_at,
-            lastMessage: session.lastMessage,
-            messageCount: session.messageCount
-          }))
-          .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
+        console.log(`📁 Found ${sessionGroups.size} unique sessions`);
+
+        // Process each session to extract metadata
+        const sessionsArray: ConversationSession[] = [];
+        
+        sessionGroups.forEach((messages, sessionId) => {
+          // Sort messages by creation time within this session
+          messages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          
+          const firstMessage = messages[0];
+          const lastMessage = messages[messages.length - 1];
+          
+          // Find the first user message for the title, or use the first message if no user message exists
+          const titleMessage = messages.find(msg => msg.role === 'user') || firstMessage;
+          
+          const session: ConversationSession = {
+            id: sessionId,
+            title: generateSessionTitle(titleMessage.content),
+            created_at: new Date(firstMessage.created_at),
+            updated_at: new Date(lastMessage.created_at),
+            lastMessage: lastMessage.content,
+            messageCount: messages.length
+          };
+          
+          sessionsArray.push(session);
+          console.log(`📝 Session ${sessionId}: ${messages.length} messages, title: "${session.title}"`);
+        });
+
+        // Sort sessions by most recent activity
+        sessionsArray.sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
 
         setSessions(sessionsArray);
-        console.log(`📁 Loaded ${sessionsArray.length} existing sessions`);
+        console.log(`✅ Successfully loaded ${sessionsArray.length} sessions`);
+        console.log('🕒 Sessions by recency:', sessionsArray.map(s => ({ 
+          id: s.id.substring(0, 8), 
+          title: s.title.substring(0, 30), 
+          updated: s.updated_at.toLocaleString(),
+          count: s.messageCount 
+        })));
+      } else {
+        console.log('📭 No session data found');
+        setSessions([]);
       }
     } catch (error) {
       console.error('❌ Error loading existing sessions:', error);
+      setSessions([]);
     } finally {
       setIsLoadingSessions(false);
     }
