@@ -19,15 +19,15 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   const getMessageTypeStyles = () => {
     switch (message.messageType) {
       case 'loop-start':
-        return 'bg-blue-50 border-blue-200 dark:bg-blue-950/50 dark:border-blue-800/60';
+        return 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800/40';
       case 'loop-reflection':
-        return 'bg-purple-50 border-purple-200 dark:bg-purple-950/50 dark:border-purple-800/60';
+        return 'bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800/40';
       case 'tool-executing':
-        return 'bg-orange-50 border-orange-200 dark:bg-orange-950/50 dark:border-orange-800/60';
+        return 'bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800/40';
       case 'loop-enhancement':
-        return 'bg-green-50 border-green-200 dark:bg-green-950/50 dark:border-green-800/60';
+        return 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800/40';
       case 'loop-complete':
-        return 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/50 dark:border-emerald-800/60';
+        return 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800/40';
       default:
         return '';
     }
@@ -74,13 +74,13 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
         `}>
           {/* Loop iteration and message type indicator */}
           {!isUser && (isLoopIteration || isSpecialLoopMessage) && (
-            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground dark:text-muted-foreground/90">
+            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground/90 dark:text-muted-foreground/80">
               {getMessageTypeIcon()}
               {isLoopIteration && (
-                <span className="text-foreground/80 dark:text-foreground/90">Loop {message.loopIteration}</span>
+                <span className="text-foreground/90 dark:text-foreground/80 font-medium">Loop {message.loopIteration}</span>
               )}
               {message.messageType && (
-                <Badge variant="outline" className="text-xs border-current/30 dark:border-current/40 bg-background/50 dark:bg-background/30">
+                <Badge variant="outline" className="text-xs border-current/40 dark:border-current/30 bg-background/60 dark:bg-background/40 text-foreground/80 dark:text-foreground/70">
                   {message.messageType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 </Badge>
               )}
@@ -95,16 +95,16 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
             )}
           </div>
           
-          {/* Improvement reasoning for reflection messages */}
+          {/* Improvement reasoning for reflection messages - Enhanced dark theme */}
           {message.improvementReasoning && !isUser && message.messageType === 'loop-reflection' && (
-            <div className="mt-3 p-3 bg-muted/60 border border-muted-foreground/30 rounded-lg text-sm dark:bg-muted/40 dark:border-muted-foreground/40">
+            <div className="mt-3 p-3 bg-muted/70 border border-muted-foreground/40 rounded-lg text-sm dark:bg-muted/30 dark:border-muted-foreground/30">
               <div className="flex items-center gap-2 mb-2">
                 <Eye className="h-4 w-4 text-purple-500 dark:text-purple-400" />
                 <span className="font-medium text-purple-700 dark:text-purple-300">
                   Why I'm improving:
                 </span>
               </div>
-              <p className="m-0 text-muted-foreground dark:text-muted-foreground/90">{message.improvementReasoning}</p>
+              <p className="m-0 text-muted-foreground/90 dark:text-foreground/80 leading-relaxed">{message.improvementReasoning}</p>
             </div>
           )}
           
@@ -123,7 +123,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
             </div>
           )}
           
-          <div className="text-xs text-muted-foreground mt-2 opacity-70 dark:text-muted-foreground/80">
+          <div className="text-xs text-muted-foreground/70 mt-2 dark:text-muted-foreground/60">
             {message.timestamp.toLocaleTimeString()}
           </div>
         </div>

@@ -1,7 +1,7 @@
-
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { useMessageDeduplication } from './useMessageDeduplication';
 
 export interface ConversationMessage {
   id: string;
@@ -45,9 +45,18 @@ export const useAgentConversation = () => {
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   
-  // Track processed messages to prevent duplicates
-  const processedMessageIds = useRef<Set<string>>(new Set());
-  const isProcessingRef = useRef(false);
+  // Use deduplication hook
+  const {
+    shouldProcessMessage,
+    isRequestInProgress,
+    markRequestInProgress,
+    markRequestCompleted,
+    cleanupProcessedMessages
+  } = useMessageDeduplication();
+  
+  // Track last sync time to prevent excessive polling
+  const lastSyncTime = useRef<number>(0);
+  const syncInProgress = useRef<boolean>(false);
 
   const generateSessionTitle = (firstMessage: string): string => {
     const truncated = firstMessage.length > 50 
@@ -60,7 +69,6 @@ export const useAgentConversation = () => {
   const convertToolsUsed = useCallback((toolsUsed: any): Array<{name: string; success: boolean; result?: any; error?: string;}> => {
     if (!toolsUsed) return [];
     
-    // Handle different data formats from database
     if (typeof toolsUsed === 'string') {
       try {
         toolsUsed = JSON.parse(toolsUsed);
@@ -165,9 +173,6 @@ export const useAgentConversation = () => {
     setCurrentSessionId(sessionId);
     setConversations([]);
     
-    // Reset processed messages for new session
-    processedMessageIds.current.clear();
-    
     const newSession: ConversationSession = {
       id: sessionId,
       title: 'New Conversation',
@@ -182,20 +187,16 @@ export const useAgentConversation = () => {
   const addMessage = useCallback(async (message: ConversationMessage) => {
     if (!currentSessionId || !user) return;
 
-    // Prevent duplicate additions
-    if (processedMessageIds.current.has(message.id)) {
-      console.log(`Message ${message.id} already processed, skipping`);
+    // Check for duplicates using the deduplication hook
+    if (!shouldProcessMessage(message)) {
+      console.log(`Duplicate message filtered: ${message.id}`);
       return;
     }
 
-    // Add to processed set immediately
-    processedMessageIds.current.add(message.id);
-
-    // Update local state
+    // Update local state immediately for better UX
     setConversations(prev => {
       const exists = prev.some(m => m.id === message.id);
       if (exists) {
-        console.log(`Message ${message.id} already exists in state, skipping`);
         return prev;
       }
       return [...prev, message];
@@ -227,25 +228,9 @@ export const useAgentConversation = () => {
       ));
     }
 
-    // Save to database (only if not already processed)
+    // Save to database with better error handling
     try {
-      // Check if message already exists in database to prevent duplicates
-      const { data: existingMessage } = await supabase
-        .from('agent_conversations')
-        .select('id')
-        .eq('session_id', currentSessionId)
-        .eq('user_id', user.id)
-        .eq('content', message.content)
-        .eq('role', message.role)
-        .eq('created_at', message.timestamp.toISOString())
-        .maybeSingle();
-
-      if (existingMessage) {
-        console.log('Message already exists in database, skipping insert');
-        return;
-      }
-
-      await supabase
+      const { error } = await supabase
         .from('agent_conversations')
         .insert({
           session_id: currentSessionId,
@@ -262,12 +247,22 @@ export const useAgentConversation = () => {
           should_continue_loop: message.shouldContinueLoop || null,
           created_at: message.timestamp.toISOString()
         });
+
+      if (error) {
+        console.error('Error saving message:', error);
+        // Don't remove from local state if it's a duplicate constraint error
+        if (!error.message.includes('unique constraint') && !error.message.includes('duplicate')) {
+          // Remove from local state if it's not a duplicate error
+          setConversations(prev => prev.filter(m => m.id !== message.id));
+        }
+      }
     } catch (error) {
       console.error('Error saving message:', error);
-      // Remove from processed set if save failed
-      processedMessageIds.current.delete(message.id);
     }
-  }, [currentSessionId, user, conversations.length]);
+
+    // Cleanup old processed messages periodically
+    cleanupProcessedMessages();
+  }, [currentSessionId, user, conversations.length, shouldProcessMessage, cleanupProcessedMessages]);
 
   const updateMessage = useCallback((messageId: string, updates: Partial<ConversationMessage>) => {
     setConversations(prev => prev.map(msg => 
@@ -280,9 +275,6 @@ export const useAgentConversation = () => {
 
     setCurrentSessionId(sessionId);
     
-    // Reset processed messages for the session
-    processedMessageIds.current.clear();
-    
     try {
       const { data, error } = await supabase
         .from('agent_conversations')
@@ -293,12 +285,9 @@ export const useAgentConversation = () => {
 
       if (error) throw error;
 
-      const messages: ConversationMessage[] = data.map(row => {
-        const messageId = row.id.toString();
-        processedMessageIds.current.add(messageId);
-        
-        return {
-          id: messageId,
+      const messages: ConversationMessage[] = data
+        .map(row => ({
+          id: row.id.toString(),
           role: row.role as ConversationMessage['role'],
           content: row.content,
           timestamp: new Date(row.created_at),
@@ -311,15 +300,15 @@ export const useAgentConversation = () => {
           loopIteration: row.loop_iteration || 0,
           improvementReasoning: row.improvement_reasoning || undefined,
           shouldContinueLoop: row.should_continue_loop || undefined
-        };
-      });
+        }))
+        .filter(message => shouldProcessMessage(message)); // Filter duplicates
 
       setConversations(messages);
       console.log(`Loaded ${messages.length} messages for session ${sessionId}`);
     } catch (error) {
       console.error('Error loading session:', error);
     }
-  }, [user, convertToolsUsed]);
+  }, [user, convertToolsUsed, shouldProcessMessage]);
 
   const deleteSession = useCallback(async (sessionId: string) => {
     if (!user) return;
@@ -336,7 +325,6 @@ export const useAgentConversation = () => {
       if (currentSessionId === sessionId) {
         setCurrentSessionId(null);
         setConversations([]);
-        processedMessageIds.current.clear();
       }
     } catch (error) {
       console.error('Error deleting session:', error);
@@ -349,6 +337,56 @@ export const useAgentConversation = () => {
       content: msg.content
     }));
   }, [conversations]);
+
+  // Optimized refresh with throttling
+  const refreshConversationState = useCallback(async () => {
+    if (!currentSessionId || !user || syncInProgress.current) return;
+
+    const now = Date.now();
+    if (now - lastSyncTime.current < 5000) { // Throttle to max once per 5 seconds
+      return;
+    }
+
+    syncInProgress.current = true;
+    lastSyncTime.current = now;
+
+    try {
+      const lastMessage = conversations.length > 0 ? conversations[conversations.length - 1] : null;
+      const sinceTime = lastMessage ? lastMessage.timestamp.toISOString() : new Date(Date.now() - 60000).toISOString();
+
+      const { data, error } = await supabase
+        .from('agent_conversations')
+        .select('*')
+        .eq('session_id', currentSessionId)
+        .eq('user_id', user.id)
+        .gt('created_at', sinceTime)
+        .order('created_at', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        const newMessages = data
+          .map(row => ({
+            id: row.id.toString(),
+            role: row.role as ConversationMessage['role'],
+            content: row.content,
+            timestamp: new Date(row.created_at),
+            messageType: row.message_type as ConversationMessage['messageType'] || undefined,
+            toolsUsed: convertToolsUsed(row.tools_used),
+            loopIteration: row.loop_iteration || 0,
+            improvementReasoning: row.improvement_reasoning || undefined,
+            shouldContinueLoop: row.should_continue_loop || undefined
+          }))
+          .filter(message => shouldProcessMessage(message));
+
+        if (newMessages.length > 0) {
+          setConversations(prev => [...prev, ...newMessages]);
+        }
+      }
+    } catch (error) {
+      console.warn('Error refreshing conversation:', error);
+    } finally {
+      syncInProgress.current = false;
+    }
+  }, [currentSessionId, user, conversations, convertToolsUsed, shouldProcessMessage]);
 
   // Reset processed messages when session changes
   useEffect(() => {
@@ -378,6 +416,7 @@ export const useAgentConversation = () => {
     updateMessage,
     deleteSession,
     getConversationHistory,
-    loadExistingSessions
+    loadExistingSessions,
+    refreshConversationState
   };
 };

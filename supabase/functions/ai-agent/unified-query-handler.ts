@@ -40,6 +40,7 @@ export async function handleUnifiedQuery(
           .eq('content', content)
           .eq('message_type', messageType)
           .eq('loop_iteration', loopIter)
+          .gte('created_at', new Date(Date.now() - 10000).toISOString()) // Only check last 10 seconds
           .maybeSingle();
         
         return !error && data !== null;
@@ -49,17 +50,17 @@ export async function handleUnifiedQuery(
     };
 
     // Helper function to insert message with duplicate prevention
-    const insertMessage = async (content: string, messageType: string, additionalData: any = {}) => {
-      if (!userId || !sessionId) return;
+    const insertMessage = async (content: string, messageType: string, additionalData: any = {}): Promise<boolean> => {
+      if (!userId || !sessionId) return false;
       
       const exists = await messageExists(content, messageType, loopIteration);
       if (exists) {
         console.log(`Message already exists: ${messageType} (loop ${loopIteration})`);
-        return;
+        return false;
       }
       
       try {
-        await supabase.from('agent_conversations').insert({
+        const { error } = await supabase.from('agent_conversations').insert({
           user_id: userId,
           session_id: sessionId,
           role: 'assistant',
@@ -69,9 +70,17 @@ export async function handleUnifiedQuery(
           created_at: new Date().toISOString(),
           ...additionalData
         });
+        
+        if (error) {
+          console.error(`Failed to insert message: ${messageType}`, error);
+          return false;
+        }
+        
         console.log(`✅ Inserted message: ${messageType} (loop ${loopIteration})`);
+        return true;
       } catch (error) {
         console.error(`Failed to insert message: ${messageType}`, error);
+        return false;
       }
     };
 
