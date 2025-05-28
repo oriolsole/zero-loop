@@ -14,9 +14,7 @@ interface ConversationContextType {
   clearMessages: () => void;
   setMessages: React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
   
-  // Session management
-  sessionId: string | null;
-  setSessionId: React.Dispatch<React.SetStateAction<string | null>>;
+  // Session management - unified session ID tracking
   currentSessionId: string | null;
   setCurrentSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   currentSession: ConversationSession | null;
@@ -48,7 +46,7 @@ const ConversationContext = createContext<ConversationContextType | undefined>(u
 
 export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentSession, setCurrentSession] = useState<ConversationSession | null>(null);
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,8 +57,8 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const { user } = useAuth();
   const { persistMessageToDatabase, loadConversationFromDatabase } = useMessageManager();
 
-  // Simplified message origin tracking
-  const localMessageIds = React.useRef<Set<string>>(new Set());
+  // Track only user messages as local (since they're added before backend response)
+  const localUserMessageIds = React.useRef<Set<string>>(new Set());
 
   // Helper to safely convert messageType
   const safeMessageType = (messageType: any): ConversationMessage['messageType'] => {
@@ -115,8 +113,10 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         return prev;
       }
       
-      // Mark as locally added
-      localMessageIds.current.add(message.id);
+      // Track user messages as local
+      if (message.role === 'user') {
+        localUserMessageIds.current.add(message.id);
+      }
       
       const newMessages = [...prev, message].sort((a, b) => 
         a.timestamp.getTime() - b.timestamp.getTime()
@@ -147,7 +147,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const clearMessages = useCallback(() => {
     console.log('🧹 Clearing all messages from context');
     setMessages([]);
-    localMessageIds.current.clear();
+    localUserMessageIds.current.clear();
   }, []);
 
   // Add assistant response directly to context (for backend responses)
@@ -158,7 +158,6 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // Persist message to database only
   const persistMessage = useCallback(async (message: ConversationMessage): Promise<boolean> => {
-    const currentSessionId = currentSession?.id || sessionId;
     if (!currentSessionId) {
       console.error('❌ No session available for persistence');
       return false;
@@ -166,7 +165,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     console.log(`💾 Persisting message: ${message.id}`);
     return await persistMessageToDatabase(message, currentSessionId);
-  }, [currentSession, sessionId, persistMessageToDatabase]);
+  }, [currentSessionId, persistMessageToDatabase]);
 
   // Load conversation from database and update context
   const loadConversation = useCallback(async (sessionId: string) => {
@@ -180,48 +179,57 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     setMessages(loadedMessages);
     
     // Mark all loaded messages as processed
-    loadedMessages.forEach(msg => localMessageIds.current.add(msg.id));
+    loadedMessages.forEach(msg => {
+      if (msg.role === 'user') {
+        localUserMessageIds.current.add(msg.id);
+      }
+    });
   }, [loadConversationFromDatabase, clearMessages]);
 
-  // Simplified real-time subscription - only for external updates
+  // Real-time subscription with proper session tracking
   useEffect(() => {
-    if (!user?.id || !sessionId) return;
+    if (!user?.id || !currentSessionId) {
+      console.log('🔌 No user or session for real-time subscription');
+      return;
+    }
 
-    console.log(`🔗 Setting up real-time subscription for session: ${sessionId}`);
+    console.log(`🔗 Setting up real-time subscription for session: ${currentSessionId}`);
 
     const channel = supabase
-      .channel('agent-conversations')
+      .channel(`agent-conversations-${currentSessionId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'agent_conversations',
-          filter: `user_id=eq.${user.id},session_id=eq.${sessionId}`
+          filter: `user_id=eq.${user.id},session_id=eq.${currentSessionId}`
         },
         (payload) => {
           if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
             const newRecord = payload.new as Record<string, any>;
             
-            // Only process if this message wasn't added locally
-            if (!localMessageIds.current.has(newRecord.id)) {
-              console.log('📡 Processing external real-time INSERT:', newRecord.id);
-              
-              const newMessage: ConversationMessage = {
-                id: newRecord.id,
-                role: newRecord.role,
-                content: newRecord.content,
-                timestamp: new Date(newRecord.created_at),
-                messageType: safeMessageType(newRecord.message_type),
-                loopIteration: newRecord.loop_iteration || 0,
-                toolsUsed: safeToolsUsed(newRecord.tools_used),
-                improvementReasoning: newRecord.improvement_reasoning
-              };
-              
-              addMessageToContext(newMessage);
-            } else {
-              console.log('⚠️ Skipping locally originated message from real-time:', newRecord.id);
+            // Only filter out user messages that were added locally
+            // Always allow assistant messages through
+            if (newRecord.role === 'user' && localUserMessageIds.current.has(newRecord.id)) {
+              console.log('⚠️ Skipping locally originated user message from real-time:', newRecord.id);
+              return;
             }
+            
+            console.log('📡 Processing real-time INSERT:', newRecord.id, newRecord.role);
+            
+            const newMessage: ConversationMessage = {
+              id: newRecord.id,
+              role: newRecord.role,
+              content: newRecord.content,
+              timestamp: new Date(newRecord.created_at),
+              messageType: safeMessageType(newRecord.message_type),
+              loopIteration: newRecord.loop_iteration || 0,
+              toolsUsed: safeToolsUsed(newRecord.tools_used),
+              improvementReasoning: newRecord.improvement_reasoning
+            };
+            
+            addMessageToContext(newMessage);
           }
         }
       )
@@ -231,7 +239,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           event: 'UPDATE',
           schema: 'public',
           table: 'agent_conversations',
-          filter: `user_id=eq.${user.id},session_id=eq.${sessionId}`
+          filter: `user_id=eq.${user.id},session_id=eq.${currentSessionId}`
         },
         (payload) => {
           if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
@@ -251,18 +259,23 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .subscribe();
 
     return () => {
-      console.log('🔌 Cleaning up real-time subscription');
+      console.log('🔌 Cleaning up real-time subscription for session:', currentSessionId);
       supabase.removeChannel(channel);
     };
-  }, [user?.id, sessionId, addMessageToContext, updateMessageInContext]);
+  }, [user?.id, currentSessionId, addMessageToContext, updateMessageInContext]);
 
   // Clear message tracking when session changes
   useEffect(() => {
-    if (sessionId) {
-      localMessageIds.current.clear();
-      console.log('🧹 Cleared message tracking for new session:', sessionId);
+    if (currentSessionId) {
+      localUserMessageIds.current.clear();
+      console.log('🧹 Cleared user message tracking for new session:', currentSessionId);
     }
-  }, [sessionId]);
+  }, [currentSessionId]);
+
+  // Debug logging for session changes
+  useEffect(() => {
+    console.log('🎯 Current session ID changed to:', currentSessionId);
+  }, [currentSessionId]);
 
   const contextValue: ConversationContextType = {
     messages,
@@ -270,10 +283,8 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     updateMessageInContext,
     clearMessages,
     setMessages,
-    sessionId,
-    setSessionId,
-    currentSessionId: sessionId,
-    setCurrentSessionId: setSessionId,
+    currentSessionId,
+    setCurrentSessionId,
     currentSession,
     setCurrentSession,
     sessions,

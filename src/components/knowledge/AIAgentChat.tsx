@@ -197,7 +197,7 @@ const AIAgentChat: React.FC = () => {
 
       console.log('✅ AI agent response received:', data);
 
-      // Create and add assistant response to context immediately
+      // CRITICAL: Create and add assistant response to context IMMEDIATELY
       if (data.response) {
         const assistantMessageId = generateMessageId(data.response, 'assistant', currentSessionId);
         
@@ -212,10 +212,11 @@ const AIAgentChat: React.FC = () => {
           improvementReasoning: data.improvementReasoning || undefined
         };
 
-        console.log(`🤖 Adding assistant response to UI: ${assistantMessageId}`);
+        console.log(`🤖 Adding assistant response to UI immediately: ${assistantMessageId}`);
+        // Add to UI context first for immediate display
         addAssistantResponse(assistantMessage);
 
-        // Also persist to database
+        // Then persist to database (this will trigger real-time for other clients)
         await persistMessage(assistantMessage);
       }
       

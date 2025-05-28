@@ -106,6 +106,10 @@ export const useSessionManager = () => {
     if (!user) return;
 
     const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    console.log(`🆕 Starting new session: ${sessionId}`);
+    
+    // Set the current session ID first (this will trigger real-time subscription)
     setCurrentSessionId(sessionId);
     setMessages([]);
     
@@ -122,7 +126,8 @@ export const useSessionManager = () => {
     // Add to beginning of sessions list (most recent first)
     const updatedSessions = [newSession, ...sessions];
     setSessions(updatedSessions);
-    console.log(`🆕 Started new session: ${sessionId}`);
+    
+    console.log(`✅ New session started and real-time subscription should be active: ${sessionId}`);
     
     return sessionId;
   }, [user, setCurrentSessionId, setCurrentSession, setSessions, setMessages, sessions]);
