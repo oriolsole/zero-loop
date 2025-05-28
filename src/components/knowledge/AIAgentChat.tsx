@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -121,13 +122,13 @@ const AIAgentChat: React.FC = () => {
     setIsLoading(true);
     clearTools();
 
-    const statusId = addStatusMessage("Processing your request...");
+    const statusId = addStatusMessage("Thinking...");
 
     try {
       const conversationHistory = getConversationHistory();
 
       setTimeout(() => {
-        updateMessage(statusId, { content: "Thinking and deciding on approach..." });
+        updateMessage(statusId, { content: "Analyzing your request..." });
       }, 800);
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {

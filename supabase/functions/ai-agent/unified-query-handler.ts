@@ -8,7 +8,7 @@ import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 
 /**
  * Unified query handler that lets the LLM naturally decide tool usage
- * Knowledge retrieval is now tool-based, not forced
+ * Knowledge retrieval is now tool-based only, not forced
  */
 export async function handleUnifiedQuery(
   message: string,
@@ -19,13 +19,13 @@ export async function handleUnifiedQuery(
   streaming: boolean,
   supabase: any
 ): Promise<any> {
-  console.log('🤖 Starting unified query handler');
+  console.log('🤖 Starting unified query handler with optional knowledge');
 
   let finalResponse = '';
   let allToolsUsed: any[] = [];
 
   try {
-    // 1. Get available tools (including knowledge search as a tool)
+    // 1. Get available tools (knowledge search is just one of many available tools)
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
       .select('*')
@@ -39,18 +39,21 @@ export async function handleUnifiedQuery(
     const tools = convertMCPsToTools(mcps);
     const systemPrompt = generateUnifiedSystemPrompt(mcps);
 
-    // 2. Prepare messages without forced knowledge injection
+    // 2. Prepare messages WITHOUT any forced knowledge injection
     const messages = createKnowledgeAwareMessages(
       systemPrompt,
       conversationHistory,
       message
+      // NO relevantKnowledge parameter - let LLM decide via tools
     );
+
+    console.log('🧠 Calling LLM with natural tool choice (no forced knowledge)');
 
     // 3. Single LLM call with natural tool decision-making
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: 'auto',
+      tool_choice: 'auto', // LLM decides which tools to use
       temperature: 0.7,
       max_tokens: 2000,
       stream: streaming,
@@ -60,8 +63,6 @@ export async function handleUnifiedQuery(
         localModelUrl: modelSettings.localModelUrl
       })
     };
-
-    console.log('🧠 Calling LLM with unified approach');
 
     const response = await supabase.functions.invoke('ai-model-proxy', {
       body: modelRequestBody
@@ -82,7 +83,7 @@ export async function handleUnifiedQuery(
     const data = response.data;
     finalResponse = extractAssistantMessage(data) || '';
 
-    // 4. Execute tools if LLM chose to use them
+    // 4. Execute tools ONLY if LLM chose to use them
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
       console.log('🛠️ LLM chose to use', data.choices[0].message.tool_calls.length, 'tools');
       
@@ -112,10 +113,10 @@ export async function handleUnifiedQuery(
         }
       }
     } else {
-      console.log('✅ LLM responded directly without needing tools');
+      console.log('✅ LLM responded directly without using any tools');
     }
 
-    // 6. Persist valuable insights if tools were used extensively
+    // 6. Persist valuable insights if multiple tools were used
     if (userId && allToolsUsed.length > 1) {
       try {
         await persistInsightAsKnowledgeNode(
@@ -189,7 +190,7 @@ export async function handleUnifiedQuery(
 }
 
 /**
- * Generate unified system prompt that mentions knowledge access via tools
+ * Generate unified system prompt emphasizing natural tool usage
  */
 function generateUnifiedSystemPrompt(mcps: any[]): string {
   const mcpSummaries = mcps?.map(mcp => ({
@@ -202,36 +203,34 @@ function generateUnifiedSystemPrompt(mcps: any[]): string {
     .map(summary => `**${summary.name}**: ${summary.description}`)
     .join('\n');
 
-  return `You are an intelligent AI assistant with access to powerful tools and previous knowledge.
+  return `You are an intelligent AI assistant with access to powerful tools when needed.
 
-**🧠 UNIFIED RESPONSE STRATEGY:**
-1. **ANSWER DIRECTLY** from your general knowledge for simple questions
-2. **USE TOOLS WHEN VALUABLE** for:
-   - Current/real-time information
-   - Searching your previous knowledge and uploaded documents
-   - External data not in your general knowledge
-   - Multi-step research or analysis
-   - Specific data from external sources
+**🧠 NATURAL RESPONSE STRATEGY:**
+1. **ANSWER DIRECTLY** from your knowledge for simple questions, greetings, and general conversations
+2. **USE TOOLS SELECTIVELY** only when they add clear value:
+   - Knowledge Search: When you need to access previous learnings or uploaded documents
+   - Web Search: For current/real-time information not in your knowledge
+   - GitHub Tools: For code repository analysis
+   - Other tools: When specific external data is needed
 
-**🛠️ Available Tools:**
+**🛠️ Available Tools (use only when valuable):**
 ${toolDescriptions}
 
-**💡 Natural Decision Making:**
-- For simple greetings or basic questions, respond directly
-- Use the Knowledge Search tool when you need to access previous learnings or uploaded documents
-- Use Web Search for current information or external data
-- Use multiple tools progressively if needed
-- Build comprehensive answers step by step
-- Work efficiently - don't overuse tools when direct knowledge suffices
+**💡 Decision Guidelines:**
+- Simple greetings like "hello" → respond directly
+- Basic questions you can answer → respond directly  
+- Need previous knowledge → use Knowledge Search tool
+- Need current information → use Web Search tool
+- Complex research → use multiple tools progressively
+- **Don't overuse tools** - your general knowledge is extensive
 
-**📋 Response Guidelines:**
-- Be direct and conversational in your responses
-- Only use tools when they add clear value
-- Integrate tool results naturally into your answers
-- Provide actionable, helpful information
-- Cite sources when using external data
+**📋 Response Style:**
+- Be conversational and helpful
+- Only use tools when they genuinely improve your answer
+- Integrate tool results naturally when used
+- Provide clear, actionable information
 
-Remember: You have both comprehensive general knowledge and powerful tools. Use your judgment about when tools add value.`;
+Remember: You have comprehensive knowledge. Tools are available when needed, not required for every response.`;
 }
 
 /**
