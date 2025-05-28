@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Bot, User, ChevronDown, ChevronRight, CheckCircle, XCircle, ArrowRight, Brain, Cog, Target, Copy, Database, Lightbulb } from 'lucide-react';
+import { Bot, User, ChevronDown, ChevronRight, CheckCircle, XCircle, ArrowRight, Brain, Cog, Target, Copy, Database, Lightbulb, Zap } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import MarkdownRenderer from './MarkdownRenderer';
 import KnowledgeToolResult from './KnowledgeToolResult';
@@ -25,7 +26,23 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
 
   const getMessageStyle = () => {
     if (message.role === 'user') return 'bg-primary text-primary-foreground ml-16 shadow-sm';
+    
+    // Special styling for autonomous reflection messages
+    if (message.isAutonomous || message.messageType === 'reflection') {
+      return 'bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/20 dark:to-blue-950/20 border border-purple-200 dark:border-purple-800/30 mr-16 shadow-sm';
+    }
+    
     return 'bg-secondary/40 border border-border/50 mr-16 shadow-sm';
+  };
+
+  const getAvatarStyle = () => {
+    if (message.role === 'user') return 'bg-primary/10 border border-primary/20';
+    
+    if (message.isAutonomous || message.messageType === 'reflection') {
+      return 'bg-gradient-to-br from-purple-100 to-blue-100 dark:from-purple-900/30 dark:to-blue-900/30 border border-purple-300 dark:border-purple-700/50';
+    }
+    
+    return 'bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20';
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -66,14 +83,28 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   return (
     <div className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
       {message.role !== 'user' && (
-        <Avatar className="h-8 w-8 mt-1 flex-shrink-0 shadow-sm">
-          <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20">
-            <Bot className="h-4 w-4 text-primary" />
+        <Avatar className={`h-8 w-8 mt-1 flex-shrink-0 shadow-sm ${getAvatarStyle()}`}>
+          <AvatarFallback className="bg-transparent">
+            {message.isAutonomous || message.messageType === 'reflection' ? (
+              <Zap className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            ) : (
+              <Bot className="h-4 w-4 text-primary" />
+            )}
           </AvatarFallback>
         </Avatar>
       )}
       
       <div className={`rounded-2xl px-5 py-4 max-w-[75%] ${getMessageStyle()}`}>
+        {/* Autonomous message indicator */}
+        {(message.isAutonomous || message.messageType === 'reflection') && (
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-purple-200 dark:border-purple-800/30">
+            <Zap className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+            <span className="text-xs font-medium text-purple-600 dark:text-purple-400 uppercase tracking-wide">
+              Autonomous Follow-up
+            </span>
+          </div>
+        )}
+
         <div className="text-sm leading-relaxed">
           <MarkdownRenderer content={message.content} />
         </div>
@@ -85,7 +116,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
               <Button variant="ghost" size="sm" className="h-7 p-0 text-xs text-muted-foreground hover:text-foreground transition-colors">
                 {showReasoning ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
                 <Brain className="h-3 w-3 mr-1" />
-                AI Reasoning
+                {message.isAutonomous ? 'Reflection Reasoning' : 'AI Reasoning'}
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-3">
@@ -93,7 +124,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
                     <Brain className="h-3 w-3" />
-                    Thought Process
+                    {message.isAutonomous ? 'Autonomous Thought Process' : 'Thought Process'}
                   </span>
                   <Button 
                     variant="ghost" 

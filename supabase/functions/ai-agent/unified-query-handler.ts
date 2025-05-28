@@ -5,10 +5,11 @@ import { convertMCPsToTools } from './mcp-tools.ts';
 import { generateSystemPrompt, createKnowledgeAwareMessages } from './system-prompts.ts';
 import { extractAssistantMessage } from './response-handler.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
+import { reflectAndDecide, submitFollowUpMessage } from './reflection-handler.ts';
 
 /**
- * Pure atomic loop handler - LLM decides everything
- * Each call is atomic: receive → think → decide → execute → reflect → respond
+ * Pure atomic loop handler with autonomous reflection
+ * Each call is atomic: receive → think → decide → execute → reflect → respond → (optionally continue)
  */
 export async function handleUnifiedQuery(
   message: string,
@@ -19,10 +20,11 @@ export async function handleUnifiedQuery(
   streaming: boolean,
   supabase: any
 ): Promise<any> {
-  console.log('🧠 Starting atomic loop with LLM-driven decisions');
+  console.log('🧠 Starting atomic loop with autonomous reflection');
 
   let finalResponse = '';
   let allToolsUsed: any[] = [];
+  let assistantMessageId: string | null = null;
 
   try {
     // 1. Get available tools (LLM will decide if/when to use them)
@@ -135,16 +137,50 @@ export async function handleUnifiedQuery(
       finalResponse = createAtomicFallback(message, allToolsUsed);
     }
 
-    // 8. Store atomic result
+    // 8. Store atomic result and get message ID
     if (userId && sessionId) {
-      await supabase.from('agent_conversations').insert({
-        user_id: userId,
-        session_id: sessionId,
-        role: 'assistant',
-        content: finalResponse,
-        tools_used: allToolsUsed,
-        created_at: new Date().toISOString()
-      });
+      const { data: messageData, error: insertError } = await supabase
+        .from('agent_conversations')
+        .insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'assistant',
+          content: finalResponse,
+          tools_used: allToolsUsed,
+          created_at: new Date().toISOString()
+        })
+        .select('id')
+        .single();
+
+      if (!insertError && messageData) {
+        assistantMessageId = messageData.id;
+      }
+    }
+
+    // 9. 🧠 AUTONOMOUS REFLECTION - Decide if we should continue
+    console.log('🤔 Starting autonomous reflection phase');
+    const reflectionDecision = await reflectAndDecide(
+      message,
+      finalResponse,
+      allToolsUsed,
+      modelSettings,
+      supabase
+    );
+
+    if (reflectionDecision.continue && reflectionDecision.nextAction && assistantMessageId) {
+      console.log('🔄 Reflection decided to continue with:', reflectionDecision.nextAction);
+      
+      // Submit autonomous follow-up message
+      await submitFollowUpMessage(
+        reflectionDecision.nextAction,
+        userId,
+        sessionId,
+        assistantMessageId,
+        reflectionDecision.reasoning || 'Autonomous follow-up',
+        supabase
+      );
+    } else {
+      console.log('✅ Reflection decided the response is complete');
     }
 
     return {
@@ -152,7 +188,8 @@ export async function handleUnifiedQuery(
       message: finalResponse,
       atomicLoop: true,
       toolsUsed: allToolsUsed,
-      sessionId
+      sessionId,
+      reflectionDecision: reflectionDecision
     };
 
   } catch (error) {

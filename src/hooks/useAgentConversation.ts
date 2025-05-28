@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,8 +7,9 @@ export interface ConversationMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed';
+  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed' | 'reflection';
   isStreaming?: boolean;
+  isAutonomous?: boolean;
   toolsUsed?: Array<{
     name: string;
     success: boolean;
@@ -142,6 +142,7 @@ export const useAgentConversation = () => {
 
     setConversations(prev => [...prev, message]);
 
+    // Update session metadata
     if (message.role === 'user' && conversations.length === 0) {
       const title = generateSessionTitle(message.content);
       setSessions(prev => prev.map(session => 
@@ -167,23 +168,26 @@ export const useAgentConversation = () => {
       ));
     }
 
-    try {
-      await supabase
-        .from('agent_conversations')
-        .insert({
-          session_id: currentSessionId,
-          user_id: user.id,
-          role: message.role,
-          content: message.content,
-          message_type: message.messageType || null,
-          tools_used: message.toolsUsed || null,
-          self_reflection: message.selfReflection || null,
-          tool_decision: message.toolDecision || null,
-          ai_reasoning: message.aiReasoning || null,
-          created_at: message.timestamp.toISOString()
-        });
-    } catch (error) {
-      console.error('Error saving message:', error);
+    // Only store user messages here - assistant messages are handled by the backend
+    if (message.role === 'user') {
+      try {
+        await supabase
+          .from('agent_conversations')
+          .insert({
+            session_id: currentSessionId,
+            user_id: user.id,
+            role: message.role,
+            content: message.content,
+            message_type: message.messageType || null,
+            tools_used: message.toolsUsed || null,
+            self_reflection: message.selfReflection || null,
+            tool_decision: message.toolDecision || null,
+            ai_reasoning: message.aiReasoning || null,
+            created_at: message.timestamp.toISOString()
+          });
+      } catch (error) {
+        console.error('Error saving message:', error);
+      }
     }
   }, [currentSessionId, user, conversations.length]);
 
@@ -261,6 +265,69 @@ export const useAgentConversation = () => {
     }));
   }, [conversations]);
 
+  // New function to listen for autonomous messages
+  const startListeningForAutonomousMessages = useCallback(() => {
+    if (!currentSessionId || !user) return;
+
+    console.log('🔄 Starting to listen for autonomous messages');
+
+    const channel = supabase
+      .channel(`session-${currentSessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'agent_conversations',
+          filter: `session_id=eq.${currentSessionId}`
+        },
+        (payload) => {
+          const newRow = payload.new as any;
+          
+          // Only handle assistant messages with reflection type (autonomous messages)
+          if (newRow.role === 'assistant' && newRow.message_type === 'reflection') {
+            console.log('🤖 Received autonomous message:', newRow.content);
+            
+            const autonomousMessage: ConversationMessage = {
+              id: newRow.id.toString(),
+              role: 'assistant',
+              content: newRow.content,
+              timestamp: new Date(newRow.created_at),
+              messageType: 'reflection',
+              isAutonomous: true,
+              aiReasoning: newRow.ai_reasoning || undefined,
+              toolsUsed: Array.isArray(newRow.tools_used) ? newRow.tools_used : undefined
+            };
+
+            setConversations(prev => {
+              // Check if message already exists to avoid duplicates
+              const exists = prev.some(msg => msg.id === autonomousMessage.id);
+              if (exists) return prev;
+              
+              return [...prev, autonomousMessage];
+            });
+
+            // Update session
+            setSessions(prev => prev.map(session => 
+              session.id === currentSessionId 
+                ? { 
+                    ...session, 
+                    updated_at: new Date(),
+                    messageCount: (session.messageCount || 0) + 1,
+                    lastMessage: newRow.content
+                  }
+                : session
+            ));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentSessionId, user]);
+
   useEffect(() => {
     if (user && sessions.length === 0 && !isLoadingSessions) {
       loadExistingSessions();
@@ -272,6 +339,19 @@ export const useAgentConversation = () => {
       startNewSession();
     }
   }, [user, currentSessionId, sessions.length, startNewSession, isLoadingSessions]);
+
+  // Start listening for autonomous messages when session is active
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    
+    if (currentSessionId && user) {
+      cleanup = startListeningForAutonomousMessages();
+    }
+
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [currentSessionId, user, startListeningForAutonomousMessages]);
 
   return {
     currentSessionId,
