@@ -31,6 +31,11 @@ interface ConversationContextType {
   // Input state
   input: string;
   setInput: (input: string) => void;
+
+  // Message operations (will be implemented by useMessagePersistence)
+  loadConversation?: (sessionId: string) => Promise<void>;
+  persistMessage?: (message: ConversationMessage) => Promise<void>;
+  refreshMessages?: () => Promise<void>;
 }
 
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);

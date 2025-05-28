@@ -38,13 +38,13 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
 
   // Debug effect to track conversations prop changes
   useEffect(() => {
-    console.log(`🎯 SimplifiedChatInterface received ${conversations.length} conversations:`, 
-      conversations.map(c => ({ id: c.id, role: c.role, content: c.content.substring(0, 50) + '...' }))
+    console.log(`🎯 SimplifiedChatInterface using context messages: ${messages.length}`, 
+      messages.map(c => ({ id: c.id, role: c.role, content: c.content.substring(0, 50) + '...' }))
     );
-  }, [conversations]);
+  }, [messages]);
 
-  // Use messages from context as the source of truth
-  const displayMessages = messages.length > 0 ? messages : conversations;
+  // Use messages from context as the single source of truth
+  const displayMessages = messages;
 
   const suggestedActions = [
     {

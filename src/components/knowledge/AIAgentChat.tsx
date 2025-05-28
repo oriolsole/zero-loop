@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
 import { useToolProgress } from '@/hooks/useToolProgress';
 import { useConversationContext } from '@/contexts/ConversationContext';
+import { useMessagePersistence } from '@/hooks/conversation/useMessagePersistence';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
@@ -16,14 +17,9 @@ const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
   const {
     currentSessionId,
-    conversations,
     sessions,
     isLoadingSessions,
     startNewSession,
-    loadSession,
-    addMessage,
-    updateMessage,
-    getConversationHistory,
     deleteSession,
     refreshConversationState
   } = useAgentConversation();
@@ -31,7 +27,6 @@ const AIAgentChat: React.FC = () => {
   // Use context for UI state
   const {
     messages,
-    setMessages,
     currentSession,
     setCurrentSession,
     sessions: contextSessions,
@@ -45,6 +40,13 @@ const AIAgentChat: React.FC = () => {
     toolsActive,
     setToolsActive
   } = useConversationContext();
+
+  // Use message persistence hook
+  const { 
+    loadConversation,
+    addMessage: persistMessage,
+    refreshConversationState: refreshMessages
+  } = useMessagePersistence();
 
   const [showSessions, setShowSessions] = React.useState(false);
   const [modelSettings, setModelSettings] = React.useState(getModelSettings());
@@ -64,15 +66,12 @@ const AIAgentChat: React.FC = () => {
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
-  // Sync hook state with context
-  useEffect(() => {
-    setMessages(conversations);
-  }, [conversations, setMessages]);
-
+  // Sync sessions from hook to context
   useEffect(() => {
     setSessions(sessions);
   }, [sessions, setSessions]);
 
+  // Sync tools from hook to context
   useEffect(() => {
     setTools(hookTools);
     setToolsActive(hookToolsActive);
@@ -121,7 +120,11 @@ const AIAgentChat: React.FC = () => {
     let refreshInterval: NodeJS.Timeout;
     
     if (isLoading && currentSessionId) {
-      refreshInterval = setInterval(refreshConversationState, 4000);
+      refreshInterval = setInterval(() => {
+        if (refreshMessages) {
+          refreshMessages();
+        }
+      }, 4000);
     }
 
     return () => {
@@ -129,7 +132,7 @@ const AIAgentChat: React.FC = () => {
         clearInterval(refreshInterval);
       }
     };
-  }, [isLoading, currentSessionId, refreshConversationState]);
+  }, [isLoading, currentSessionId, refreshMessages]);
 
   // Load model settings on component mount and when they change
   useEffect(() => {
@@ -150,6 +153,20 @@ const AIAgentChat: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  // Handle session loading with new persistence hook
+  const handleLoadSession = async (sessionId: string) => {
+    if (!loadConversation) return;
+    
+    // Find session data from sessions list
+    const sessionData = contextSessions.find(s => s.id === sessionId);
+    if (sessionData) {
+      setCurrentSession(sessionData);
+    }
+
+    // Load messages for this session
+    await loadConversation(sessionId);
+  };
+
   const handleFollowUpAction = async (action: string) => {
     if (!user || !currentSessionId) return;
 
@@ -160,7 +177,9 @@ const AIAgentChat: React.FC = () => {
       timestamp: new Date()
     };
 
-    await addMessage(followUpMessage);
+    if (persistMessage) {
+      await persistMessage(followUpMessage);
+    }
     setInput('');
     
     await processMessage(action);
@@ -182,7 +201,10 @@ const AIAgentChat: React.FC = () => {
     clearTools();
 
     try {
-      const conversationHistory = getConversationHistory();
+      const conversationHistory = messages.filter(msg => msg.role === 'user' || msg.role === 'assistant').map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
@@ -207,7 +229,9 @@ const AIAgentChat: React.FC = () => {
       if (data.streamedSteps) {
         // Refresh conversation to show new messages
         setTimeout(() => {
-          refreshConversationState();
+          if (refreshMessages) {
+            refreshMessages();
+          }
         }, 2000);
       } else {
         // Fallback: add traditional single response message
@@ -222,7 +246,9 @@ const AIAgentChat: React.FC = () => {
           improvementReasoning: data.improvementReasoning || undefined
         };
 
-        await addMessage(assistantMessage);
+        if (persistMessage) {
+          await persistMessage(assistantMessage);
+        }
       }
 
       if (data.toolsUsed && data.toolsUsed.length > 0) {
@@ -247,7 +273,9 @@ const AIAgentChat: React.FC = () => {
         timestamp: new Date()
       };
 
-      await addMessage(errorMessage);
+      if (persistMessage) {
+        await persistMessage(errorMessage);
+      }
     } finally {
       setIsLoading(false);
       activeRequests.current.delete(requestKey);
@@ -264,7 +292,9 @@ const AIAgentChat: React.FC = () => {
       timestamp: new Date()
     };
 
-    await addMessage(userMessage);
+    if (persistMessage) {
+      await persistMessage(userMessage);
+    }
     const messageToProcess = input;
     setInput('');
     
@@ -278,7 +308,7 @@ const AIAgentChat: React.FC = () => {
           sessions={contextSessions}
           currentSessionId={currentSessionId}
           onStartNewSession={startNewSession}
-          onLoadSession={loadSession}
+          onLoadSession={handleLoadSession}
           onDeleteSession={deleteSession}
           isLoading={isLoadingSessions}
         />
