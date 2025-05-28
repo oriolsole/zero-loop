@@ -1,14 +1,24 @@
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Bot, MessageSquare, Search, Github, Brain } from 'lucide-react';
+import { Bot, Loader2, MessageSquare, Search, Github, Code, Brain } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
+import { ModelProvider } from '@/services/modelProviderService';
+import { ToolProgressItem } from '@/types/tools';
 import AIAgentMessage from './AIAgentMessage';
+import ToolExecutionCard from './ToolExecutionCard';
+import StatusMessage from './StatusMessage';
 
 interface SimplifiedChatInterfaceProps {
   conversations: ConversationMessage[];
   isLoading: boolean;
+  modelSettings: {
+    provider: ModelProvider;
+    selectedModel?: string;
+  };
+  tools: ToolProgressItem[];
+  toolsActive: boolean;
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   onFollowUpAction?: (action: string) => void;
 }
@@ -16,82 +26,38 @@ interface SimplifiedChatInterfaceProps {
 const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   conversations,
   isLoading,
+  modelSettings,
+  tools,
+  toolsActive,
   scrollAreaRef,
   onFollowUpAction
 }) => {
-  // Enhanced debug logging for conversations
-  useEffect(() => {
-    console.log('🎨 SimplifiedChatInterface conversations updated:', {
-      total: conversations.length,
-      byType: conversations.reduce((acc, msg) => {
-        const type = msg.messageType || 'standard';
-        acc[type] = (acc[type] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
-      atomicSteps: conversations.filter(msg => 
-        msg.messageType && ['thinking', 'tool-usage', 'tool-result', 'reflection'].includes(msg.messageType)
-      ),
-      allMessages: conversations.map(msg => ({
-        id: msg.id,
-        role: msg.role,
-        type: msg.messageType || 'standard',
-        step: msg.stepNumber,
-        content: msg.content.substring(0, 50) + '...'
-      }))
-    });
-  }, [conversations]);
-
   const suggestedActions = [
     {
       icon: <MessageSquare className="h-4 w-4" />,
-      title: "Ask Questions",
-      description: "I can help with analysis and problem-solving",
-      action: "What can you help me with?"
+      title: "General Questions",
+      description: "Ask me anything you'd like to know",
+      action: "What can you help me with today?"
     },
     {
       icon: <Search className="h-4 w-4" />,
-      title: "Research Topics",
-      description: "Get insights and current information",
-      action: "Research recent developments in AI technology"
+      title: "Research & Analysis",
+      description: "Get current information and insights",
+      action: "Research the latest developments in artificial intelligence"
     },
     {
       icon: <Github className="h-4 w-4" />,
-      title: "Code Analysis",
-      description: "Help with programming and development",
-      action: "Help me understand this codebase structure"
+      title: "Code & Development",
+      description: "Programming help and code analysis",
+      action: "Help me analyze and improve my code"
     },
     {
       icon: <Brain className="h-4 w-4" />,
       title: "Problem Solving",
-      description: "Break down complex challenges",
-      action: "Help me think through a complex decision"
+      description: "Complex analysis and decision making",
+      action: "Help me break down and solve a complex problem"
     }
   ];
-
-  // Sort conversations with enhanced logic for atomic steps
-  const sortedConversations = conversations
-    .sort((a, b) => {
-      // Primary sort by timestamp
-      const timeSort = a.timestamp.getTime() - b.timestamp.getTime();
-      if (timeSort !== 0) return timeSort;
-      
-      // Secondary sort by step number for atomic messages
-      if (a.stepNumber && b.stepNumber) {
-        return a.stepNumber - b.stepNumber;
-      }
-      
-      // Atomic steps come before standard messages at same timestamp
-      if (a.stepNumber && !b.stepNumber) return -1;
-      if (!a.stepNumber && b.stepNumber) return 1;
-      
-      return 0;
-    });
-
-  console.log('🎨 Rendering conversations:', {
-    total: sortedConversations.length,
-    atomic: sortedConversations.filter(m => m.messageType && m.messageType !== 'standard').length,
-    sortedOrder: sortedConversations.map(m => ({ type: m.messageType || 'standard', step: m.stepNumber }))
-  });
 
   return (
     <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
@@ -105,13 +71,13 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
               
               <div className="mb-8">
                 <h2 className="text-2xl font-semibold mb-3 text-foreground">
-                  AI Assistant
+                  Welcome to AI Assistant
                 </h2>
                 <p className="text-muted-foreground text-lg mb-2 max-w-2xl">
-                  I'm here to help with analysis, research, and problem-solving.
+                  I'm here to help with analysis, research, problem-solving, and general assistance.
                 </p>
                 <p className="text-muted-foreground/80 text-sm">
-                  I'll use the right tools when they can help answer your questions.
+                  I can use various tools when they add value to help answer your questions.
                 </p>
               </div>
               
@@ -143,32 +109,40 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
           )}
 
           <div className="space-y-8">
-            {sortedConversations.map((message) => {
-              console.log('🎨 Rendering message:', {
-                id: message.id,
-                type: message.messageType || 'standard',
-                step: message.stepNumber,
-                content: message.content.substring(0, 30) + '...'
-              });
-              
-              return (
-                <AIAgentMessage 
-                  key={`${message.id}-${message.stepNumber || 0}`}
-                  message={message}
-                  onFollowUpAction={onFollowUpAction}
-                />
-              );
-            })}
+            {conversations.map((message) => (
+              <AIAgentMessage 
+                key={message.id}
+                message={message}
+                onFollowUpAction={onFollowUpAction}
+              />
+            ))}
           </div>
           
-          {isLoading && (
-            <div className="mt-8 flex items-center justify-center">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-                <span className="ml-2 text-sm">Thinking...</span>
+          {toolsActive && tools.length > 0 && (
+            <div className="mt-8 space-y-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Using tools to help with your request...</span>
               </div>
+              
+              <div className="grid gap-3">
+                {tools.map((tool) => (
+                  <ToolExecutionCard 
+                    key={tool.id} 
+                    tool={tool} 
+                    compact={true}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {isLoading && !toolsActive && (
+            <div className="mt-8">
+              <StatusMessage 
+                content="Processing your request..."
+                type="thinking"
+              />
             </div>
           )}
         </div>

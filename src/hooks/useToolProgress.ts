@@ -1,33 +1,54 @@
 
 import { useState, useCallback } from 'react';
-import { AtomicTool } from '@/types/tools';
+import { ToolProgressItem } from '@/types/tools';
 
 export interface UseToolProgressReturn {
-  tools: AtomicTool[];
+  tools: ToolProgressItem[];
   isActive: boolean;
-  startTool: (name: string, displayName: string) => string;
+  startTool: (name: string, displayName: string, parameters?: Record<string, any>) => string;
+  updateTool: (id: string, updates: Partial<ToolProgressItem>) => void;
   completeTool: (id: string, result?: any) => void;
   failTool: (id: string, error: string) => void;
   clearTools: () => void;
+  setToolProgress: (id: string, progress: number) => void;
 }
 
 export const useToolProgress = (): UseToolProgressReturn => {
-  const [tools, setTools] = useState<AtomicTool[]>([]);
+  const [tools, setTools] = useState<ToolProgressItem[]>([]);
 
-  const isActive = tools.some(tool => tool.status === 'running');
+  const isActive = tools.some(tool => 
+    tool.status === 'pending' || 
+    tool.status === 'starting' || 
+    tool.status === 'executing'
+  );
 
-  const startTool = useCallback((name: string, displayName: string): string => {
+  const startTool = useCallback((name: string, displayName: string, parameters?: Record<string, any>): string => {
     const id = `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const newTool: AtomicTool = {
+    const newTool: ToolProgressItem = {
       id,
       name,
       displayName,
-      status: 'running',
-      startTime: new Date().toISOString()
+      status: 'starting',
+      startTime: new Date().toISOString(),
+      parameters,
+      progress: 0
     };
 
     setTools(prev => [...prev, newTool]);
+    
+    setTimeout(() => {
+      setTools(prev => prev.map(tool => 
+        tool.id === id ? { ...tool, status: 'executing' } : tool
+      ));
+    }, 100);
+
     return id;
+  }, []);
+
+  const updateTool = useCallback((id: string, updates: Partial<ToolProgressItem>) => {
+    setTools(prev => prev.map(tool => 
+      tool.id === id ? { ...tool, ...updates } : tool
+    ));
   }, []);
 
   const completeTool = useCallback((id: string, result?: any) => {
@@ -37,7 +58,8 @@ export const useToolProgress = (): UseToolProgressReturn => {
             ...tool, 
             status: 'completed', 
             endTime: new Date().toISOString(),
-            result
+            result,
+            progress: 100
           } 
         : tool
     ));
@@ -56,6 +78,12 @@ export const useToolProgress = (): UseToolProgressReturn => {
     ));
   }, []);
 
+  const setToolProgress = useCallback((id: string, progress: number) => {
+    setTools(prev => prev.map(tool => 
+      tool.id === id ? { ...tool, progress } : tool
+    ));
+  }, []);
+
   const clearTools = useCallback(() => {
     setTools([]);
   }, []);
@@ -64,8 +92,10 @@ export const useToolProgress = (): UseToolProgressReturn => {
     tools,
     isActive,
     startTool,
+    updateTool,
     completeTool,
     failTool,
-    clearTools
+    clearTools,
+    setToolProgress
   };
 };

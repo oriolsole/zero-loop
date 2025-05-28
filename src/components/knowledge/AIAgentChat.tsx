@@ -5,6 +5,7 @@ import { toast } from '@/components/ui/sonner';
 import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
+import { useToolProgress } from '@/hooks/useToolProgress';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
@@ -22,15 +23,23 @@ const AIAgentChat: React.FC = () => {
     addMessage,
     updateMessage,
     getConversationHistory,
-    deleteSession,
-    addAtomicStep,
-    updateAtomicStep
+    deleteSession
   } = useAgentConversation();
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
+
+  const {
+    tools,
+    isActive: toolsActive,
+    startTool,
+    updateTool,
+    completeTool,
+    failTool,
+    clearTools
+  } = useToolProgress();
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -39,7 +48,7 @@ const AIAgentChat: React.FC = () => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [conversations]);
+  }, [conversations, tools]);
 
   // Load model settings on component mount and when they change
   useEffect(() => {
@@ -59,6 +68,25 @@ const AIAgentChat: React.FC = () => {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  const addStatusMessage = (content: string) => {
+    const statusMessage: ConversationMessage = {
+      id: `status-${Date.now()}`,
+      role: 'assistant',
+      content,
+      timestamp: new Date(),
+      messageType: 'status' as any
+    };
+    addMessage(statusMessage);
+    return statusMessage.id;
+  };
+
+  const removeStatusMessage = (messageId: string) => {
+    updateMessage(messageId, { 
+      content: '✓ Complete',
+      messageType: 'status' as any
+    });
+  };
 
   const handleFollowUpAction = async (action: string) => {
     if (!user || !currentSessionId) return;
@@ -80,14 +108,13 @@ const AIAgentChat: React.FC = () => {
     if (!user || !currentSessionId) return;
 
     setIsLoading(true);
+    clearTools();
+
+    const statusId = addStatusMessage("Processing your request...");
 
     try {
-      // Step 1: Show thinking step
-      await addAtomicStep('thinking', '🧠 Analyzing your request and determining the best approach...', undefined, 1);
-
       const conversationHistory = getConversationHistory();
 
-      // Call the AI agent with atomic processing enabled
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
           message,
@@ -95,8 +122,7 @@ const AIAgentChat: React.FC = () => {
           userId: user.id,
           sessionId: currentSessionId,
           streaming: false,
-          modelSettings: modelSettings,
-          atomicMode: true // Enable atomic step processing
+          modelSettings: modelSettings
         }
       });
 
@@ -108,14 +134,16 @@ const AIAgentChat: React.FC = () => {
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
-      // The backend will now handle adding atomic steps through real-time updates
-      // Main response comes back here
+      removeStatusMessage(statusId);
+
       const assistantMessage: ConversationMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.message,
         timestamp: new Date(),
-        messageType: 'standard'
+        messageType: 'response',
+        toolsUsed: data.toolsUsed || [],
+        aiReasoning: data.aiReasoning || undefined
       };
 
       addMessage(assistantMessage);
@@ -130,6 +158,11 @@ const AIAgentChat: React.FC = () => {
     } catch (error) {
       console.error('Error sending message:', error);
       
+      updateMessage(statusId, { 
+        content: `❌ Error: ${error.message}`,
+        messageType: 'status' as any
+      });
+
       toast.error('Failed to send message', {
         description: error.message || 'Please try again.',
         duration: 10000
@@ -190,6 +223,9 @@ const AIAgentChat: React.FC = () => {
         <SimplifiedChatInterface
           conversations={conversations}
           isLoading={isLoading}
+          modelSettings={modelSettings}
+          tools={tools}
+          toolsActive={toolsActive}
           scrollAreaRef={scrollAreaRef}
           onFollowUpAction={handleFollowUpAction}
         />

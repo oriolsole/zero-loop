@@ -1,12 +1,14 @@
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
+import { generateSystemPrompt, createKnowledgeAwareMessages } from './system-prompts.ts';
 import { extractAssistantMessage } from './response-handler.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
-import { reflectAndDecide, submitFollowUpMessage } from './reflection-handler.ts';
 
 /**
- * Enhanced atomic loop handler - shows each step to the user
+ * Unified query handler that lets the LLM naturally decide tool usage
+ * Knowledge retrieval is now tool-based only, not forced
  */
 export async function handleUnifiedQuery(
   message: string,
@@ -15,48 +17,15 @@ export async function handleUnifiedQuery(
   sessionId: string | null,
   modelSettings: any,
   streaming: boolean,
-  supabase: any,
-  atomicMode: boolean = false
+  supabase: any
 ): Promise<any> {
-  console.log('🧠 Starting atomic LLM-driven loop with step visibility');
+  console.log('🤖 Starting unified query handler with optional knowledge');
 
   let finalResponse = '';
   let allToolsUsed: any[] = [];
-  let assistantMessageId: string | null = null;
-  let stepNumber = 2; // Step 1 was thinking, handled by frontend
-
-  const addAtomicStep = async (
-    messageType: 'thinking' | 'tool-usage' | 'tool-result' | 'reflection',
-    content: string,
-    toolName?: string
-  ) => {
-    if (!atomicMode || !userId || !sessionId) return;
-
-    try {
-      await supabase
-        .from('agent_conversations')
-        .insert({
-          session_id: sessionId,
-          user_id: userId,
-          role: 'assistant',
-          content,
-          message_type: messageType,
-          tool_name: toolName,
-          step_number: stepNumber++,
-          created_at: new Date().toISOString()
-        });
-    } catch (error) {
-      console.warn('Failed to add atomic step:', error);
-    }
-  };
 
   try {
-    // Step 2: Tool preparation
-    if (atomicMode) {
-      await addAtomicStep('tool-usage', '🔧 Preparing available tools and analyzing requirements...');
-    }
-
-    // 1. Get available tools
+    // 1. Get available tools (knowledge search is just one of many available tools)
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
       .select('*')
@@ -68,23 +37,23 @@ export async function handleUnifiedQuery(
     }
 
     const tools = convertMCPsToTools(mcps);
-    const systemPrompt = generatePureLLMSystemPrompt();
+    const systemPrompt = generateUnifiedSystemPrompt(mcps);
 
-    // 2. Create messages
-    const messages = createPureMessages(systemPrompt, conversationHistory, message);
+    // 2. Prepare messages WITHOUT any forced knowledge injection
+    const messages = createKnowledgeAwareMessages(
+      systemPrompt,
+      conversationHistory,
+      message
+      // NO relevantKnowledge parameter - let LLM decide via tools
+    );
 
-    console.log('🎯 LLM making pure decision for:', message);
+    console.log('🧠 Calling LLM with natural tool choice (no forced knowledge)');
 
-    // Step 3: LLM reasoning
-    if (atomicMode) {
-      await addAtomicStep('thinking', '🤔 Analyzing request and deciding on the best approach...');
-    }
-
-    // 3. Single atomic LLM call
+    // 3. Single LLM call with natural tool decision-making
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: 'auto',
+      tool_choice: 'auto', // LLM decides which tools to use
       temperature: 0.7,
       max_tokens: 2000,
       stream: streaming,
@@ -114,15 +83,9 @@ export async function handleUnifiedQuery(
     const data = response.data;
     finalResponse = extractAssistantMessage(data) || '';
 
-    // 4. Execute tools if LLM chose them
+    // 4. Execute tools ONLY if LLM chose to use them
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
-      console.log('⚡ LLM chose to use', data.choices[0].message.tool_calls.length, 'tools');
-      
-      // Step 4: Tool execution
-      if (atomicMode) {
-        const toolNames = data.choices[0].message.tool_calls.map((call: any) => call.function.name).join(', ');
-        await addAtomicStep('tool-usage', `🔍 Executing tools: ${toolNames}...`);
-      }
+      console.log('🛠️ LLM chose to use', data.choices[0].message.tool_calls.length, 'tools');
       
       const { toolResults, toolsUsed } = await executeTools(
         data.choices[0].message.tool_calls,
@@ -133,158 +96,72 @@ export async function handleUnifiedQuery(
       
       allToolsUsed = toolsUsed;
       
-      // Step 5: Tool results
-      if (atomicMode && toolsUsed.length > 0) {
-        const successfulTools = toolsUsed.filter(t => t.success);
-        const failedTools = toolsUsed.filter(t => !t.success);
-        
-        let resultContent = '✅ Tool execution completed:\n\n';
-        if (successfulTools.length > 0) {
-          resultContent += `✅ Successful: ${successfulTools.map(t => t.name).join(', ')}\n`;
-        }
-        if (failedTools.length > 0) {
-          resultContent += `❌ Failed: ${failedTools.map(t => t.name).join(', ')}\n`;
-        }
-        
-        await addAtomicStep('tool-result', resultContent);
-      }
-      
-      // 5. Let LLM naturally incorporate results
+      // 5. Synthesize tool results if tools were used
       if (toolsUsed.length > 0) {
-        console.log('🔄 LLM incorporating tool results naturally');
+        console.log('🔄 Synthesizing tool results');
+        const synthesizedResponse = await synthesizeResults(
+          message,
+          conversationHistory,
+          toolsUsed,
+          finalResponse,
+          modelSettings,
+          supabase
+        );
         
-        if (atomicMode) {
-          await addAtomicStep('thinking', '🧠 Processing tool results and synthesizing response...');
-        }
-        
-        const toolResultMessage = toolsUsed.map(tool => {
-          if (tool.success && tool.result) {
-            return `Tool ${tool.name} result: ${typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result)}`;
-          }
-          return `Tool ${tool.name} failed: ${tool.error || 'Unknown error'}`;
-        }).join('\n\n');
-
-        const followUpMessages = [
-          ...messages,
-          { role: 'assistant', content: finalResponse },
-          { role: 'user', content: `Tool results:\n${toolResultMessage}\n\nPlease provide a complete response incorporating these results.` }
-        ];
-
-        const followUpResponse = await supabase.functions.invoke('ai-model-proxy', {
-          body: {
-            messages: followUpMessages,
-            temperature: 0.3,
-            max_tokens: 1500,
-            ...(modelSettings && {
-              provider: modelSettings.provider,
-              model: modelSettings.selectedModel,
-              localModelUrl: modelSettings.localModelUrl
-            })
-          }
-        });
-        
-        if (!followUpResponse.error) {
-          const incorporatedResponse = extractAssistantMessage(followUpResponse.data);
-          if (incorporatedResponse && incorporatedResponse.trim()) {
-            finalResponse = incorporatedResponse;
-          }
+        if (synthesizedResponse && synthesizedResponse.trim()) {
+          finalResponse = synthesizedResponse;
         }
       }
     } else {
-      console.log('💭 LLM responded directly without tools');
+      console.log('✅ LLM responded directly without using any tools');
     }
 
-    // 6. Persist insights if valuable
-    if (userId && allToolsUsed.length > 0) {
+    // 6. Persist valuable insights if multiple tools were used
+    if (userId && allToolsUsed.length > 1) {
       try {
         await persistInsightAsKnowledgeNode(
           message,
           finalResponse,
           [{ toolsUsed: allToolsUsed, response: finalResponse }],
           userId,
-          { classification: 'ATOMIC', reasoning: 'Atomic loop completion' },
+          { classification: 'UNIFIED', reasoning: 'Multi-tool unified query processing' },
           supabase
         );
       } catch (error) {
-        console.warn('Failed to persist atomic insight:', error);
+        console.warn('Failed to persist insights:', error);
       }
     }
 
-    // 7. Ensure response quality
+    // 7. Validate and ensure response quality
     if (!finalResponse || !finalResponse.trim()) {
       finalResponse = createFallbackResponse(message, allToolsUsed);
     }
 
-    // 8. Store main result
+    // 8. Store response in database
     if (userId && sessionId) {
-      const { data: messageData, error: insertError } = await supabase
-        .from('agent_conversations')
-        .insert({
-          user_id: userId,
-          session_id: sessionId,
-          role: 'assistant',
-          content: finalResponse,
-          message_type: 'standard',
-          created_at: new Date().toISOString()
-        })
-        .select('id')
-        .single();
-
-      if (!insertError && messageData) {
-        assistantMessageId = messageData.id;
-      }
-    }
-
-    // 9. 🧠 REFLECTION STEP
-    if (atomicMode) {
-      await addAtomicStep('reflection', '🤔 Evaluating response completeness and considering follow-up actions...');
-    }
-    
-    console.log('🤔 Starting pure LLM reflection');
-    const reflectionDecision = await reflectAndDecide(
-      message,
-      finalResponse,
-      allToolsUsed,
-      modelSettings,
-      supabase
-    );
-
-    if (reflectionDecision.continue && reflectionDecision.nextAction && assistantMessageId) {
-      console.log('🔄 LLM decided to continue with:', reflectionDecision.nextAction);
-      
-      if (atomicMode) {
-        await addAtomicStep('reflection', `🚀 Planning autonomous follow-up: ${reflectionDecision.nextAction}`);
-      }
-      
-      await submitFollowUpMessage(
-        reflectionDecision.nextAction,
-        userId,
-        sessionId,
-        assistantMessageId,
-        reflectionDecision.reasoning || 'LLM autonomous follow-up',
-        supabase
-      );
-    } else {
-      console.log('✅ LLM decided the response is complete');
-      
-      if (atomicMode) {
-        await addAtomicStep('reflection', '✅ Response is complete and comprehensive. No further action needed.');
-      }
+      await supabase.from('agent_conversations').insert({
+        user_id: userId,
+        session_id: sessionId,
+        role: 'assistant',
+        content: finalResponse,
+        tools_used: allToolsUsed,
+        created_at: new Date().toISOString()
+      });
     }
 
     return {
       success: true,
       message: finalResponse,
-      atomicLoop: true,
+      unifiedApproach: true,
       toolsUsed: allToolsUsed,
-      sessionId,
-      reflectionDecision: reflectionDecision
+      sessionId
     };
 
   } catch (error) {
-    console.error('❌ Atomic loop error:', error);
+    console.error('❌ Error in unified query handler:', error);
     
-    finalResponse = `I encountered an issue processing "${message}". Let me try a different approach.`;
+    // Emergency fallback response
+    finalResponse = `I apologize, but I encountered an error while processing your message "${message}". Please try again or rephrase your question.`;
     
     if (userId && sessionId) {
       try {
@@ -293,106 +170,145 @@ export async function handleUnifiedQuery(
           session_id: sessionId,
           role: 'assistant',
           content: finalResponse,
-          message_type: 'standard',
+          tools_used: [],
           created_at: new Date().toISOString()
         });
       } catch (dbError) {
-        console.error('Failed to store fallback:', dbError);
+        console.error('Failed to insert error fallback:', dbError);
       }
     }
 
     return {
       success: true,
       message: finalResponse,
-      atomicLoop: true,
+      unifiedApproach: true,
       toolsUsed: [],
       sessionId,
-      error: 'Fallback used'
+      error: 'Processed with fallback response'
     };
   }
 }
 
 /**
- * Pure LLM-native system prompt
+ * Generate unified system prompt emphasizing natural tool usage
  */
-function generatePureLLMSystemPrompt(): string {
-  return `You are an autonomous AI assistant. You think step-by-step and decide what to do.
+function generateUnifiedSystemPrompt(mcps: any[]): string {
+  const mcpSummaries = mcps?.map(mcp => ({
+    name: mcp.title,
+    description: mcp.description,
+    parameters: mcp.parameters
+  })) || [];
+  
+  const toolDescriptions = mcpSummaries
+    .map(summary => `**${summary.name}**: ${summary.description}`)
+    .join('\n');
 
-**🧠 PURE REASONING:**
-- Answer directly from knowledge when possible
-- Use tools when they add clear value
-- Think out loud about your process
-- Be natural and conversational
+  return `You are an intelligent AI assistant with access to powerful tools when needed.
 
-**🛠️ AVAILABLE TOOLS:**
-- Knowledge Search: Access previous learnings and documents
-- Web Search: Get current/real-time information  
-- GitHub Tools: Analyze code repositories
-- Jira Tools: Access project management data
-- Web Scraper: Extract content from web pages
+**🧠 NATURAL RESPONSE STRATEGY:**
+1. **ANSWER DIRECTLY** from your knowledge for simple questions, greetings, and general conversations
+2. **USE TOOLS SELECTIVELY** only when they add clear value:
+   - Knowledge Search: When you need to access previous learnings or uploaded documents
+   - Web Search: For current/real-time information not in your knowledge
+   - GitHub Tools: For code repository analysis
+   - Other tools: When specific external data is needed
 
-**💭 DECISION PROCESS:**
-1. Understand what the user is asking
-2. Think: "Do I need external information for this?"
-3. If yes: choose the right tool(s)
-4. If no: answer from my knowledge
-5. Always be helpful and complete
+**🛠️ Available Tools (use only when valuable):**
+${toolDescriptions}
 
-**🎯 COMMUNICATION:**
-- Be direct and natural
-- Show your thinking process
-- Use emojis to indicate actions (🔍 for searching, ✅ for completion)
-- Complete your response fully
+**💡 Decision Guidelines:**
+- Simple greetings like "hello" → respond directly
+- Basic questions you can answer → respond directly  
+- Need previous knowledge → use Knowledge Search tool
+- Need current information → use Web Search tool
+- Complex research → use multiple tools progressively
+- **Don't overuse tools** - your general knowledge is extensive
 
-Remember: You are in control. Make decisions based on what will best help the user.`;
+**📋 Response Style:**
+- Be conversational and helpful
+- Only use tools when they genuinely improve your answer
+- Integrate tool results naturally when used
+- Provide clear, actionable information
+
+Remember: You have comprehensive knowledge. Tools are available when needed, not required for every response.`;
 }
 
 /**
- * Create simple message array without complex injection
+ * Synthesize results from tools and knowledge
  */
-function createPureMessages(
-  systemPrompt: string,
+async function synthesizeResults(
+  originalMessage: string,
   conversationHistory: any[],
-  userMessage: string
-): any[] {
-  const messages = [
-    {
-      role: 'system',
-      content: systemPrompt
-    }
-  ];
+  toolsUsed: any[],
+  originalResponse: string,
+  modelSettings: any,
+  supabase: any
+): Promise<string | null> {
+  try {
+    const toolResultsSummary = toolsUsed.map(tool => {
+      if (tool.success && tool.result) {
+        const resultPreview = typeof tool.result === 'string' 
+          ? tool.result.substring(0, 500) + (tool.result.length > 500 ? '...' : '')
+          : JSON.stringify(tool.result).substring(0, 500);
+        return `${tool.name}: ${resultPreview}`;
+      }
+      return `${tool.name}: Failed`;
+    }).join('\n');
 
-  // Add conversation history
-  if (conversationHistory && Array.isArray(conversationHistory)) {
-    conversationHistory.forEach(historyMessage => {
-      if (historyMessage && historyMessage.role && historyMessage.content) {
-        messages.push({
-          role: historyMessage.role,
-          content: historyMessage.content
-        });
+    const synthesisMessages = [
+      {
+        role: 'system',
+        content: `Provide a comprehensive, well-structured answer based on the tool results.
+
+User asked: "${originalMessage}"
+
+Tool results:
+${toolResultsSummary}
+
+Create a clear, helpful response that integrates this information naturally. Format appropriately for readability.`
+      },
+      {
+        role: 'user',
+        content: originalMessage
+      }
+    ];
+
+    const synthesisResponse = await supabase.functions.invoke('ai-model-proxy', {
+      body: {
+        messages: synthesisMessages,
+        temperature: 0.3,
+        max_tokens: 1000,
+        ...(modelSettings && {
+          provider: modelSettings.provider,
+          model: modelSettings.selectedModel,
+          localModelUrl: modelSettings.localModelUrl
+        })
       }
     });
+    
+    if (synthesisResponse.error) {
+      console.error('Synthesis failed:', synthesisResponse.error);
+      return null;
+    }
+    
+    return extractAssistantMessage(synthesisResponse.data);
+    
+  } catch (error) {
+    console.error('Error in synthesis:', error);
+    return null;
   }
-
-  // Add current user message
-  messages.push({
-    role: 'user',
-    content: userMessage || 'Empty message'
-  });
-
-  return messages;
 }
 
 /**
- * Create fallback response
+ * Create fallback response when main response fails
  */
 function createFallbackResponse(message: string, toolsUsed: any[]): string {
   if (toolsUsed && toolsUsed.length > 0) {
     const successfulTools = toolsUsed.filter(t => t.success);
     if (successfulTools.length > 0) {
-      return `I processed "${message}" using ${successfulTools.length} tool(s), but need to refine my response. Let me try again.`;
+      return `I processed your request "${message}" using ${successfulTools.length} tool(s), but encountered an issue formatting the response. The tools executed successfully, but I need to try again to provide a proper answer.`;
     }
   }
   
-  return `I understand you're asking about "${message}". Let me approach this differently.`;
+  return `I received your message "${message}" and attempted to process it, but encountered technical difficulties. Please try rephrasing your question or try again in a moment.`;
 }
