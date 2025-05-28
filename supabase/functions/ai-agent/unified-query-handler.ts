@@ -27,17 +27,60 @@ export async function handleUnifiedQuery(
   let loopEvaluation = null;
 
   try {
-    // 1. Store loop start message
-    if (userId && sessionId && loopIteration > 0) {
-      await supabase.from('agent_conversations').insert({
-        user_id: userId,
-        session_id: sessionId,
-        role: 'assistant',
-        content: `🔄 Improving response (Loop ${loopIteration})...`,
-        message_type: 'loop-start',
-        loop_iteration: loopIteration,
-        created_at: new Date().toISOString()
-      });
+    // Helper function to check if message already exists in database
+    const messageExists = async (content: string, messageType: string, loopIter: number): Promise<boolean> => {
+      if (!userId || !sessionId) return false;
+      
+      try {
+        const { data, error } = await supabase
+          .from('agent_conversations')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('session_id', sessionId)
+          .eq('content', content)
+          .eq('message_type', messageType)
+          .eq('loop_iteration', loopIter)
+          .maybeSingle();
+        
+        return !error && data !== null;
+      } catch {
+        return false;
+      }
+    };
+
+    // Helper function to insert message with duplicate prevention
+    const insertMessage = async (content: string, messageType: string, additionalData: any = {}) => {
+      if (!userId || !sessionId) return;
+      
+      const exists = await messageExists(content, messageType, loopIteration);
+      if (exists) {
+        console.log(`Message already exists: ${messageType} (loop ${loopIteration})`);
+        return;
+      }
+      
+      try {
+        await supabase.from('agent_conversations').insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'assistant',
+          content,
+          message_type: messageType,
+          loop_iteration: loopIteration,
+          created_at: new Date().toISOString(),
+          ...additionalData
+        });
+        console.log(`✅ Inserted message: ${messageType} (loop ${loopIteration})`);
+      } catch (error) {
+        console.error(`Failed to insert message: ${messageType}`, error);
+      }
+    };
+
+    // 1. Store loop start message (only for iterations > 0)
+    if (loopIteration > 0) {
+      await insertMessage(
+        `🔄 Improving response (Loop ${loopIteration})...`,
+        'loop-start'
+      );
     }
 
     // 2. Get available tools
@@ -102,17 +145,10 @@ export async function handleUnifiedQuery(
       console.log(`🛠️ LLM chose to use ${data.choices[0].message.tool_calls.length} tools (loop ${loopIteration})`);
       
       // Store tool execution message
-      if (userId && sessionId) {
-        await supabase.from('agent_conversations').insert({
-          user_id: userId,
-          session_id: sessionId,
-          role: 'assistant',
-          content: `🛠️ Using ${data.choices[0].message.tool_calls.length} tool(s) to enhance response...`,
-          message_type: 'tool-executing',
-          loop_iteration: loopIteration,
-          created_at: new Date().toISOString()
-        });
-      }
+      await insertMessage(
+        `🛠️ Using ${data.choices[0].message.tool_calls.length} tool(s) to enhance response...`,
+        'tool-executing'
+      );
       
       const { toolResults, toolsUsed } = await executeTools(
         data.choices[0].message.tool_calls,
@@ -144,18 +180,12 @@ export async function handleUnifiedQuery(
     }
 
     // 7. Store current iteration response
-    if (userId && sessionId) {
-      await supabase.from('agent_conversations').insert({
-        user_id: userId,
-        session_id: sessionId,
-        role: 'assistant',
-        content: finalResponse,
-        message_type: loopIteration === 0 ? 'response' : 'loop-enhancement',
-        tools_used: allToolsUsed,
-        loop_iteration: loopIteration,
-        created_at: new Date().toISOString()
-      });
-    }
+    const responseMessageType = loopIteration === 0 ? 'response' : 'loop-enhancement';
+    await insertMessage(
+      finalResponse,
+      responseMessageType,
+      { tools_used: allToolsUsed }
+    );
 
     // 8. Self-improvement loop evaluation (only for initial iterations)
     if (loopIteration < MAX_LOOPS && !streaming) {
@@ -175,19 +205,14 @@ export async function handleUnifiedQuery(
         console.log(`🔄 Continuing to loop ${loopIteration + 1}: ${loopEvaluation.reasoning}`);
         
         // Store reflection message
-        if (userId && sessionId) {
-          await supabase.from('agent_conversations').insert({
-            user_id: userId,
-            session_id: sessionId,
-            role: 'assistant',
-            content: `🔍 **Reflection**: ${loopEvaluation.reasoning}`,
-            message_type: 'loop-reflection',
-            loop_iteration: loopIteration,
+        await insertMessage(
+          `🔍 **Reflection**: ${loopEvaluation.reasoning}`,
+          'loop-reflection',
+          {
             improvement_reasoning: loopEvaluation.reasoning,
-            should_continue_loop: true,
-            created_at: new Date().toISOString()
-          });
-        }
+            should_continue_loop: true
+          }
+        );
 
         // Create improvement message and recurse
         const improvementMessage = `Reflecting to improve prior response. Previous iteration: "${finalResponse.substring(0, 100)}..."`;
@@ -204,18 +229,15 @@ export async function handleUnifiedQuery(
         );
       } else {
         // Store loop completion message
-        if (userId && sessionId && loopIteration > 0) {
-          await supabase.from('agent_conversations').insert({
-            user_id: userId,
-            session_id: sessionId,
-            role: 'assistant',
-            content: `✅ **Loop Complete**: Enhanced response ready after ${loopIteration + 1} iteration(s)`,
-            message_type: 'loop-complete',
-            loop_iteration: loopIteration,
-            improvement_reasoning: loopEvaluation.reasoning,
-            should_continue_loop: false,
-            created_at: new Date().toISOString()
-          });
+        if (loopIteration > 0) {
+          await insertMessage(
+            `✅ **Loop Complete**: Enhanced response ready after ${loopIteration + 1} iteration(s)`,
+            'loop-complete',
+            {
+              improvement_reasoning: loopEvaluation.reasoning,
+              should_continue_loop: false
+            }
+          );
         }
       }
     }

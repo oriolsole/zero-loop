@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -44,6 +44,10 @@ export const useAgentConversation = () => {
   const [conversations, setConversations] = useState<ConversationMessage[]>([]);
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  
+  // Track processed messages to prevent duplicates
+  const processedMessageIds = useRef<Set<string>>(new Set());
+  const isProcessingRef = useRef(false);
 
   const generateSessionTitle = (firstMessage: string): string => {
     const truncated = firstMessage.length > 50 
@@ -51,6 +55,38 @@ export const useAgentConversation = () => {
       : firstMessage;
     return truncated;
   };
+
+  // Helper function to safely convert tools_used from database
+  const convertToolsUsed = useCallback((toolsUsed: any): Array<{name: string; success: boolean; result?: any; error?: string;}> => {
+    if (!toolsUsed) return [];
+    
+    // Handle different data formats from database
+    if (typeof toolsUsed === 'string') {
+      try {
+        toolsUsed = JSON.parse(toolsUsed);
+      } catch {
+        return [];
+      }
+    }
+    
+    if (!Array.isArray(toolsUsed)) return [];
+    
+    return toolsUsed.map((tool: any) => {
+      if (typeof tool === 'object' && tool !== null) {
+        return {
+          name: tool.name || 'Unknown Tool',
+          success: Boolean(tool.success),
+          result: tool.result,
+          error: tool.error
+        };
+      }
+      return {
+        name: 'Unknown Tool',
+        success: false,
+        error: 'Invalid tool data'
+      };
+    });
+  }, []);
 
   const loadExistingSessions = useCallback(async () => {
     if (!user || isLoadingSessions) return;
@@ -129,6 +165,9 @@ export const useAgentConversation = () => {
     setCurrentSessionId(sessionId);
     setConversations([]);
     
+    // Reset processed messages for new session
+    processedMessageIds.current.clear();
+    
     const newSession: ConversationSession = {
       id: sessionId,
       title: 'New Conversation',
@@ -143,16 +182,26 @@ export const useAgentConversation = () => {
   const addMessage = useCallback(async (message: ConversationMessage) => {
     if (!currentSessionId || !user) return;
 
-    // Check if message already exists to prevent duplicates
+    // Prevent duplicate additions
+    if (processedMessageIds.current.has(message.id)) {
+      console.log(`Message ${message.id} already processed, skipping`);
+      return;
+    }
+
+    // Add to processed set immediately
+    processedMessageIds.current.add(message.id);
+
+    // Update local state
     setConversations(prev => {
       const exists = prev.some(m => m.id === message.id);
       if (exists) {
-        console.log(`Message ${message.id} already exists, skipping add`);
+        console.log(`Message ${message.id} already exists in state, skipping`);
         return prev;
       }
       return [...prev, message];
     });
 
+    // Update session metadata
     if (message.role === 'user' && conversations.length === 0) {
       const title = generateSessionTitle(message.content);
       setSessions(prev => prev.map(session => 
@@ -178,7 +227,24 @@ export const useAgentConversation = () => {
       ));
     }
 
+    // Save to database (only if not already processed)
     try {
+      // Check if message already exists in database to prevent duplicates
+      const { data: existingMessage } = await supabase
+        .from('agent_conversations')
+        .select('id')
+        .eq('session_id', currentSessionId)
+        .eq('user_id', user.id)
+        .eq('content', message.content)
+        .eq('role', message.role)
+        .eq('created_at', message.timestamp.toISOString())
+        .maybeSingle();
+
+      if (existingMessage) {
+        console.log('Message already exists in database, skipping insert');
+        return;
+      }
+
       await supabase
         .from('agent_conversations')
         .insert({
@@ -198,6 +264,8 @@ export const useAgentConversation = () => {
         });
     } catch (error) {
       console.error('Error saving message:', error);
+      // Remove from processed set if save failed
+      processedMessageIds.current.delete(message.id);
     }
   }, [currentSessionId, user, conversations.length]);
 
@@ -212,6 +280,9 @@ export const useAgentConversation = () => {
 
     setCurrentSessionId(sessionId);
     
+    // Reset processed messages for the session
+    processedMessageIds.current.clear();
+    
     try {
       const { data, error } = await supabase
         .from('agent_conversations')
@@ -222,49 +293,33 @@ export const useAgentConversation = () => {
 
       if (error) throw error;
 
-      // Helper function to safely convert tools_used from database
-      const convertToolsUsed = (toolsUsed: any): Array<{name: string; success: boolean; result?: any; error?: string;}> => {
-        if (!toolsUsed || !Array.isArray(toolsUsed)) return [];
+      const messages: ConversationMessage[] = data.map(row => {
+        const messageId = row.id.toString();
+        processedMessageIds.current.add(messageId);
         
-        return toolsUsed.map((tool: any) => {
-          if (typeof tool === 'object' && tool !== null) {
-            return {
-              name: tool.name || 'Unknown Tool',
-              success: Boolean(tool.success),
-              result: tool.result,
-              error: tool.error
-            };
-          }
-          return {
-            name: 'Unknown Tool',
-            success: false,
-            error: 'Invalid tool data'
-          };
-        });
-      };
-
-      const messages: ConversationMessage[] = data.map(row => ({
-        id: row.id.toString(),
-        role: row.role as ConversationMessage['role'],
-        content: row.content,
-        timestamp: new Date(row.created_at),
-        messageType: row.message_type as ConversationMessage['messageType'] || undefined,
-        toolsUsed: convertToolsUsed(row.tools_used),
-        selfReflection: row.self_reflection || undefined,
-        toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 
-          row.tool_decision as { reasoning: string; selectedTools: string[]; } : undefined,
-        aiReasoning: row.ai_reasoning || undefined,
-        loopIteration: row.loop_iteration || 0,
-        improvementReasoning: row.improvement_reasoning || undefined,
-        shouldContinueLoop: row.should_continue_loop || undefined
-      }));
+        return {
+          id: messageId,
+          role: row.role as ConversationMessage['role'],
+          content: row.content,
+          timestamp: new Date(row.created_at),
+          messageType: row.message_type as ConversationMessage['messageType'] || undefined,
+          toolsUsed: convertToolsUsed(row.tools_used),
+          selfReflection: row.self_reflection || undefined,
+          toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 
+            row.tool_decision as { reasoning: string; selectedTools: string[]; } : undefined,
+          aiReasoning: row.ai_reasoning || undefined,
+          loopIteration: row.loop_iteration || 0,
+          improvementReasoning: row.improvement_reasoning || undefined,
+          shouldContinueLoop: row.should_continue_loop || undefined
+        };
+      });
 
       setConversations(messages);
       console.log(`Loaded ${messages.length} messages for session ${sessionId}`);
     } catch (error) {
       console.error('Error loading session:', error);
     }
-  }, [user]);
+  }, [user, convertToolsUsed]);
 
   const deleteSession = useCallback(async (sessionId: string) => {
     if (!user) return;
@@ -281,6 +336,7 @@ export const useAgentConversation = () => {
       if (currentSessionId === sessionId) {
         setCurrentSessionId(null);
         setConversations([]);
+        processedMessageIds.current.clear();
       }
     } catch (error) {
       console.error('Error deleting session:', error);
@@ -293,6 +349,11 @@ export const useAgentConversation = () => {
       content: msg.content
     }));
   }, [conversations]);
+
+  // Reset processed messages when session changes
+  useEffect(() => {
+    processedMessageIds.current.clear();
+  }, [currentSessionId]);
 
   useEffect(() => {
     if (user && sessions.length === 0 && !isLoadingSessions) {

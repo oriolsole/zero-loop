@@ -30,7 +30,10 @@ const AIAgentChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
-  const [processedMessageIds, setProcessedMessageIds] = useState<Set<string>>(new Set());
+
+  // Track message processing to prevent duplicates
+  const processingRequestRef = useRef(false);
+  const lastProcessedCountRef = useRef(0);
 
   const {
     tools,
@@ -53,7 +56,17 @@ const AIAgentChat: React.FC = () => {
 
   // Helper function to safely convert tools_used from database
   const convertToolsUsed = (toolsUsed: any): Array<{name: string; success: boolean; result?: any; error?: string;}> => {
-    if (!toolsUsed || !Array.isArray(toolsUsed)) return [];
+    if (!toolsUsed) return [];
+    
+    if (typeof toolsUsed === 'string') {
+      try {
+        toolsUsed = JSON.parse(toolsUsed);
+      } catch {
+        return [];
+      }
+    }
+    
+    if (!Array.isArray(toolsUsed)) return [];
     
     return toolsUsed.map((tool: any) => {
       if (typeof tool === 'object' && tool !== null) {
@@ -72,9 +85,9 @@ const AIAgentChat: React.FC = () => {
     });
   };
 
-  // Optimized refresh conversation with deduplication
+  // Optimized refresh conversation with better deduplication
   const refreshConversationState = async () => {
-    if (!currentSessionId || !user?.id) return;
+    if (!currentSessionId || !user?.id || processingRequestRef.current) return;
 
     try {
       const { data, error } = await supabase
@@ -85,27 +98,27 @@ const AIAgentChat: React.FC = () => {
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        const messages: ConversationMessage[] = data
-          .filter(row => !processedMessageIds.has(row.id.toString()))
-          .map(row => ({
-            id: row.id.toString(),
-            role: row.role as ConversationMessage['role'],
-            content: row.content,
-            timestamp: new Date(row.created_at),
-            messageType: row.message_type as ConversationMessage['messageType'] || undefined,
-            toolsUsed: convertToolsUsed(row.tools_used),
-            loopIteration: row.loop_iteration || 0,
-            improvementReasoning: row.improvement_reasoning || undefined,
-            shouldContinueLoop: row.should_continue_loop || undefined
-          }));
-
-        // Only add truly new messages
-        if (messages.length > 0) {
-          const newIds = messages.map(msg => msg.id);
-          setProcessedMessageIds(prev => new Set([...prev, ...newIds]));
+        // Only process if we have new messages
+        if (data.length > lastProcessedCountRef.current) {
+          const newMessages = data.slice(lastProcessedCountRef.current);
           
-          // Add messages one by one to maintain proper state
-          messages.forEach(msg => addMessage(msg));
+          for (const row of newMessages) {
+            const message: ConversationMessage = {
+              id: row.id.toString(),
+              role: row.role as ConversationMessage['role'],
+              content: row.content,
+              timestamp: new Date(row.created_at),
+              messageType: row.message_type as ConversationMessage['messageType'] || undefined,
+              toolsUsed: convertToolsUsed(row.tools_used),
+              loopIteration: row.loop_iteration || 0,
+              improvementReasoning: row.improvement_reasoning || undefined,
+              shouldContinueLoop: row.should_continue_loop || undefined
+            };
+            
+            await addMessage(message);
+          }
+          
+          lastProcessedCountRef.current = data.length;
         }
       }
     } catch (error) {
@@ -113,12 +126,12 @@ const AIAgentChat: React.FC = () => {
     }
   };
 
-  // Refresh conversation every 2 seconds while loading to catch loop steps
+  // Refresh conversation every 3 seconds while loading to catch loop steps
   useEffect(() => {
     let refreshInterval: NodeJS.Timeout;
     
-    if (isLoading && currentSessionId) {
-      refreshInterval = setInterval(refreshConversationState, 2000);
+    if (isLoading && currentSessionId && !processingRequestRef.current) {
+      refreshInterval = setInterval(refreshConversationState, 3000);
     }
 
     return () => {
@@ -126,11 +139,11 @@ const AIAgentChat: React.FC = () => {
         clearInterval(refreshInterval);
       }
     };
-  }, [isLoading, currentSessionId, user?.id, processedMessageIds]);
+  }, [isLoading, currentSessionId, user?.id]);
 
-  // Reset processed message IDs when switching sessions
+  // Reset processed count when switching sessions
   useEffect(() => {
-    setProcessedMessageIds(new Set());
+    lastProcessedCountRef.current = 0;
   }, [currentSessionId]);
 
   // Load model settings on component mount and when they change
@@ -153,7 +166,7 @@ const AIAgentChat: React.FC = () => {
   }, []);
 
   const handleFollowUpAction = async (action: string) => {
-    if (!user || !currentSessionId) return;
+    if (!user || !currentSessionId || processingRequestRef.current) return;
 
     const followUpMessage: ConversationMessage = {
       id: Date.now().toString(),
@@ -162,18 +175,18 @@ const AIAgentChat: React.FC = () => {
       timestamp: new Date()
     };
 
-    addMessage(followUpMessage);
+    await addMessage(followUpMessage);
     setInput('');
     
     await processMessage(action);
   };
 
   const processMessage = async (message: string) => {
-    if (!user || !currentSessionId) return;
+    if (!user || !currentSessionId || processingRequestRef.current) return;
 
+    processingRequestRef.current = true;
     setIsLoading(true);
     clearTools();
-    setProcessedMessageIds(new Set()); // Reset for new conversation flow
 
     try {
       const conversationHistory = getConversationHistory();
@@ -203,7 +216,7 @@ const AIAgentChat: React.FC = () => {
         // Allow time for final database writes to complete
         setTimeout(async () => {
           await refreshConversationState();
-        }, 1000);
+        }, 2000);
       } else {
         // Fallback: add traditional single response message
         const assistantMessage: ConversationMessage = {
@@ -217,7 +230,7 @@ const AIAgentChat: React.FC = () => {
           improvementReasoning: data.improvementReasoning || undefined
         };
 
-        addMessage(assistantMessage);
+        await addMessage(assistantMessage);
       }
 
       if (data.toolsUsed && data.toolsUsed.length > 0) {
@@ -242,14 +255,15 @@ const AIAgentChat: React.FC = () => {
         timestamp: new Date()
       };
 
-      addMessage(errorMessage);
+      await addMessage(errorMessage);
     } finally {
       setIsLoading(false);
+      processingRequestRef.current = false;
     }
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading || !user || !currentSessionId) return;
+    if (!input.trim() || isLoading || !user || !currentSessionId || processingRequestRef.current) return;
 
     const userMessage: ConversationMessage = {
       id: Date.now().toString(),
@@ -258,7 +272,7 @@ const AIAgentChat: React.FC = () => {
       timestamp: new Date()
     };
 
-    addMessage(userMessage);
+    await addMessage(userMessage);
     const messageToProcess = input;
     setInput('');
     
