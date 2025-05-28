@@ -145,7 +145,10 @@ const AIAgentChat: React.FC = () => {
       return;
     }
 
-    const requestKey = `${currentSessionId}-${btoa(message).substring(0, 16)}`;
+    const requestKey = `${currentSessionId}-${Math.abs(message.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0)).toString(36).substring(0, 8)}`;
     
     if (activeRequests.current.has(requestKey)) {
       console.log('⚠️ [PROCESS] Request already in progress, skipping:', requestKey);

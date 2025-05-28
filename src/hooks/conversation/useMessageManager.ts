@@ -1,4 +1,3 @@
-
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,10 +7,15 @@ import { v4 as uuidv4 } from 'uuid';
 export const useMessageManager = () => {
   const { user } = useAuth();
 
-  // Generate deterministic message ID to prevent duplicates
+  // Generate deterministic message ID with Unicode-safe encoding
   const generateMessageId = useCallback((content: string, role: string, sessionId: string): string => {
     const timestamp = Date.now();
-    const hash = btoa(`${content}-${role}-${sessionId}-${timestamp}`).substring(0, 16);
+    // Use a simple hash instead of btoa to avoid Unicode issues
+    const hashInput = `${content.substring(0, 50)}-${role}-${sessionId}-${timestamp}`;
+    const hash = Math.abs(hashInput.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0)).toString(36).substring(0, 8);
     return `${role}-${timestamp}-${hash}`;
   }, []);
 
