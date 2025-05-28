@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -204,19 +203,22 @@ const AIAgentChat: React.FC = () => {
 
       console.log('✅ [PROCESS] AI agent response received:', {
         success: data.success,
+        messageLength: data.message?.length,
         responseLength: data.response?.length,
         loopIteration: data.loopIteration,
         toolsUsed: data.toolsUsed?.length
       });
 
-      // CRITICAL: Create and add assistant response to context IMMEDIATELY
-      if (data.response) {
-        const assistantMessageId = generateMessageId(data.response, 'assistant', currentSessionId);
+      // CRITICAL FIX: Check for both 'message' and 'response' fields from backend
+      const aiResponse = data.message || data.response;
+      
+      if (aiResponse) {
+        const assistantMessageId = generateMessageId(aiResponse, 'assistant', currentSessionId);
         
         const assistantMessage: ConversationMessage = {
           id: assistantMessageId,
           role: 'assistant',
-          content: data.response,
+          content: aiResponse,
           timestamp: new Date(),
           messageType: 'response',
           loopIteration: data.loopIteration || 0,
@@ -225,7 +227,7 @@ const AIAgentChat: React.FC = () => {
         };
 
         console.log(`🤖 [PROCESS] Creating assistant message for immediate UI display: ${assistantMessageId}`);
-        console.log(`📝 [PROCESS] Assistant message content preview: "${data.response.substring(0, 100)}..."`);
+        console.log(`📝 [PROCESS] Assistant message content preview: "${aiResponse.substring(0, 100)}..."`);
         
         // Add to UI context first for immediate display
         console.log(`➕ [PROCESS] Adding assistant response to context...`);
@@ -237,7 +239,11 @@ const AIAgentChat: React.FC = () => {
         const persistResult = await persistMessage(assistantMessage);
         console.log(`${persistResult ? '✅' : '❌'} [PROCESS] Assistant message persistence ${persistResult ? 'succeeded' : 'failed'}`);
       } else {
-        console.warn('⚠️ [PROCESS] No response content in AI agent data');
+        console.warn('⚠️ [PROCESS] No response content in AI agent data:', { 
+          hasMessage: !!data.message, 
+          hasResponse: !!data.response,
+          dataKeys: Object.keys(data)
+        });
       }
       
       if (data.toolsUsed && data.toolsUsed.length > 0) {
