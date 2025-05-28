@@ -2,12 +2,12 @@
 import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Bot, Loader2, MessageSquare, Search, Github, Code, Brain } from 'lucide-react';
+import { Bot, MessageSquare, Search, Github, Brain } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
-import { ToolProgressItem } from '@/types/tools';
+import { AtomicTool } from '@/types/tools';
 import AIAgentMessage from './AIAgentMessage';
-import ToolExecutionCard from './ToolExecutionCard';
+import AtomicToolCard from './AtomicToolCard';
 import StatusMessage from './StatusMessage';
 
 interface SimplifiedChatInterfaceProps {
@@ -17,7 +17,7 @@ interface SimplifiedChatInterfaceProps {
     provider: ModelProvider;
     selectedModel?: string;
   };
-  tools: ToolProgressItem[];
+  tools: AtomicTool[];
   toolsActive: boolean;
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   onFollowUpAction?: (action: string) => void;
@@ -26,7 +26,6 @@ interface SimplifiedChatInterfaceProps {
 const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   conversations,
   isLoading,
-  modelSettings,
   tools,
   toolsActive,
   scrollAreaRef,
@@ -35,27 +34,27 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   const suggestedActions = [
     {
       icon: <MessageSquare className="h-4 w-4" />,
-      title: "General Questions",
-      description: "Ask me anything you'd like to know",
-      action: "What can you help me with today?"
+      title: "Ask Questions",
+      description: "I can help with analysis and problem-solving",
+      action: "What can you help me with?"
     },
     {
       icon: <Search className="h-4 w-4" />,
-      title: "Research & Analysis",
-      description: "Get current information and insights",
-      action: "Research the latest developments in artificial intelligence"
+      title: "Research Topics",
+      description: "Get insights and current information",
+      action: "Research recent developments in AI technology"
     },
     {
       icon: <Github className="h-4 w-4" />,
-      title: "Code & Development",
-      description: "Programming help and code analysis",
-      action: "Help me analyze and improve my code"
+      title: "Code Analysis",
+      description: "Help with programming and development",
+      action: "Help me understand this codebase structure"
     },
     {
       icon: <Brain className="h-4 w-4" />,
       title: "Problem Solving",
-      description: "Complex analysis and decision making",
-      action: "Help me break down and solve a complex problem"
+      description: "Break down complex challenges",
+      action: "Help me think through a complex decision"
     }
   ];
 
@@ -71,13 +70,13 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
               
               <div className="mb-8">
                 <h2 className="text-2xl font-semibold mb-3 text-foreground">
-                  Welcome to AI Assistant
+                  AI Assistant
                 </h2>
                 <p className="text-muted-foreground text-lg mb-2 max-w-2xl">
-                  I'm here to help with analysis, research, problem-solving, and general assistance.
+                  I'm here to help with analysis, research, and problem-solving.
                 </p>
                 <p className="text-muted-foreground/80 text-sm">
-                  I can use various tools when they add value to help answer your questions.
+                  I'll use the right tools when they can help answer your questions.
                 </p>
               </div>
               
@@ -119,28 +118,20 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
           </div>
           
           {toolsActive && tools.length > 0 && (
-            <div className="mt-8 space-y-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Using tools to help with your request...</span>
-              </div>
-              
-              <div className="grid gap-3">
-                {tools.map((tool) => (
-                  <ToolExecutionCard 
-                    key={tool.id} 
-                    tool={tool} 
-                    compact={true}
-                  />
-                ))}
-              </div>
+            <div className="mt-8 space-y-3">
+              {tools.map((tool) => (
+                <AtomicToolCard 
+                  key={tool.id} 
+                  tool={tool}
+                />
+              ))}
             </div>
           )}
           
           {isLoading && !toolsActive && (
             <div className="mt-8">
               <StatusMessage 
-                content="Processing your request..."
+                content="Thinking..."
                 type="thinking"
               />
             </div>

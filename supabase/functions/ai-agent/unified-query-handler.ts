@@ -7,8 +7,8 @@ import { extractAssistantMessage } from './response-handler.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 
 /**
- * Unified query handler that lets the LLM naturally decide tool usage
- * Knowledge retrieval is now tool-based only, not forced
+ * Pure atomic loop handler - LLM decides everything
+ * Each call is atomic: receive → think → decide → execute → reflect → respond
  */
 export async function handleUnifiedQuery(
   message: string,
@@ -19,13 +19,13 @@ export async function handleUnifiedQuery(
   streaming: boolean,
   supabase: any
 ): Promise<any> {
-  console.log('🤖 Starting unified query handler with optional knowledge');
+  console.log('🧠 Starting atomic loop with LLM-driven decisions');
 
   let finalResponse = '';
   let allToolsUsed: any[] = [];
 
   try {
-    // 1. Get available tools (knowledge search is just one of many available tools)
+    // 1. Get available tools (LLM will decide if/when to use them)
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
       .select('*')
@@ -37,23 +37,22 @@ export async function handleUnifiedQuery(
     }
 
     const tools = convertMCPsToTools(mcps);
-    const systemPrompt = generateUnifiedSystemPrompt(mcps);
+    const systemPrompt = generateAtomicSystemPrompt();
 
-    // 2. Prepare messages WITHOUT any forced knowledge injection
+    // 2. Create messages for atomic decision making
     const messages = createKnowledgeAwareMessages(
       systemPrompt,
       conversationHistory,
       message
-      // NO relevantKnowledge parameter - let LLM decide via tools
     );
 
-    console.log('🧠 Calling LLM with natural tool choice (no forced knowledge)');
+    console.log('🎯 LLM making atomic decision for:', message);
 
-    // 3. Single LLM call with natural tool decision-making
+    // 3. Single atomic LLM call - decides everything
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: 'auto', // LLM decides which tools to use
+      tool_choice: 'auto',
       temperature: 0.7,
       max_tokens: 2000,
       stream: streaming,
@@ -83,9 +82,9 @@ export async function handleUnifiedQuery(
     const data = response.data;
     finalResponse = extractAssistantMessage(data) || '';
 
-    // 4. Execute tools ONLY if LLM chose to use them
+    // 4. Execute tools atomically if LLM chose them
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
-      console.log('🛠️ LLM chose to use', data.choices[0].message.tool_calls.length, 'tools');
+      console.log('⚡ Executing', data.choices[0].message.tool_calls.length, 'atomic tools');
       
       const { toolResults, toolsUsed } = await executeTools(
         data.choices[0].message.tool_calls,
@@ -96,12 +95,11 @@ export async function handleUnifiedQuery(
       
       allToolsUsed = toolsUsed;
       
-      // 5. Synthesize tool results if tools were used
+      // 5. Synthesize atomically if tools were used
       if (toolsUsed.length > 0) {
-        console.log('🔄 Synthesizing tool results');
-        const synthesizedResponse = await synthesizeResults(
+        console.log('🔄 Atomic synthesis of tool results');
+        const synthesizedResponse = await synthesizeAtomically(
           message,
-          conversationHistory,
           toolsUsed,
           finalResponse,
           modelSettings,
@@ -113,31 +111,31 @@ export async function handleUnifiedQuery(
         }
       }
     } else {
-      console.log('✅ LLM responded directly without using any tools');
+      console.log('💭 LLM responded directly (no tools needed)');
     }
 
-    // 6. Persist valuable insights if multiple tools were used
-    if (userId && allToolsUsed.length > 1) {
+    // 6. Persist insights atomically if valuable
+    if (userId && allToolsUsed.length > 0) {
       try {
         await persistInsightAsKnowledgeNode(
           message,
           finalResponse,
           [{ toolsUsed: allToolsUsed, response: finalResponse }],
           userId,
-          { classification: 'UNIFIED', reasoning: 'Multi-tool unified query processing' },
+          { classification: 'ATOMIC', reasoning: 'Atomic loop completion' },
           supabase
         );
       } catch (error) {
-        console.warn('Failed to persist insights:', error);
+        console.warn('Failed to persist atomic insight:', error);
       }
     }
 
-    // 7. Validate and ensure response quality
+    // 7. Ensure response quality
     if (!finalResponse || !finalResponse.trim()) {
-      finalResponse = createFallbackResponse(message, allToolsUsed);
+      finalResponse = createAtomicFallback(message, allToolsUsed);
     }
 
-    // 8. Store response in database
+    // 8. Store atomic result
     if (userId && sessionId) {
       await supabase.from('agent_conversations').insert({
         user_id: userId,
@@ -152,16 +150,15 @@ export async function handleUnifiedQuery(
     return {
       success: true,
       message: finalResponse,
-      unifiedApproach: true,
+      atomicLoop: true,
       toolsUsed: allToolsUsed,
       sessionId
     };
 
   } catch (error) {
-    console.error('❌ Error in unified query handler:', error);
+    console.error('❌ Atomic loop error:', error);
     
-    // Emergency fallback response
-    finalResponse = `I apologize, but I encountered an error while processing your message "${message}". Please try again or rephrase your question.`;
+    finalResponse = `I encountered an issue processing "${message}". Let me try a different approach.`;
     
     if (userId && sessionId) {
       try {
@@ -174,98 +171,91 @@ export async function handleUnifiedQuery(
           created_at: new Date().toISOString()
         });
       } catch (dbError) {
-        console.error('Failed to insert error fallback:', dbError);
+        console.error('Failed to store atomic fallback:', dbError);
       }
     }
 
     return {
       success: true,
       message: finalResponse,
-      unifiedApproach: true,
+      atomicLoop: true,
       toolsUsed: [],
       sessionId,
-      error: 'Processed with fallback response'
+      error: 'Atomic fallback used'
     };
   }
 }
 
 /**
- * Generate unified system prompt emphasizing natural tool usage
+ * Generate system prompt for atomic decision making
  */
-function generateUnifiedSystemPrompt(mcps: any[]): string {
-  const mcpSummaries = mcps?.map(mcp => ({
-    name: mcp.title,
-    description: mcp.description,
-    parameters: mcp.parameters
-  })) || [];
-  
-  const toolDescriptions = mcpSummaries
-    .map(summary => `**${summary.name}**: ${summary.description}`)
-    .join('\n');
+function generateAtomicSystemPrompt(): string {
+  return `You are an intelligent AI assistant that makes atomic decisions.
 
-  return `You are an intelligent AI assistant with access to powerful tools when needed.
+**🎯 ATOMIC DECISION PROCESS:**
+Each interaction is atomic: receive → think → decide → execute → respond
 
-**🧠 NATURAL RESPONSE STRATEGY:**
-1. **ANSWER DIRECTLY** from your knowledge for simple questions, greetings, and general conversations
-2. **USE TOOLS SELECTIVELY** only when they add clear value:
-   - Knowledge Search: When you need to access previous learnings or uploaded documents
-   - Web Search: For current/real-time information not in your knowledge
-   - GitHub Tools: For code repository analysis
-   - Other tools: When specific external data is needed
+**💭 DECISION GUIDELINES:**
+- Answer directly if you have sufficient knowledge
+- Use tools only when they add clear value
+- Make one atomic decision per interaction
+- Be decisive and efficient
 
-**🛠️ Available Tools (use only when valuable):**
-${toolDescriptions}
+**🛠️ AVAILABLE TOOLS:**
+- Knowledge Search: Access previous learnings and documents
+- Web Search: Get current/real-time information  
+- GitHub Tools: Analyze code repositories
+- Jira Tools: Access project management data
+- Web Scraper: Extract content from web pages
 
-**💡 Decision Guidelines:**
-- Simple greetings like "hello" → respond directly
-- Basic questions you can answer → respond directly  
-- Need previous knowledge → use Knowledge Search tool
-- Need current information → use Web Search tool
-- Complex research → use multiple tools progressively
-- **Don't overuse tools** - your general knowledge is extensive
+**⚡ ATOMIC EXECUTION:**
+1. Understand the request completely
+2. Decide if tools are needed (yes/no)
+3. If yes: choose the minimal set of tools needed
+4. If no: respond directly from knowledge
+5. Execute atomically and synthesize results
 
-**📋 Response Style:**
-- Be conversational and helpful
-- Only use tools when they genuinely improve your answer
-- Integrate tool results naturally when used
-- Provide clear, actionable information
+**📋 RESPONSE STYLE:**
+- Direct and helpful
+- Use tools purposefully, not habitually  
+- Integrate results naturally
+- Complete the atomic loop efficiently
 
-Remember: You have comprehensive knowledge. Tools are available when needed, not required for every response.`;
+Remember: Each interaction should complete atomically. Think → Decide → Execute → Respond.`;
 }
 
 /**
- * Synthesize results from tools and knowledge
+ * Atomic synthesis of tool results
  */
-async function synthesizeResults(
+async function synthesizeAtomically(
   originalMessage: string,
-  conversationHistory: any[],
   toolsUsed: any[],
   originalResponse: string,
   modelSettings: any,
   supabase: any
 ): Promise<string | null> {
   try {
-    const toolResultsSummary = toolsUsed.map(tool => {
+    const toolSummary = toolsUsed.map(tool => {
       if (tool.success && tool.result) {
-        const resultPreview = typeof tool.result === 'string' 
-          ? tool.result.substring(0, 500) + (tool.result.length > 500 ? '...' : '')
-          : JSON.stringify(tool.result).substring(0, 500);
-        return `${tool.name}: ${resultPreview}`;
+        const preview = typeof tool.result === 'string' 
+          ? tool.result.substring(0, 300) + (tool.result.length > 300 ? '...' : '')
+          : JSON.stringify(tool.result).substring(0, 300);
+        return `${tool.name}: ${preview}`;
       }
-      return `${tool.name}: Failed`;
+      return `${tool.name}: No result`;
     }).join('\n');
 
     const synthesisMessages = [
       {
         role: 'system',
-        content: `Provide a comprehensive, well-structured answer based on the tool results.
+        content: `Synthesize a complete, helpful response based on the tool results.
 
-User asked: "${originalMessage}"
+Original question: "${originalMessage}"
 
 Tool results:
-${toolResultsSummary}
+${toolSummary}
 
-Create a clear, helpful response that integrates this information naturally. Format appropriately for readability.`
+Provide a clear, comprehensive answer that integrates this information naturally.`
       },
       {
         role: 'user',
@@ -287,28 +277,28 @@ Create a clear, helpful response that integrates this information naturally. For
     });
     
     if (synthesisResponse.error) {
-      console.error('Synthesis failed:', synthesisResponse.error);
+      console.error('Atomic synthesis failed:', synthesisResponse.error);
       return null;
     }
     
     return extractAssistantMessage(synthesisResponse.data);
     
   } catch (error) {
-    console.error('Error in synthesis:', error);
+    console.error('Error in atomic synthesis:', error);
     return null;
   }
 }
 
 /**
- * Create fallback response when main response fails
+ * Create atomic fallback response
  */
-function createFallbackResponse(message: string, toolsUsed: any[]): string {
+function createAtomicFallback(message: string, toolsUsed: any[]): string {
   if (toolsUsed && toolsUsed.length > 0) {
     const successfulTools = toolsUsed.filter(t => t.success);
     if (successfulTools.length > 0) {
-      return `I processed your request "${message}" using ${successfulTools.length} tool(s), but encountered an issue formatting the response. The tools executed successfully, but I need to try again to provide a proper answer.`;
+      return `I processed "${message}" using ${successfulTools.length} tool(s) successfully, but need to refine my response. Let me try again.`;
     }
   }
   
-  return `I received your message "${message}" and attempted to process it, but encountered technical difficulties. Please try rephrasing your question or try again in a moment.`;
+  return `I understand you're asking about "${message}". Let me approach this differently.`;
 }

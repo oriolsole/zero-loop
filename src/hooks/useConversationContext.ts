@@ -7,27 +7,6 @@ export const useConversationContext = () => {
     toolResults: new Map()
   });
 
-  const updateGitHubContext = useCallback((repoData: { owner: string; repo: string; url: string }) => {
-    setContext(prev => ({
-      ...prev,
-      lastGitHubRepo: {
-        ...repoData,
-        analyzedAt: new Date()
-      }
-    }));
-  }, []);
-
-  const updateSearchContext = useCallback((query: string, results: any[]) => {
-    setContext(prev => ({
-      ...prev,
-      lastSearchQuery: {
-        query,
-        results,
-        searchedAt: new Date()
-      }
-    }));
-  }, []);
-
   const storeToolResult = useCallback((toolId: string, result: any) => {
     setContext(prev => {
       const newToolResults = new Map(prev.toolResults);
@@ -39,17 +18,15 @@ export const useConversationContext = () => {
     });
   }, []);
 
-  // Simplified context retrieval - no automatic pattern matching
-  const getContextForMessage = useCallback((message: string): string => {
-    // Return empty string - let the LLM decide when context is needed via tools
-    return '';
-  }, [context]);
+  const clearContext = useCallback(() => {
+    setContext({
+      toolResults: new Map()
+    });
+  }, []);
 
   return {
     context,
-    updateGitHubContext,
-    updateSearchContext,
     storeToolResult,
-    getContextForMessage
+    clearContext
   };
 };
