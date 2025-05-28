@@ -25,8 +25,6 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
       case 'loop-reflection':
         return <Eye className="h-3 w-3 text-purple-500 dark:text-purple-400" />;
       case 'tool-executing':
-      case 'tool-execution':
-      case 'tool-completion':
         return <Wrench className="h-3 w-3 text-orange-500 dark:text-orange-400" />;
       case 'loop-enhancement':
         return <Lightbulb className="h-3 w-3 text-green-500 dark:text-green-400" />;
@@ -37,17 +35,22 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     }
   };
 
-  // Parse tool execution messages
+  // Parse tool execution messages - check if content is JSON with tool data
   const parseToolMessage = (content: string) => {
     try {
-      return JSON.parse(content);
+      const parsed = JSON.parse(content);
+      // Check if it has tool-like properties
+      if (parsed.toolName || parsed.displayName || parsed.status) {
+        return parsed;
+      }
+      return null;
     } catch {
       return null;
     }
   };
 
   // Check if this is a tool message and should be rendered as a tool card
-  const isToolMessage = message.messageType === 'tool-execution' || message.messageType === 'tool-completion';
+  const isToolMessage = message.messageType === 'tool-executing' && message.content.startsWith('{');
   const toolData = isToolMessage ? parseToolMessage(message.content) : null;
 
   // Render tool execution/completion as enhanced tool card

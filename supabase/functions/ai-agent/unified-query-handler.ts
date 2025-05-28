@@ -1,4 +1,3 @@
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
@@ -173,12 +172,7 @@ export async function handleUnifiedQuery(
             parameters: parameters,
             startTime: new Date().toISOString()
           }),
-          'tool-execution',
-          { 
-            tool_name: toolName,
-            tool_display_name: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            tool_parameters: parameters
-          }
+          'tool-executing'
         );
       }
       
@@ -202,12 +196,7 @@ export async function handleUnifiedQuery(
             success: tool.success,
             endTime: new Date().toISOString()
           }),
-          'tool-completion',
-          { 
-            tool_name: tool.name.replace('execute_', ''),
-            tool_success: tool.success,
-            tool_result: tool.result
-          }
+          'tool-executing'
         );
       }
       
