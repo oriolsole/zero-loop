@@ -8,7 +8,9 @@ import { createMCPSummary, formatMCPForPrompt } from './mcp-summary.ts';
  * Generates a comprehensive system prompt with unified strategy and tool introspection
  */
 export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): string {
-  const mcpSummaries = mcps?.map(mcp => createMCPSummary(mcp)) || [];
+  // Sort MCPs by priority before creating summaries (highest priority first)
+  const sortedMCPs = [...(mcps || [])].sort((a, b) => (b.priority || 1) - (a.priority || 1));
+  const mcpSummaries = sortedMCPs.map(mcp => createMCPSummary(mcp));
   
   const toolDescriptions = mcpSummaries
     .map(summary => formatMCPForPrompt(summary))
@@ -45,6 +47,36 @@ Example proactive responses:
 - User: "Can you check what issues are open in my GitHub repo?"
 - Agent: "Sure! I'll use the GitHub tools to check for open issues in your repository."
 
+**🔗 Multi-Tool Chain Examples:**
+For complex requests, use multiple tools in sequence to provide comprehensive answers:
+
+Example 1 - Research & Analysis:
+- User: "Can you find recent reviews of my competitor's app and summarize them?"
+- Agent:
+  1. Uses **Web Search** to find pages about the competitor
+  2. Uses **Web Scraper** to fetch review content from specific URLs
+  3. Summarizes the reviews and presents insights
+
+Example 2 - Knowledge Enhancement:
+- User: "Search for information about React hooks and check if I have any notes on this topic"
+- Agent:
+  1. Uses **Knowledge Search** to check existing personal notes
+  2. Uses **Web Search** to find current information if gaps exist
+  3. Combines both sources for a comprehensive response
+
+Example 3 - Code Analysis:
+- User: "Analyze the recent changes in my project repository"
+- Agent:
+  1. Uses **GitHub Tools** to get recent commits and changes
+  2. Uses **Knowledge Search** to find related project documentation
+  3. Provides analysis combining code changes with project context
+
+**🛡️ Tool Reliability & Retry Logic:**
+- If a tool fails on first attempt, automatically retry once
+- Only inform the user if the tool fails after retry attempts
+- Suggest alternative approaches when tools are unavailable
+- Continue with available tools when one tool in a chain fails
+
 **💡 Natural Decision Making:**
 - For simple greetings or basic questions, respond directly
 - Use the Knowledge Search tool when you need to access previous learnings or uploaded documents
@@ -61,8 +93,9 @@ Example proactive responses:
 - Provide actionable, helpful information
 - Cite sources when using external data
 - Explain which tool you're using and why when it's not obvious
+- Chain tools together for comprehensive research when beneficial
 
-Remember: You have both comprehensive general knowledge and powerful tools. Be proactive in using tools when they clearly match user needs, but use your judgment about when tools add value.`;
+Remember: You have both comprehensive general knowledge and powerful tools. Be proactive in using tools when they clearly match user needs, and don't hesitate to combine multiple tools for better results.`;
 }
 
 /**

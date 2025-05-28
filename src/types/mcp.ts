@@ -1,4 +1,3 @@
-
 export interface MCPParameter {
   name: string;
   type: 'string' | 'number' | 'boolean' | 'array' | 'object';
@@ -30,6 +29,7 @@ export interface MCP {
   authKeyName?: string;
   // Fix: The database field is actually "requirestoken" (lowercase t)
   requirestoken?: string; // e.g., 'github', 'openai'
+  priority?: number; // New field for tool priority (higher = more important)
 }
 
 export interface MCPExecution {

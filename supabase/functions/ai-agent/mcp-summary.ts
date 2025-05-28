@@ -17,6 +17,7 @@ export interface MCPSummary {
   sampleUseCases: string[];
   endpoint: string;
   default_key: string;
+  priority?: number; // Add priority to summary interface
 }
 
 /**
@@ -70,7 +71,8 @@ export function createMCPSummary(mcp: any): MCPSummary {
     keyParameters,
     sampleUseCases,
     endpoint: mcp.endpoint,
-    default_key: mcp.default_key || mcp.id
+    default_key: mcp.default_key || mcp.id,
+    priority: mcp.priority || 1 // Extract priority field with default value
   };
 }
 
