@@ -70,30 +70,6 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
     }
   ];
 
-  // Get active tool names for status message
-  const getActiveToolsMessage = () => {
-    const activeTools = tools.filter(tool => 
-      tool.status === 'pending' || 
-      tool.status === 'starting' || 
-      tool.status === 'executing'
-    );
-    
-    if (activeTools.length === 0) return "Processing your request...";
-    
-    if (activeTools.length === 1) {
-      const toolName = getToolDisplayName(activeTools[0].name);
-      return `Using ${toolName}...`;
-    }
-    
-    const toolNames = activeTools.map(tool => getToolDisplayName(tool.name));
-    if (toolNames.length === 2) {
-      return `Using ${toolNames[0]} and ${toolNames[1]}...`;
-    }
-    
-    const lastTool = toolNames.pop();
-    return `Using ${toolNames.join(', ')}, and ${lastTool}...`;
-  };
-
   return (
     <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
       <ScrollArea className="h-full" ref={scrollAreaRef}>
@@ -156,15 +132,9 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             })}
           </div>
           
+          {/* Enhanced Tool Execution Cards */}
           {toolsActive && tools.length > 0 && (
             <div className="mt-8 space-y-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                  <span>{getActiveToolsMessage()}</span>
-                </div>
-              </div>
-              
               <div className="grid gap-3">
                 {tools.map((tool) => (
                   <ToolExecutionCard 
