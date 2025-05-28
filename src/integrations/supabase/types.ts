@@ -26,7 +26,6 @@ export type Database = {
           tool_decision: Json | null
           tool_name: string | null
           tools_used: Json | null
-          updated_at: string | null
           user_id: string
         }
         Insert: {
@@ -45,7 +44,6 @@ export type Database = {
           tool_decision?: Json | null
           tool_name?: string | null
           tools_used?: Json | null
-          updated_at?: string | null
           user_id: string
         }
         Update: {
@@ -64,7 +62,6 @@ export type Database = {
           tool_decision?: Json | null
           tool_name?: string | null
           tools_used?: Json | null
-          updated_at?: string | null
           user_id?: string
         }
         Relationships: []

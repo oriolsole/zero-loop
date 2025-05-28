@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Bot, Sparkles, Search, Database, Github } from 'lucide-react';
+import { Bot, Loader2, Sparkles, Search, Database, Github } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
@@ -46,6 +46,10 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
         return '🤖';
     }
   };
+
+  const activeTool = tools.find(tool => 
+    tool.status === 'executing' || tool.status === 'starting'
+  );
 
   return (
     <CardContent className="flex-1 overflow-hidden p-0">
@@ -128,9 +132,14 @@ const AIAgentChatInterface: React.FC<AIAgentChatInterfaceProps> = ({
             />
           ))}
           
-          {/* Enhanced Tool Execution Progress */}
+          {/* Tool Execution Progress */}
           {toolsActive && tools.length > 0 && (
             <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Tools in progress...</span>
+              </div>
+              
               <div className="grid gap-2">
                 {tools.map((tool) => (
                   <ToolExecutionCard 

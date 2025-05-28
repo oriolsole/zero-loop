@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Bot, MessageSquare, Search, Github, Code, Brain } from 'lucide-react';
+import { Bot, Loader2, MessageSquare, Search, Github, Code, Brain } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
@@ -10,8 +10,6 @@ import { useConversationContext } from '@/contexts/ConversationContext';
 import AIAgentMessage from './AIAgentMessage';
 import ToolExecutionCard from './ToolExecutionCard';
 import StatusMessage from './StatusMessage';
-import DebugInfo from './DebugInfo';
-import LoopProgressIndicator from './LoopProgressIndicator';
 
 interface SimplifiedChatInterfaceProps {
   conversations: ConversationMessage[]; // Keep for compatibility, but won't use
@@ -39,28 +37,10 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
 
   // Debug effect to track messages from context
   useEffect(() => {
-    console.log(`🎯 [INTERFACE] Using context messages: ${messages.length}`, 
-      messages.map(c => ({ id: c.id.substring(0, 8), role: c.role, content: c.content.substring(0, 30) + '...' }))
+    console.log(`🎯 SimplifiedChatInterface using context messages: ${messages.length}`, 
+      messages.map(c => ({ id: c.id, role: c.role, content: c.content.substring(0, 50) + '...' }))
     );
   }, [messages]);
-
-  // Group messages by loop iteration to show progression
-  const groupMessagesByLoop = (messages: ConversationMessage[]) => {
-    const grouped: { [key: number]: ConversationMessage[] } = {};
-    
-    messages.forEach(msg => {
-      const loop = msg.loopIteration || 0;
-      if (!grouped[loop]) {
-        grouped[loop] = [];
-      }
-      grouped[loop].push(msg);
-    });
-    
-    return grouped;
-  };
-
-  const groupedMessages = groupMessagesByLoop(messages);
-  const loopNumbers = Object.keys(groupedMessages).map(Number).sort((a, b) => a - b);
 
   const suggestedActions = [
     {
@@ -90,9 +70,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   ];
 
   return (
-    <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95 relative">
-      <DebugInfo />
-      
+    <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
       <ScrollArea className="h-full" ref={scrollAreaRef}>
         <div className="max-w-4xl mx-auto px-6 py-8">
           {messages.length === 0 && (
@@ -140,50 +118,32 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             </div>
           )}
 
-          {/* Display messages grouped by loop iteration */}
           <div className="space-y-8">
-            {loopNumbers.map((loopNumber) => {
-              const loopMessages = groupedMessages[loopNumber];
-              const hasMultipleLoops = loopNumbers.length > 1;
-              
+            {messages.map((message) => {
+              console.log(`🎨 Rendering message: ${message.id} (${message.role}): ${message.content.substring(0, 50)}...`);
               return (
-                <div key={loopNumber} className="space-y-6">
-                  {/* Loop indicator for multiple loops */}
-                  {hasMultipleLoops && loopNumber > 0 && (
-                    <LoopProgressIndicator 
-                      loopNumber={loopNumber}
-                      messages={loopMessages}
-                    />
-                  )}
-                  
-                  {/* Messages in this loop */}
-                  {loopMessages.map((message) => {
-                    console.log(`🎨 [INTERFACE] Rendering message: ${message.id.substring(0, 8)} (${message.role}): ${message.content.substring(0, 50)}...`);
-                    return (
-                      <AIAgentMessage 
-                        key={message.id}
-                        message={message}
-                        onFollowUpAction={onFollowUpAction}
-                      />
-                    );
-                  })}
-                </div>
+                <AIAgentMessage 
+                  key={message.id}
+                  message={message}
+                  onFollowUpAction={onFollowUpAction}
+                />
               );
             })}
           </div>
           
-          {/* Enhanced Tool Execution Cards */}
           {toolsActive && tools.length > 0 && (
             <div className="mt-8 space-y-4">
-              <div className="text-sm font-medium text-muted-foreground mb-2">
-                Tools Running:
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Using tools to help with your request...</span>
               </div>
+              
               <div className="grid gap-3">
                 {tools.map((tool) => (
                   <ToolExecutionCard 
                     key={tool.id} 
                     tool={tool} 
-                    compact={false}
+                    compact={true}
                   />
                 ))}
               </div>
