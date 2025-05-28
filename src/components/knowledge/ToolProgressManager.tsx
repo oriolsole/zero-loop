@@ -22,92 +22,10 @@ export const ToolProgressManager: React.FC<ToolProgressManagerProps> = ({ onTool
   
   // Track processed tool messages to prevent duplicates
   const processedToolMessages = useRef<Set<string>>(new Set());
-  const toolMessageQueue = useRef<any[]>([]);
-  const processingToolQueue = useRef<boolean>(false);
 
-  // Process tool message queue sequentially with minimum display time
-  const processToolMessageQueue = React.useCallback(async () => {
-    if (processingToolQueue.current || toolMessageQueue.current.length === 0) {
-      return;
-    }
-
-    processingToolQueue.current = true;
-    console.log(`🔧 [TOOL-QUEUE] Processing ${toolMessageQueue.current.length} tool messages`);
-
-    const messagesToProcess = [...toolMessageQueue.current];
-    toolMessageQueue.current = [];
-
-    for (const { message, toolData } of messagesToProcess) {
-      if (processedToolMessages.current.has(message.id)) {
-        console.log(`⚠️ [TOOL-QUEUE] Already processed tool message: ${message.id}`);
-        continue;
-      }
-
-      processedToolMessages.current.add(message.id);
-      
-      if (toolData.status === 'executing') {
-        const existingTool = tools.find(t => t.name === toolData.toolName);
-        
-        if (!existingTool) {
-          console.log(`🔧 [TOOL-MANAGER] Starting tool: ${toolData.toolName}`);
-          const toolId = startTool(
-            toolData.toolName,
-            toolData.displayName || toolData.toolName,
-            toolData.parameters
-          );
-          
-          // Ensure minimum display time for executing state
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      } else if (toolData.status === 'completed') {
-        let existingTool = tools.find(t => t.name === toolData.toolName);
-        
-        if (!existingTool) {
-          console.log(`🔧 [TOOL-MANAGER] Creating and completing tool: ${toolData.toolName}`);
-          const newToolId = startTool(
-            toolData.toolName,
-            toolData.displayName || toolData.toolName,
-            toolData.parameters
-          );
-          
-          // Allow tool to show executing state briefly
-          await new Promise(resolve => setTimeout(resolve, 300));
-          completeTool(newToolId, toolData.result);
-        } else {
-          console.log(`✅ [TOOL-MANAGER] Completing existing tool: ${toolData.toolName}`);
-          completeTool(existingTool.id, toolData.result);
-        }
-      } else if (toolData.status === 'failed') {
-        let existingTool = tools.find(t => t.name === toolData.toolName);
-        
-        if (!existingTool) {
-          console.log(`🔧 [TOOL-MANAGER] Creating and failing tool: ${toolData.toolName}`);
-          const newToolId = startTool(
-            toolData.toolName,
-            toolData.displayName || toolData.toolName,
-            toolData.parameters
-          );
-          
-          // Allow tool to show executing state briefly
-          await new Promise(resolve => setTimeout(resolve, 300));
-          failTool(newToolId, toolData.error);
-        } else {
-          console.log(`❌ [TOOL-MANAGER] Failing existing tool: ${toolData.toolName}`);
-          failTool(existingTool.id, toolData.error);
-        }
-      }
-
-      // Small delay between processing messages
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-
-    processingToolQueue.current = false;
-    console.log(`✅ [TOOL-QUEUE] Finished processing tool message queue`);
-  }, [tools, startTool, completeTool, failTool]);
-
-  // Process tool execution messages from the backend and real-time updates
+  // SIMPLIFIED: Process tool execution messages immediately
   useEffect(() => {
-    // Look for tool-executing messages in the entire message history
+    // Find all tool-executing messages
     const toolExecutingMessages = messages.filter(msg => msg.messageType === 'tool-executing');
     
     console.log(`🔧 [TOOL-MANAGER] Found ${toolExecutingMessages.length} tool execution messages`);
@@ -125,16 +43,65 @@ export const ToolProgressManager: React.FC<ToolProgressManagerProps> = ({ onTool
       
       try {
         const toolData = JSON.parse(message.content);
-        console.log(`🔍 [TOOL-MANAGER] Queueing tool data:`, toolData);
+        console.log(`🔍 [TOOL-MANAGER] Processing tool data:`, toolData);
         
-        // Add to queue for sequential processing with timing control
-        toolMessageQueue.current.push({ message, toolData });
-        processToolMessageQueue();
+        processedToolMessages.current.add(message.id);
+        
+        if (toolData.status === 'executing') {
+          const existingTool = tools.find(t => t.name === toolData.toolName);
+          
+          if (!existingTool) {
+            console.log(`🔧 [TOOL-MANAGER] Starting tool: ${toolData.toolName}`);
+            const toolId = startTool(
+              toolData.toolName,
+              toolData.displayName || toolData.toolName,
+              toolData.parameters
+            );
+          }
+        } else if (toolData.status === 'completed') {
+          let existingTool = tools.find(t => t.name === toolData.toolName);
+          
+          if (!existingTool) {
+            console.log(`🔧 [TOOL-MANAGER] Creating and completing tool: ${toolData.toolName}`);
+            const newToolId = startTool(
+              toolData.toolName,
+              toolData.displayName || toolData.toolName,
+              toolData.parameters
+            );
+            
+            // Complete the tool after a brief moment
+            setTimeout(() => {
+              completeTool(newToolId, toolData.result);
+            }, 500);
+          } else {
+            console.log(`✅ [TOOL-MANAGER] Completing existing tool: ${toolData.toolName}`);
+            completeTool(existingTool.id, toolData.result);
+          }
+        } else if (toolData.status === 'failed') {
+          let existingTool = tools.find(t => t.name === toolData.toolName);
+          
+          if (!existingTool) {
+            console.log(`🔧 [TOOL-MANAGER] Creating and failing tool: ${toolData.toolName}`);
+            const newToolId = startTool(
+              toolData.toolName,
+              toolData.displayName || toolData.toolName,
+              toolData.parameters
+            );
+            
+            // Fail the tool after a brief moment
+            setTimeout(() => {
+              failTool(newToolId, toolData.error);
+            }, 500);
+          } else {
+            console.log(`❌ [TOOL-MANAGER] Failing existing tool: ${toolData.toolName}`);
+            failTool(existingTool.id, toolData.error);
+          }
+        }
       } catch (e) {
         console.warn(`❌ [TOOL-MANAGER] Failed to parse tool execution message:`, e, message.content);
       }
     });
-  }, [messages, processToolMessageQueue]);
+  }, [messages, tools, startTool, completeTool, failTool]);
 
   // Notify parent of tool updates
   useEffect(() => {
@@ -149,7 +116,6 @@ export const ToolProgressManager: React.FC<ToolProgressManagerProps> = ({ onTool
       console.log(`🧹 [TOOL-MANAGER] Clearing tools - no user messages`);
       clearTools();
       processedToolMessages.current.clear();
-      toolMessageQueue.current = [];
     }
   }, [messages, clearTools]);
 

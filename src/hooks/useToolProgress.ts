@@ -15,13 +15,8 @@ export interface UseToolProgressReturn {
 export const useToolProgress = (): UseToolProgressReturn => {
   const [tools, setTools] = useState<ToolProgressItem[]>([]);
 
-  // Consider tools active if any are pending, starting, or executing
-  // Also keep completed/failed tools visible for a while
-  const isActive = tools.some(tool => 
-    tool.status === 'pending' || 
-    tool.status === 'starting' || 
-    tool.status === 'executing'
-  ) || tools.length > 0; // Keep showing tools even when completed for visibility
+  // Keep tools visible longer and consider active when any tools exist
+  const isActive = tools.length > 0;
 
   const startTool = useCallback((name: string, displayName: string, parameters?: Record<string, any>): string => {
     const id = `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -45,9 +40,9 @@ export const useToolProgress = (): UseToolProgressReturn => {
     // Transition to executing after a brief delay for UI feedback
     setTimeout(() => {
       setTools(prev => prev.map(tool => 
-        tool.id === id ? { ...tool, status: 'executing', progress: 25 } : tool
+        tool.id === id ? { ...tool, status: 'executing', progress: 50 } : tool
       ));
-    }, 200); // Increased delay to ensure visibility
+    }, 300);
 
     return id;
   }, []);
@@ -73,10 +68,10 @@ export const useToolProgress = (): UseToolProgressReturn => {
         : tool
     ));
     
-    // Keep completed tools visible longer for better user experience
+    // Keep completed tools visible for better user experience
     setTimeout(() => {
       setTools(prev => prev.filter(t => t.id !== id));
-    }, 12000); // Increased from 10 to 12 seconds
+    }, 15000); // Increased visibility time
   }, []);
 
   const failTool = useCallback((id: string, error: string) => {
@@ -95,7 +90,7 @@ export const useToolProgress = (): UseToolProgressReturn => {
     // Keep failed tools visible longer for error visibility
     setTimeout(() => {
       setTools(prev => prev.filter(t => t.id !== id));
-    }, 18000); // Increased from 15 to 18 seconds for errors
+    }, 20000); // Increased error visibility time
   }, []);
 
   const setToolProgress = useCallback((id: string, progress: number) => {
