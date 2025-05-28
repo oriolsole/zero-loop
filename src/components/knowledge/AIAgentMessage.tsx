@@ -35,11 +35,11 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     }
   };
 
-  // Parse tool execution messages - Enhanced validation
+  // Enhanced tool message parsing with better validation
   const parseToolMessage = (content: string) => {
     try {
       const parsed = JSON.parse(content);
-      // Strict validation for tool message structure
+      // Enhanced validation for tool message structure
       if (parsed.toolName && parsed.status && ['executing', 'completed', 'failed'].includes(parsed.status)) {
         return parsed;
       }
@@ -59,7 +59,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   // Render tool execution/completion as enhanced tool card
   if (isToolMessage && toolData) {
     const toolProgressItem: ToolProgressItem = {
-      id: `${message.id}-tool`,
+      id: toolData.toolCallId || `${message.id}-tool`,
       name: toolData.toolName,
       displayName: toolData.displayName || toolData.toolName,
       status: toolData.status as any,
@@ -76,7 +76,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     };
 
     return (
-      <div className="flex gap-4 justify-start">
+      <div className="flex gap-4 justify-start" key={`tool-${message.id}-${toolData.status}`}>
         <Avatar className="w-8 h-8 flex-shrink-0">
           <AvatarFallback className="bg-primary/10">
             <Bot className="h-5 w-5 text-primary" />

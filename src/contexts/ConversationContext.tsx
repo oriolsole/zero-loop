@@ -1,134 +1,166 @@
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConversation';
-import { ToolProgressItem } from '@/types/tools';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { ConversationMessage } from '@/hooks/useAgentConversation';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ConversationContextType {
-  // Message state
   messages: ConversationMessage[];
-  setMessages: (messages: ConversationMessage[]) => void;
+  setMessages: React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
+  refreshMessages: () => Promise<void>;
+  sessionId: string | null;
+  setSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   addMessage: (message: ConversationMessage) => void;
   updateMessage: (messageId: string, updates: Partial<ConversationMessage>) => void;
-  
-  // Session state
-  currentSession: ConversationSession | null;
-  setCurrentSession: (session: ConversationSession | null) => void;
-  currentSessionId: string | null; // Add for compatibility
-  setCurrentSessionId: (id: string | null) => void;
-  sessions: ConversationSession[];
-  setSessions: (sessions: ConversationSession[]) => void;
-  
-  // Loading states
-  isLoading: boolean;
-  setIsLoading: (loading: boolean) => void;
-  isLoadingSessions: boolean;
-  setIsLoadingSessions: (loading: boolean) => void;
-  
-  // Tool state
-  tools: ToolProgressItem[];
-  setTools: (tools: ToolProgressItem[]) => void;
-  toolsActive: boolean;
-  setToolsActive: (active: boolean) => void;
-  
-  // Input state
-  input: string;
-  setInput: (input: string) => void;
-
-  // Message operations (will be implemented by useMessagePersistence)
-  loadConversation?: (sessionId: string) => Promise<void>;
-  persistMessage?: (message: ConversationMessage) => Promise<void>;
-  refreshMessages?: () => Promise<void>;
 }
 
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);
 
 export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Message state
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
-  const [currentSession, setCurrentSession] = useState<ConversationSession | null>(null);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<ConversationSession[]>([]);
-  
-  // Loading states
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
-  
-  // Tool state
-  const [tools, setTools] = useState<ToolProgressItem[]>([]);
-  const [toolsActive, setToolsActive] = useState(false);
-  
-  // Input state
-  const [input, setInput] = useState('');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const { user } = useAuth();
 
-  // Sync session states when currentSession changes
-  const handleSetCurrentSession = useCallback((session: ConversationSession | null) => {
-    setCurrentSession(session);
-    setCurrentSessionId(session?.id || null);
-  }, []);
+  // Refresh messages from database
+  const refreshMessages = useCallback(async () => {
+    if (!user?.id || !sessionId) return;
 
-  // Sync session states when currentSessionId changes
-  const handleSetCurrentSessionId = useCallback((id: string | null) => {
-    setCurrentSessionId(id);
-    if (id) {
-      const session = sessions.find(s => s.id === id);
-      if (session) {
-        setCurrentSession(session);
+    try {
+      console.log(`🔄 Refreshing messages for session: ${sessionId}`);
+      
+      const { data, error } = await supabase
+        .from('agent_conversations')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching messages:', error);
+        return;
       }
-    } else {
-      setCurrentSession(null);
-    }
-  }, [sessions]);
 
-  // Message operations
+      if (data) {
+        const formattedMessages: ConversationMessage[] = data.map(msg => ({
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+          timestamp: new Date(msg.created_at),
+          messageType: msg.message_type,
+          loopIteration: msg.loop_iteration || 0,
+          toolsUsed: msg.tools_used || [],
+          improvementReasoning: msg.improvement_reasoning
+        }));
+
+        // Only update if messages have actually changed
+        setMessages(prevMessages => {
+          const hasChanges = JSON.stringify(prevMessages) !== JSON.stringify(formattedMessages);
+          if (hasChanges) {
+            console.log(`📝 Messages updated: ${formattedMessages.length} total, changes detected`);
+            return formattedMessages;
+          }
+          return prevMessages;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to refresh messages:', error);
+    }
+  }, [user?.id, sessionId]);
+
+  // Add a new message to the context
   const addMessage = useCallback((message: ConversationMessage) => {
     setMessages(prev => {
-      const exists = prev.some(m => m.id === message.id);
+      // Check if message already exists
+      const exists = prev.find(m => m.id === message.id);
       if (exists) {
-        console.log(`⚠️ Message ${message.id} already exists in context`);
+        console.log(`⚠️ Message ${message.id} already exists, skipping add`);
         return prev;
       }
-      console.log(`✅ Message ${message.id} added to context`);
+      
+      console.log(`➕ Adding message: ${message.id} (${message.role})`);
       return [...prev, message];
     });
   }, []);
 
+  // Update an existing message in the context
   const updateMessage = useCallback((messageId: string, updates: Partial<ConversationMessage>) => {
-    console.log(`🔄 Updating message: ${messageId}`);
-    setMessages(prev => prev.map(msg => 
-      msg.id === messageId ? { ...msg, ...updates } : msg
-    ));
+    setMessages(prev => {
+      const messageIndex = prev.findIndex(m => m.id === messageId);
+      if (messageIndex === -1) {
+        console.log(`⚠️ Message ${messageId} not found for update`);
+        return prev;
+      }
+      
+      const updated = [...prev];
+      updated[messageIndex] = { ...updated[messageIndex], ...updates };
+      console.log(`🔄 Updated message: ${messageId}`);
+      return updated;
+    });
   }, []);
 
+  // Set up real-time subscription for message updates
+  useEffect(() => {
+    if (!user?.id || !sessionId) return;
+
+    console.log(`🔗 Setting up real-time subscription for session: ${sessionId}`);
+
+    const channel = supabase
+      .channel('agent-conversations-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'agent_conversations',
+          filter: `user_id=eq.${user.id},session_id=eq.${sessionId}`
+        },
+        (payload) => {
+          console.log('📡 Real-time message update:', payload.eventType, payload.new?.id);
+          
+          if (payload.eventType === 'INSERT' && payload.new) {
+            const newMessage: ConversationMessage = {
+              id: payload.new.id,
+              role: payload.new.role,
+              content: payload.new.content,
+              timestamp: new Date(payload.new.created_at),
+              messageType: payload.new.message_type,
+              loopIteration: payload.new.loop_iteration || 0,
+              toolsUsed: payload.new.tools_used || [],
+              improvementReasoning: payload.new.improvement_reasoning
+            };
+            addMessage(newMessage);
+          } else if (payload.eventType === 'UPDATE' && payload.new) {
+            const updatedFields: Partial<ConversationMessage> = {
+              content: payload.new.content,
+              messageType: payload.new.message_type,
+              toolsUsed: payload.new.tools_used || [],
+              improvementReasoning: payload.new.improvement_reasoning
+            };
+            updateMessage(payload.new.id, updatedFields);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('🔌 Cleaning up real-time subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, sessionId, addMessage, updateMessage]);
+
+  // Initial load of messages when session changes
+  useEffect(() => {
+    refreshMessages();
+  }, [refreshMessages]);
+
   const contextValue: ConversationContextType = {
-    // Message state
     messages,
     setMessages,
+    refreshMessages,
+    sessionId,
+    setSessionId,
     addMessage,
-    updateMessage,
-    
-    // Session state
-    currentSession,
-    setCurrentSession: handleSetCurrentSession,
-    currentSessionId,
-    setCurrentSessionId: handleSetCurrentSessionId,
-    sessions,
-    setSessions,
-    
-    // Loading states
-    isLoading,
-    setIsLoading,
-    isLoadingSessions,
-    setIsLoadingSessions,
-    
-    // Tool state
-    tools,
-    setTools,
-    toolsActive,
-    setToolsActive,
-    
-    // Input state
-    input,
-    setInput
+    updateMessage
   };
 
   return (
@@ -140,7 +172,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
 export const useConversationContext = () => {
   const context = useContext(ConversationContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useConversationContext must be used within a ConversationProvider');
   }
   return context;
