@@ -7,7 +7,7 @@ import { ConversationMessage } from '@/hooks/useAgentConversation';
 
 export const useMessagePersistence = () => {
   const { user } = useAuth();
-  const { messages, setMessages, currentSession } = useConversationContext();
+  const { messages, setMessages, addMessage: addToContext, currentSession } = useConversationContext();
 
   // Helper function to safely convert tools_used from database
   const convertToolsUsed = useCallback((toolsUsed: any): Array<{name: string; success: boolean; result?: any; error?: string;}> => {
@@ -90,15 +90,15 @@ export const useMessagePersistence = () => {
     console.log(`➕ Adding message to session ${currentSession.id}:`, message.id);
 
     // Update context state immediately for better UX
-    setMessages(prev => {
-      const exists = prev.some(m => m.id === message.id);
-      if (exists) {
-        console.log(`⚠️ Message ${message.id} already exists in messages`);
-        return prev;
-      }
-      console.log(`✅ Message ${message.id} added to messages`);
-      return [...prev, message];
-    });
+    const currentMessages = [...messages];
+    const exists = currentMessages.some(m => m.id === message.id);
+    if (!exists) {
+      const updatedMessages = [...currentMessages, message];
+      setMessages(updatedMessages);
+      console.log(`✅ Message ${message.id} added to context`);
+    } else {
+      console.log(`⚠️ Message ${message.id} already exists in context`);
+    }
 
     // Save to database
     try {
@@ -125,7 +125,8 @@ export const useMessagePersistence = () => {
         // Don't remove from local state if it's a duplicate constraint error
         if (!error.message.includes('unique constraint') && !error.message.includes('duplicate')) {
           // Remove from local state if it's not a duplicate error
-          setMessages(prev => prev.filter(m => m.id !== message.id));
+          const filteredMessages = messages.filter(m => m.id !== message.id);
+          setMessages(filteredMessages);
         }
       } else {
         console.log(`💾 Message ${message.id} saved to database`);
@@ -133,7 +134,7 @@ export const useMessagePersistence = () => {
     } catch (error) {
       console.error('❌ Error saving message:', error);
     }
-  }, [currentSession, user, setMessages]);
+  }, [currentSession, user, messages, setMessages]);
 
   const refreshConversationState = useCallback(async () => {
     if (!currentSession || !user) return;
@@ -164,7 +165,8 @@ export const useMessagePersistence = () => {
         }));
 
         if (newMessages.length > 0) {
-          setMessages(prev => [...prev, ...newMessages]);
+          const updatedMessages = [...messages, ...newMessages];
+          setMessages(updatedMessages);
         }
       }
     } catch (error) {
