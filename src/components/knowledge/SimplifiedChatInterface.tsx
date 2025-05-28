@@ -7,7 +7,6 @@ import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ModelProvider } from '@/services/modelProviderService';
 import { ToolProgressItem } from '@/types/tools';
 import AIAgentMessage from './AIAgentMessage';
-import WorkingMessage from './WorkingMessage';
 import ToolExecutionStatus from './ToolExecutionStatus';
 
 interface SimplifiedChatInterfaceProps {
@@ -117,7 +116,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
             </div>
           )}
 
-          <div className="space-y-6">
+          <div className="space-y-4">
             {conversations.map((message) => (
               <div key={message.id} className="animate-fade-in">
                 <AIAgentMessage 
@@ -127,18 +126,6 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
               </div>
             ))}
           </div>
-          
-          {/* Working Message - Shows during processing */}
-          {(isLoading || isStreaming) && (
-            <div className="mt-6 animate-fade-in">
-              <WorkingMessage 
-                currentTool={currentTool}
-                progress={toolProgress}
-                status={workingStatus}
-                isAnimated={true}
-              />
-            </div>
-          )}
           
           {/* Tool Execution Status - Shows active and completed tools */}
           {tools.length > 0 && (

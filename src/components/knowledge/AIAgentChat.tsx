@@ -337,6 +337,7 @@ const AIAgentChat: React.FC = () => {
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !user || !currentSessionId) return;
 
+    // CRITICAL: Add user message IMMEDIATELY before clearing input
     const userMessage: ConversationMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -344,10 +345,14 @@ const AIAgentChat: React.FC = () => {
       timestamp: new Date()
     };
 
+    // Add user message to conversations immediately
     addMessage(userMessage);
+    
+    // Store the message to process and clear input
     const messageToProcess = input;
     setInput('');
     
+    // Process the message (this will add AI responses)
     await processMessage(messageToProcess);
   };
 
