@@ -16,23 +16,6 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
   const isUser = message.role === 'user';
   const isLoopIteration = (message.loopIteration || 0) > 0;
 
-  const getMessageTypeStyles = () => {
-    switch (message.messageType) {
-      case 'loop-start':
-        return 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800/40';
-      case 'loop-reflection':
-        return 'bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800/40';
-      case 'tool-executing':
-        return 'bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800/40';
-      case 'loop-enhancement':
-        return 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800/40';
-      case 'loop-complete':
-        return 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800/40';
-      default:
-        return '';
-    }
-  };
-
   const getMessageTypeIcon = () => {
     switch (message.messageType) {
       case 'loop-start':
@@ -50,8 +33,6 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     }
   };
 
-  const isSpecialLoopMessage = ['loop-start', 'loop-reflection', 'tool-executing', 'loop-enhancement', 'loop-complete'].includes(message.messageType || '');
-
   return (
     <div className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && (
@@ -67,13 +48,11 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
           rounded-2xl px-4 py-3 border
           ${isUser 
             ? 'bg-primary text-primary-foreground ml-12' 
-            : isSpecialLoopMessage
-            ? `${getMessageTypeStyles()} mr-12`
             : 'bg-secondary mr-12 dark:bg-secondary'
           }
         `}>
           {/* Loop iteration and message type indicator */}
-          {!isUser && (isLoopIteration || isSpecialLoopMessage) && (
+          {!isUser && (isLoopIteration || message.messageType) && (
             <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground/90 dark:text-muted-foreground/80">
               {getMessageTypeIcon()}
               {isLoopIteration && (
