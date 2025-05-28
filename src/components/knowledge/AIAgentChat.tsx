@@ -5,7 +5,6 @@ import { toast } from '@/components/ui/sonner';
 import { useAgentConversation, ConversationMessage } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getModelSettings } from '@/services/modelProviderService';
-import { useToolProgress } from '@/hooks/useToolProgress';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
@@ -30,15 +29,6 @@ const AIAgentChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [modelSettings, setModelSettings] = useState(getModelSettings());
-
-  const {
-    tools,
-    isActive: toolsActive,
-    startTool,
-    completeTool,
-    failTool,
-    clearTools
-  } = useToolProgress();
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -47,7 +37,7 @@ const AIAgentChat: React.FC = () => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [conversations, tools]);
+  }, [conversations]);
 
   // Load model settings on component mount and when they change
   useEffect(() => {
@@ -88,7 +78,6 @@ const AIAgentChat: React.FC = () => {
     if (!user || !currentSessionId) return;
 
     setIsLoading(true);
-    clearTools();
 
     try {
       const conversationHistory = getConversationHistory();
@@ -116,8 +105,7 @@ const AIAgentChat: React.FC = () => {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.message,
-        timestamp: new Date(),
-        toolsUsed: data.toolsUsed || []
+        timestamp: new Date()
       };
 
       addMessage(assistantMessage);
@@ -192,9 +180,6 @@ const AIAgentChat: React.FC = () => {
         <SimplifiedChatInterface
           conversations={conversations}
           isLoading={isLoading}
-          modelSettings={modelSettings}
-          tools={tools}
-          toolsActive={toolsActive}
           scrollAreaRef={scrollAreaRef}
           onFollowUpAction={handleFollowUpAction}
         />
