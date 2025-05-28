@@ -19,7 +19,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   scrollAreaRef,
   onFollowUpAction
 }) => {
-  // Debug conversations when they change
+  // Enhanced debug logging for conversations
   useEffect(() => {
     console.log('🎨 SimplifiedChatInterface conversations updated:', {
       total: conversations.length,
@@ -30,7 +30,14 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
       }, {} as Record<string, number>),
       atomicSteps: conversations.filter(msg => 
         msg.messageType && ['thinking', 'tool-usage', 'tool-result', 'reflection'].includes(msg.messageType)
-      ).length
+      ),
+      allMessages: conversations.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        type: msg.messageType || 'standard',
+        step: msg.stepNumber,
+        content: msg.content.substring(0, 50) + '...'
+      }))
     });
   }, [conversations]);
 
@@ -60,6 +67,31 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
       action: "Help me think through a complex decision"
     }
   ];
+
+  // Sort conversations with enhanced logic for atomic steps
+  const sortedConversations = conversations
+    .sort((a, b) => {
+      // Primary sort by timestamp
+      const timeSort = a.timestamp.getTime() - b.timestamp.getTime();
+      if (timeSort !== 0) return timeSort;
+      
+      // Secondary sort by step number for atomic messages
+      if (a.stepNumber && b.stepNumber) {
+        return a.stepNumber - b.stepNumber;
+      }
+      
+      // Atomic steps come before standard messages at same timestamp
+      if (a.stepNumber && !b.stepNumber) return -1;
+      if (!a.stepNumber && b.stepNumber) return 1;
+      
+      return 0;
+    });
+
+  console.log('🎨 Rendering conversations:', {
+    total: sortedConversations.length,
+    atomic: sortedConversations.filter(m => m.messageType && m.messageType !== 'standard').length,
+    sortedOrder: sortedConversations.map(m => ({ type: m.messageType || 'standard', step: m.stepNumber }))
+  });
 
   return (
     <div className="flex-1 overflow-hidden bg-gradient-to-b from-background to-background/95">
@@ -111,31 +143,22 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
           )}
 
           <div className="space-y-8">
-            {conversations
-              .sort((a, b) => {
-                // Sort by timestamp first
-                const timeSort = a.timestamp.getTime() - b.timestamp.getTime();
-                if (timeSort !== 0) return timeSort;
-                
-                // If same timestamp, sort by step number (atomic steps)
-                if (a.stepNumber && b.stepNumber) {
-                  return a.stepNumber - b.stepNumber;
-                }
-                
-                // Put atomic steps before standard messages at same timestamp
-                if (a.stepNumber && !b.stepNumber) return -1;
-                if (!a.stepNumber && b.stepNumber) return 1;
-                
-                return 0;
-              })
-              .map((message) => (
+            {sortedConversations.map((message) => {
+              console.log('🎨 Rendering message:', {
+                id: message.id,
+                type: message.messageType || 'standard',
+                step: message.stepNumber,
+                content: message.content.substring(0, 30) + '...'
+              });
+              
+              return (
                 <AIAgentMessage 
                   key={`${message.id}-${message.stepNumber || 0}`}
                   message={message}
                   onFollowUpAction={onFollowUpAction}
                 />
-              ))
-            }
+              );
+            })}
           </div>
           
           {isLoading && (

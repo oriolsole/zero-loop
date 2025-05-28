@@ -11,6 +11,18 @@ interface AIAgentMessageProps {
 }
 
 const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpAction }) => {
+  // Debug log each message render
+  React.useEffect(() => {
+    if (message.messageType && message.messageType !== 'standard') {
+      console.log('🎨 Rendering atomic message:', {
+        id: message.id,
+        type: message.messageType,
+        step: message.stepNumber,
+        content: message.content.substring(0, 50) + '...'
+      });
+    }
+  }, [message]);
+
   const formatTimestamp = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -107,6 +119,17 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
         return 'text-muted-foreground';
     }
   };
+
+  // Log when atomic message is being rendered
+  const isAtomicStep = message.messageType && ['thinking', 'tool-usage', 'tool-result', 'reflection'].includes(message.messageType);
+  if (isAtomicStep) {
+    console.log('🎨 Rendering atomic step component:', {
+      type: message.messageType,
+      step: message.stepNumber,
+      id: message.id,
+      hasTypeLabel: !!getMessageTypeLabel()
+    });
+  }
 
   return (
     <div className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>

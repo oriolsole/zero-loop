@@ -30,7 +30,7 @@ export const useAgentConversation = () => {
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const realtimeChannelRef = useRef<any>(null);
-  const pendingMessages = useRef<Set<string>>(new Set());
+  const processedMessageIds = useRef<Set<string>>(new Set());
 
   const generateSessionTitle = (firstMessage: string): string => {
     const truncated = firstMessage.length > 50 
@@ -39,14 +39,17 @@ export const useAgentConversation = () => {
     return truncated;
   };
 
-  // Add atomic step message with deduplication
+  // Enhanced atomic step addition with better deduplication
   const addAtomicStep = useCallback(async (
     messageType: 'thinking' | 'tool-usage' | 'tool-result' | 'reflection',
     content: string,
     toolName?: string,
     stepNumber?: number
   ) => {
-    if (!currentSessionId || !user) return;
+    if (!currentSessionId || !user) {
+      console.log('🚫 addAtomicStep: No session or user');
+      return;
+    }
 
     const atomicMessage: ConversationMessage = {
       id: `${messageType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -58,19 +61,22 @@ export const useAgentConversation = () => {
       stepNumber
     };
 
-    console.log('🔧 Adding atomic step locally:', { 
+    console.log('🔧 Adding atomic step:', { 
       messageType, 
       stepNumber,
-      content: content.substring(0, 50) + '...',
-      id: atomicMessage.id
+      content: content.substring(0, 100) + '...',
+      id: atomicMessage.id,
+      sessionId: currentSessionId
     });
 
+    // Add to UI immediately
     setConversations(prev => {
-      // Check for duplicates based on content and type
+      // Enhanced deduplication check
       const exists = prev.some(msg => 
         msg.messageType === messageType && 
         msg.content === content && 
-        msg.stepNumber === stepNumber
+        msg.stepNumber === stepNumber &&
+        Math.abs(msg.timestamp.getTime() - atomicMessage.timestamp.getTime()) < 5000 // within 5 seconds
       );
       
       if (exists) {
@@ -78,14 +84,30 @@ export const useAgentConversation = () => {
         return prev;
       }
       
-      const newConversations = [...prev, atomicMessage];
-      console.log('🔧 Updated conversations count:', newConversations.length);
+      const newConversations = [...prev, atomicMessage].sort((a, b) => {
+        const timeSort = a.timestamp.getTime() - b.timestamp.getTime();
+        if (timeSort !== 0) return timeSort;
+        
+        // Sort by step number for atomic messages
+        if (a.stepNumber && b.stepNumber) {
+          return a.stepNumber - b.stepNumber;
+        }
+        
+        return 0;
+      });
+      
+      console.log('🔧 Updated conversations with atomic step:', {
+        total: newConversations.length,
+        atomicSteps: newConversations.filter(m => m.messageType && m.messageType !== 'standard').length,
+        newMessage: { type: messageType, step: stepNumber }
+      });
+      
       return newConversations;
     });
 
-    // Store in database for persistence
+    // Store in database
     try {
-      await supabase
+      const { error } = await supabase
         .from('agent_conversations')
         .insert({
           session_id: currentSessionId,
@@ -97,7 +119,12 @@ export const useAgentConversation = () => {
           step_number: stepNumber,
           created_at: atomicMessage.timestamp.toISOString()
         });
-      console.log('✅ Atomic step saved to database');
+      
+      if (error) {
+        console.error('❌ Error saving atomic step:', error);
+      } else {
+        console.log('✅ Atomic step saved to database');
+      }
     } catch (error) {
       console.error('❌ Error saving atomic step:', error);
     }
@@ -115,6 +142,7 @@ export const useAgentConversation = () => {
     if (!user || isLoadingSessions) return;
 
     setIsLoadingSessions(true);
+    console.log('📦 Loading existing sessions for user:', user.id);
     
     try {
       const { data: sessionData, error } = await supabase
@@ -175,7 +203,7 @@ export const useAgentConversation = () => {
         console.log(`📦 Loaded ${sessionsArray.length} existing sessions`);
       }
     } catch (error) {
-      console.error('Error loading existing sessions:', error);
+      console.error('❌ Error loading existing sessions:', error);
     } finally {
       setIsLoadingSessions(false);
     }
@@ -187,7 +215,7 @@ export const useAgentConversation = () => {
     const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     setCurrentSessionId(sessionId);
     setConversations([]);
-    pendingMessages.current.clear();
+    processedMessageIds.current.clear();
     
     const newSession: ConversationSession = {
       id: sessionId,
@@ -212,14 +240,23 @@ export const useAgentConversation = () => {
     });
 
     setConversations(prev => {
-      // Check for duplicates
       const exists = prev.some(msg => msg.id === message.id);
       if (exists) {
         console.log('💬 Message already exists, skipping duplicate');
         return prev;
       }
       
-      const newConversations = [...prev, message];
+      const newConversations = [...prev, message].sort((a, b) => {
+        const timeSort = a.timestamp.getTime() - b.timestamp.getTime();
+        if (timeSort !== 0) return timeSort;
+        
+        if (a.stepNumber && b.stepNumber) {
+          return a.stepNumber - b.stepNumber;
+        }
+        
+        return 0;
+      });
+      
       console.log('💬 Updated conversations count:', newConversations.length);
       return newConversations;
     });
@@ -263,7 +300,7 @@ export const useAgentConversation = () => {
             created_at: message.timestamp.toISOString()
           });
       } catch (error) {
-        console.error('Error saving message:', error);
+        console.error('❌ Error saving message:', error);
       }
     }
   }, [currentSessionId, user, conversations.length]);
@@ -274,13 +311,14 @@ export const useAgentConversation = () => {
     ));
   }, []);
 
+  // Enhanced session loading with better atomic step handling
   const loadSession = useCallback(async (sessionId: string) => {
     if (!user) return;
 
     console.log('📂 Loading session:', sessionId);
     setCurrentSessionId(sessionId);
-    setConversations([]); // Clear existing conversations
-    pendingMessages.current.clear();
+    setConversations([]);
+    processedMessageIds.current.clear();
     
     try {
       const { data, error } = await supabase
@@ -288,27 +326,52 @@ export const useAgentConversation = () => {
         .select('*')
         .eq('session_id', sessionId)
         .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .order('step_number', { ascending: true });
 
       if (error) throw error;
 
-      const messages: ConversationMessage[] = data.map(row => ({
-        id: row.id.toString(),
-        role: row.role as ConversationMessage['role'],
-        content: row.content,
-        timestamp: new Date(row.created_at),
-        isAutonomous: row.message_type === 'reflection' || row.message_type === 'autonomous',
-        messageType: row.message_type as ConversationMessage['messageType'] || 'standard',
-        toolName: row.tool_name || undefined,
-        stepNumber: row.step_number || undefined
-      }));
+      const messages: ConversationMessage[] = data.map(row => {
+        const message: ConversationMessage = {
+          id: row.id.toString(),
+          role: row.role as ConversationMessage['role'],
+          content: row.content,
+          timestamp: new Date(row.created_at),
+          isAutonomous: row.message_type === 'reflection' || row.message_type === 'autonomous',
+          messageType: row.message_type as ConversationMessage['messageType'] || 'standard',
+          toolName: row.tool_name || undefined,
+          stepNumber: row.step_number || undefined
+        };
+        
+        processedMessageIds.current.add(message.id);
+        return message;
+      });
 
-      setConversations(messages);
+      // Sort messages properly
+      const sortedMessages = messages.sort((a, b) => {
+        const timeSort = a.timestamp.getTime() - b.timestamp.getTime();
+        if (timeSort !== 0) return timeSort;
+        
+        if (a.stepNumber && b.stepNumber) {
+          return a.stepNumber - b.stepNumber;
+        }
+        
+        if (a.stepNumber && !b.stepNumber) return -1;
+        if (!a.stepNumber && b.stepNumber) return 1;
+        
+        return 0;
+      });
+
+      setConversations(sortedMessages);
       
-      console.log(`📂 Loaded ${messages.length} messages for session ${sessionId}`, {
-        messageTypes: messages.map(m => ({ type: m.messageType, step: m.stepNumber })).filter(m => m.type),
-        roles: messages.map(m => m.role),
-        atomicSteps: messages.filter(m => m.messageType && m.messageType !== 'standard').length
+      console.log(`📂 Loaded ${sortedMessages.length} messages for session ${sessionId}`, {
+        byType: sortedMessages.reduce((acc, msg) => {
+          const type = msg.messageType || 'standard';
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>),
+        atomicSteps: sortedMessages.filter(m => m.messageType && ['thinking', 'tool-usage', 'tool-result', 'reflection'].includes(m.messageType)),
+        totalAtomic: sortedMessages.filter(m => m.messageType && m.messageType !== 'standard').length
       });
     } catch (error) {
       console.error('❌ Error loading session:', error);
@@ -332,13 +395,11 @@ export const useAgentConversation = () => {
         setConversations([]);
       }
     } catch (error) {
-      console.error('Error deleting session:', error);
+      console.error('❌ Error deleting session:', error);
     }
   }, [user, currentSessionId]);
 
   const getConversationHistory = useCallback(() => {
-    // Only include user messages and final assistant responses for conversation history
-    // Exclude atomic steps (thinking, tool-usage, etc.) from history sent to backend
     return conversations
       .filter(msg => 
         (msg.role === 'user') || 
@@ -350,20 +411,19 @@ export const useAgentConversation = () => {
       }));
   }, [conversations]);
 
-  // Enhanced real-time listener with better handling
+  // Enhanced real-time listener with better atomic step handling
   const startListeningForAutonomousMessages = useCallback(() => {
     if (!currentSessionId || !user) return;
 
     console.log('🔄 Starting enhanced real-time listener for session:', currentSessionId);
 
-    // Clean up existing channel
     if (realtimeChannelRef.current) {
       console.log('🔄 Cleaning up existing channel');
       supabase.removeChannel(realtimeChannelRef.current);
     }
 
     const channel = supabase
-      .channel(`session-${currentSessionId}-enhanced`)
+      .channel(`atomic-steps-${currentSessionId}`)
       .on(
         'postgres_changes',
         {
@@ -374,9 +434,10 @@ export const useAgentConversation = () => {
         },
         (payload) => {
           const newRow = payload.new as any;
+          const messageId = newRow.id.toString();
           
-          console.log('🔄 Real-time message received:', {
-            id: newRow.id,
+          console.log('🔄 Real-time atomic step received:', {
+            id: messageId,
             role: newRow.role,
             messageType: newRow.message_type,
             stepNumber: newRow.step_number,
@@ -385,14 +446,13 @@ export const useAgentConversation = () => {
             timestamp: newRow.created_at
           });
           
-          // Check if this message is already pending or exists
-          const messageId = newRow.id.toString();
-          if (pendingMessages.current.has(messageId)) {
-            console.log('🔄 Message already pending, skipping:', messageId);
+          // Check if already processed
+          if (processedMessageIds.current.has(messageId)) {
+            console.log('🔄 Message already processed, skipping:', messageId);
             return;
           }
           
-          pendingMessages.current.add(messageId);
+          processedMessageIds.current.add(messageId);
           
           if (newRow.role === 'assistant') {
             const autonomousMessage: ConversationMessage = {
@@ -410,21 +470,32 @@ export const useAgentConversation = () => {
               const exists = prev.some(msg => msg.id === autonomousMessage.id);
               if (exists) {
                 console.log('🔄 Message already exists in state, skipping:', autonomousMessage.id);
-                pendingMessages.current.delete(messageId);
                 return prev;
               }
               
-              console.log('🔄 Adding new real-time message to state:', {
+              const newConversations = [...prev, autonomousMessage].sort((a, b) => {
+                const timeSort = a.timestamp.getTime() - b.timestamp.getTime();
+                if (timeSort !== 0) return timeSort;
+                
+                if (a.stepNumber && b.stepNumber) {
+                  return a.stepNumber - b.stepNumber;
+                }
+                
+                if (a.stepNumber && !b.stepNumber) return -1;
+                if (!a.stepNumber && b.stepNumber) return 1;
+                
+                return 0;
+              });
+              
+              console.log('🔄 Added real-time message to state:', {
                 id: autonomousMessage.id,
                 messageType: autonomousMessage.messageType,
                 stepNumber: autonomousMessage.stepNumber,
-                content: autonomousMessage.content.substring(0, 50) + '...'
+                total: newConversations.length,
+                atomicCount: newConversations.filter(m => m.messageType && m.messageType !== 'standard').length
               });
               
-              // Remove from pending after adding
-              setTimeout(() => pendingMessages.current.delete(messageId), 1000);
-              
-              return [...prev, autonomousMessage];
+              return newConversations;
             });
 
             setSessions(prev => prev.map(session => 
@@ -452,7 +523,7 @@ export const useAgentConversation = () => {
         supabase.removeChannel(realtimeChannelRef.current);
         realtimeChannelRef.current = null;
       }
-      pendingMessages.current.clear();
+      processedMessageIds.current.clear();
     };
   }, [currentSessionId, user]);
 
