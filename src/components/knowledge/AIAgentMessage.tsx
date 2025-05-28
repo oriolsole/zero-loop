@@ -35,12 +35,12 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     }
   };
 
-  // Parse tool execution messages - check if content is JSON with tool data
+  // Parse tool execution messages - Enhanced validation
   const parseToolMessage = (content: string) => {
     try {
       const parsed = JSON.parse(content);
-      // Check if it has tool-like properties
-      if (parsed.toolName || parsed.displayName || parsed.status) {
+      // Strict validation for tool message structure
+      if (parsed.toolName && parsed.status && ['executing', 'completed', 'failed'].includes(parsed.status)) {
         return parsed;
       }
       return null;
@@ -49,11 +49,11 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     }
   };
 
-  // Check if this is a tool message and should be rendered as a tool card
+  // Enhanced detection for tool messages
   const isToolMessage = message.messageType === 'tool-executing' && 
                         message.content.startsWith('{') && 
-                        !message.content.includes('🛠️') && 
-                        !message.content.includes('Using');
+                        parseToolMessage(message.content) !== null;
+  
   const toolData = isToolMessage ? parseToolMessage(message.content) : null;
 
   // Render tool execution/completion as enhanced tool card
@@ -61,14 +61,18 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     const toolProgressItem: ToolProgressItem = {
       id: `${message.id}-tool`,
       name: toolData.toolName,
-      displayName: toolData.displayName,
+      displayName: toolData.displayName || toolData.toolName,
       status: toolData.status as any,
       startTime: toolData.startTime,
       endTime: toolData.endTime,
-      parameters: toolData.parameters,
+      parameters: toolData.parameters || {},
       result: toolData.result,
       error: toolData.error,
-      progress: toolData.progress || (toolData.status === 'completed' ? 100 : toolData.status === 'executing' ? 50 : 0)
+      progress: toolData.progress || (
+        toolData.status === 'completed' ? 100 : 
+        toolData.status === 'failed' ? 0 : 
+        toolData.status === 'executing' ? 50 : 0
+      )
     };
 
     return (
@@ -89,7 +93,7 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
               )}
               {message.messageType && (
                 <Badge variant="outline" className="text-xs border-current/40 dark:border-current/30 bg-background/60 dark:bg-background/40 text-foreground/80 dark:text-foreground/70">
-                  {message.messageType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  Tool Execution
                 </Badge>
               )}
             </div>
@@ -99,6 +103,15 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
           
           <div className="text-xs text-muted-foreground/70 mt-2 dark:text-muted-foreground/60">
             {message.timestamp.toLocaleTimeString()}
+            {toolData.status === 'executing' && (
+              <span className="ml-2 text-blue-600 dark:text-blue-400 animate-pulse">• Running</span>
+            )}
+            {toolData.status === 'completed' && (
+              <span className="ml-2 text-green-600 dark:text-green-400">• Completed</span>
+            )}
+            {toolData.status === 'failed' && (
+              <span className="ml-2 text-red-600 dark:text-red-400">• Failed</span>
+            )}
           </div>
         </div>
       </div>

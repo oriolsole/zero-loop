@@ -68,6 +68,7 @@ export async function handleUnifiedQuery(
           message_type: messageType,
           loop_iteration: loopIteration,
           created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
           ...additionalData
         }).select('id').single();
         
@@ -76,7 +77,7 @@ export async function handleUnifiedQuery(
           return null;
         }
         
-        console.log(`✅ Inserted message: ${messageType} (loop ${loopIteration})`);
+        console.log(`✅ Inserted message: ${messageType} (loop ${loopIteration}) with ID: ${data.id}`);
         return data.id;
       } catch (error) {
         console.error(`Failed to insert message: ${messageType}`, error);
@@ -84,11 +85,16 @@ export async function handleUnifiedQuery(
       }
     };
 
-    // Helper function to update existing message
+    // Helper function to update existing message with better error handling
     const updateMessage = async (messageId: string, content: string, additionalData: any = {}): Promise<boolean> => {
-      if (!userId || !sessionId || !messageId) return false;
+      if (!userId || !sessionId || !messageId) {
+        console.error('Missing required parameters for message update');
+        return false;
+      }
       
       try {
+        console.log(`🔄 Updating message ${messageId} with new content`);
+        
         const { error } = await supabase
           .from('agent_conversations')
           .update({
@@ -96,18 +102,35 @@ export async function handleUnifiedQuery(
             updated_at: new Date().toISOString(),
             ...additionalData
           })
-          .eq('id', messageId);
+          .eq('id', messageId)
+          .eq('user_id', userId) // Additional safety check
+          .eq('session_id', sessionId); // Additional safety check
         
         if (error) {
           console.error(`Failed to update message: ${messageId}`, error);
           return false;
         }
         
-        console.log(`✅ Updated message: ${messageId}`);
+        console.log(`✅ Successfully updated message: ${messageId}`);
         return true;
       } catch (error) {
-        console.error(`Failed to update message: ${messageId}`, error);
+        console.error(`Exception updating message: ${messageId}`, error);
         return false;
+      }
+    };
+
+    // Helper function to get message content
+    const getMessageContent = async (messageId: string): Promise<string | null> => {
+      try {
+        const { data, error } = await supabase
+          .from('agent_conversations')
+          .select('content')
+          .eq('id', messageId)
+          .single();
+        
+        return error ? null : data.content;
+      } catch {
+        return null;
       }
     };
 
@@ -180,7 +203,7 @@ export async function handleUnifiedQuery(
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
       console.log(`🛠️ LLM chose to use ${data.choices[0].message.tool_calls.length} tools (loop ${loopIteration})`);
       
-      // Create initial tool execution messages
+      // Create initial tool execution messages - ONE per tool
       for (const toolCall of data.choices[0].message.tool_calls) {
         const toolName = toolCall.function.name.replace('execute_', '');
         const mcpInfo = mcps?.find(m => m.default_key === toolName);
@@ -202,14 +225,18 @@ export async function handleUnifiedQuery(
           toolCallId: toolCall.id
         };
         
+        console.log(`🚀 Creating tool execution message for ${toolName}`);
         const messageId = await insertMessage(
           JSON.stringify(toolExecutionData),
           'tool-executing'
         );
         
-        // Store the mapping of tool call ID to message ID
+        // Store the mapping of tool call ID to message ID for updates
         if (messageId) {
           toolMessageMap.set(toolCall.id, messageId);
+          console.log(`📝 Mapped tool call ${toolCall.id} to message ${messageId}`);
+        } else {
+          console.error(`❌ Failed to create message for tool ${toolName}`);
         }
       }
       
@@ -222,16 +249,32 @@ export async function handleUnifiedQuery(
       
       allToolsUsed = toolsUsed;
       
-      // Update existing tool messages with completion data
+      // Update existing tool messages with completion data - CRITICAL SECTION
       for (const toolCall of data.choices[0].message.tool_calls) {
         const messageId = toolMessageMap.get(toolCall.id);
-        if (!messageId) continue;
+        if (!messageId) {
+          console.error(`❌ No message ID found for tool call ${toolCall.id}`);
+          continue;
+        }
         
         const toolName = toolCall.function.name.replace('execute_', '');
         const mcpInfo = mcps?.find(m => m.default_key === toolName);
         const tool = toolsUsed.find(t => t.name === toolCall.function.name);
         
         if (tool) {
+          // Get the original message content to preserve startTime
+          const originalContent = await getMessageContent(messageId);
+          let startTime = new Date().toISOString();
+          
+          if (originalContent) {
+            try {
+              const originalData = JSON.parse(originalContent);
+              startTime = originalData.startTime || startTime;
+            } catch (e) {
+              console.warn('Failed to parse original message content');
+            }
+          }
+          
           const toolCompletionData = {
             toolName: toolName,
             displayName: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
@@ -240,12 +283,22 @@ export async function handleUnifiedQuery(
             result: tool.result,
             error: tool.success ? undefined : (tool.error || 'Tool execution failed'),
             success: tool.success,
-            startTime: JSON.parse(await getMessageContent(messageId) || '{}').startTime,
+            startTime: startTime,
             endTime: new Date().toISOString(),
             toolCallId: toolCall.id
           };
           
-          await updateMessage(messageId, JSON.stringify(toolCompletionData));
+          console.log(`🔄 Updating tool message ${messageId} from executing to ${tool.success ? 'completed' : 'failed'}`);
+          
+          const updateSuccess = await updateMessage(messageId, JSON.stringify(toolCompletionData));
+          
+          if (!updateSuccess) {
+            console.error(`❌ Failed to update tool message ${messageId} for ${toolName}`);
+          } else {
+            console.log(`✅ Successfully updated tool message ${messageId} for ${toolName}`);
+          }
+        } else {
+          console.error(`❌ No tool result found for ${toolCall.function.name}`);
         }
       }
       
@@ -267,21 +320,6 @@ export async function handleUnifiedQuery(
       }
     } else {
       console.log(`✅ LLM responded directly without tools (loop ${loopIteration})`);
-    }
-
-    // Helper function to get message content
-    async function getMessageContent(messageId: string): Promise<string | null> {
-      try {
-        const { data, error } = await supabase
-          .from('agent_conversations')
-          .select('content')
-          .eq('id', messageId)
-          .single();
-        
-        return error ? null : data.content;
-      } catch {
-        return null;
-      }
     }
 
     // 7. Store current iteration response
@@ -393,7 +431,8 @@ export async function handleUnifiedQuery(
           content: finalResponse,
           tools_used: [],
           loop_iteration: loopIteration,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         });
       } catch (dbError) {
         console.error('Failed to insert error fallback:', dbError);
