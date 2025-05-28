@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Bot, User, RotateCcw, Lightbulb, Wrench, CheckCircle, Eye } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import MarkdownRenderer from './MarkdownRenderer';
+import EnhancedToolCard from './EnhancedToolCard';
+import { ToolProgressItem } from '@/types/tools';
 
 interface AIAgentMessageProps {
   message: ConversationMessage;
@@ -33,6 +35,90 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     }
   };
 
+  // Enhanced tool message parsing with better validation
+  const parseToolMessage = (content: string) => {
+    try {
+      const parsed = JSON.parse(content);
+      // Enhanced validation for tool message structure
+      if (parsed.toolName && parsed.status && ['executing', 'completed', 'failed'].includes(parsed.status)) {
+        return parsed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Enhanced detection for tool messages
+  const isToolMessage = message.messageType === 'tool-executing' && 
+                        message.content.startsWith('{') && 
+                        parseToolMessage(message.content) !== null;
+  
+  const toolData = isToolMessage ? parseToolMessage(message.content) : null;
+
+  // Render tool execution/completion as enhanced tool card
+  if (isToolMessage && toolData) {
+    const toolProgressItem: ToolProgressItem = {
+      id: toolData.toolCallId || `${message.id}-tool`,
+      name: toolData.toolName,
+      displayName: toolData.displayName || toolData.toolName,
+      status: toolData.status as any,
+      startTime: toolData.startTime,
+      endTime: toolData.endTime,
+      parameters: toolData.parameters || {},
+      result: toolData.result,
+      error: toolData.error,
+      progress: toolData.progress || (
+        toolData.status === 'completed' ? 100 : 
+        toolData.status === 'failed' ? 0 : 
+        toolData.status === 'executing' ? 50 : 0
+      )
+    };
+
+    return (
+      <div className="flex gap-4 justify-start" key={`tool-${message.id}-${toolData.status}`}>
+        <Avatar className="w-8 h-8 flex-shrink-0">
+          <AvatarFallback className="bg-primary/10">
+            <Bot className="h-5 w-5 text-primary" />
+          </AvatarFallback>
+        </Avatar>
+        
+        <div className="flex-1 max-w-4xl mr-12">
+          {/* Loop iteration and message type indicator */}
+          {(isLoopIteration || message.messageType) && (
+            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground/90 dark:text-muted-foreground/80">
+              {getMessageTypeIcon()}
+              {isLoopIteration && (
+                <span className="text-foreground/90 dark:text-foreground/80 font-medium">Loop {message.loopIteration}</span>
+              )}
+              {message.messageType && (
+                <Badge variant="outline" className="text-xs border-current/40 dark:border-current/30 bg-background/60 dark:bg-background/40 text-foreground/80 dark:text-foreground/70">
+                  Tool Execution
+                </Badge>
+              )}
+            </div>
+          )}
+          
+          <EnhancedToolCard tool={toolProgressItem} compact={false} />
+          
+          <div className="text-xs text-muted-foreground/70 mt-2 dark:text-muted-foreground/60">
+            {message.timestamp.toLocaleTimeString()}
+            {toolData.status === 'executing' && (
+              <span className="ml-2 text-blue-600 dark:text-blue-400 animate-pulse">• Running</span>
+            )}
+            {toolData.status === 'completed' && (
+              <span className="ml-2 text-green-600 dark:text-green-400">• Completed</span>
+            )}
+            {toolData.status === 'failed' && (
+              <span className="ml-2 text-red-600 dark:text-red-400">• Failed</span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular message rendering
   return (
     <div className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && (
@@ -87,8 +173,8 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
             </div>
           )}
           
-          {/* Tools used indicator */}
-          {message.toolsUsed && message.toolsUsed.length > 0 && !isUser && (
+          {/* Tools used indicator - only show for non-tool messages that have tool usage */}
+          {message.toolsUsed && message.toolsUsed.length > 0 && !isUser && !isToolMessage && (
             <div className="flex flex-wrap gap-1 mt-3">
               {message.toolsUsed.map((tool, index) => (
                 <Badge 
