@@ -92,6 +92,7 @@ const AIAgentChat: React.FC = () => {
       timestamp: new Date()
     };
 
+    console.log('🔄 Adding follow-up message:', followUpMessage.id);
     addMessage(followUpMessage);
     setInput('');
     
@@ -101,15 +102,18 @@ const AIAgentChat: React.FC = () => {
   const parseStreamingChunk = (line: string) => {
     try {
       const parsed = JSON.parse(line);
-      console.log('Parsed streaming chunk:', parsed);
+      console.log('📦 Parsed streaming chunk:', parsed);
       
       // Handle streaming step messages - add them as individual chat messages
       if (parsed.type === 'step-announcement' || 
           parsed.type === 'partial-result' || 
           parsed.type === 'tool-announcement') {
         
+        // Generate truly unique ID for each streaming message
+        const uniqueId = `streaming-${parsed.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
         const streamingMessage: ConversationMessage = {
-          id: parsed.id || `streaming-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: parsed.id || uniqueId,
           role: 'assistant',
           content: parsed.content,
           timestamp: new Date(parsed.timestamp || Date.now()),
@@ -118,9 +122,14 @@ const AIAgentChat: React.FC = () => {
           toolAction: parsed.toolAction
         };
         
+        console.log('💭 Adding streaming message to chat:', {
+          id: streamingMessage.id,
+          type: streamingMessage.messageType,
+          content: streamingMessage.content.substring(0, 50) + '...'
+        });
+        
         // Add the streaming message immediately to show thinking process
         addMessage(streamingMessage);
-        console.log('Added streaming message:', streamingMessage);
         
         // Also update working status for live feedback
         if (parsed.type === 'step-announcement') {
@@ -132,7 +141,7 @@ const AIAgentChat: React.FC = () => {
       
       // Handle tool announcements
       if (parsed.type === 'tool-announcement') {
-        console.log('Tool announced:', parsed.toolName);
+        console.log('🔧 Tool announced:', parsed.toolName);
         const toolId = startTool(
           parsed.toolName || 'unknown',
           getToolDisplayName(parsed.toolName || 'unknown'),
@@ -144,7 +153,7 @@ const AIAgentChat: React.FC = () => {
       
       // Handle progress updates
       if (parsed.progress !== undefined) {
-        console.log('Progress update:', parsed.progress);
+        console.log('📊 Progress update:', parsed.progress);
         const activeTool = tools.find(t => t.status === 'executing');
         if (activeTool) {
           updateToolProgress(activeTool.id, parsed.progress);
@@ -154,13 +163,13 @@ const AIAgentChat: React.FC = () => {
       
       // Handle final results
       if (parsed.type === 'final-result') {
-        console.log('Final result received:', parsed);
+        console.log('🎯 Final result received:', parsed);
         return { type: 'final-result', data: parsed };
       }
       
       return parsed;
     } catch (parseError) {
-      console.warn('Failed to parse streaming chunk:', line);
+      console.warn('⚠️ Failed to parse streaming chunk:', line);
       return null;
     }
   };
@@ -185,6 +194,8 @@ const AIAgentChat: React.FC = () => {
   const processMessage = async (message: string) => {
     if (!user || !currentSessionId) return;
 
+    console.log('🚀 Processing message:', message);
+
     const contextualMessage = getContextForMessage(message);
     const enhancedMessage = contextualMessage ? `${message}\n\nContext: ${contextualMessage}` : message;
 
@@ -194,10 +205,9 @@ const AIAgentChat: React.FC = () => {
     setCurrentTool(undefined);
     clearTools();
 
-    console.log('Starting message processing:', { message, enhancedMessage });
-
     try {
       const conversationHistory = getConversationHistory();
+      console.log('📚 Using conversation history:', conversationHistory.length, 'messages');
 
       // Use streaming for enhanced experience
       const { data, error } = await supabase.functions.invoke('ai-agent', {
@@ -215,7 +225,7 @@ const AIAgentChat: React.FC = () => {
         throw new Error(error.message);
       }
 
-      console.log('AI Agent response received:', data);
+      console.log('📡 AI Agent response received:', typeof data, data ? 'has data' : 'no data');
 
       // Handle streaming response
       if (data && typeof data === 'string') {
@@ -223,7 +233,7 @@ const AIAgentChat: React.FC = () => {
         let finalResult: any = null;
         let currentToolId: string | null = null;
 
-        console.log('Processing streaming lines:', lines.length);
+        console.log('🔄 Processing streaming lines:', lines.length);
 
         for (const line of lines) {
           const parsed = parseStreamingChunk(line);
@@ -231,15 +241,15 @@ const AIAgentChat: React.FC = () => {
           if (parsed) {
             if (parsed.type === 'tool-start') {
               currentToolId = parsed.toolId;
-              console.log('Tool started with ID:', currentToolId);
+              console.log('🔧 Tool started with ID:', currentToolId);
             } else if (parsed.type === 'final-result') {
               finalResult = parsed.data;
-              console.log('Final result captured:', finalResult);
+              console.log('🎯 Final result captured:', finalResult.success);
               
               // Complete any active tools
               if (currentToolId) {
                 completeTool(currentToolId, finalResult.toolsUsed);
-                console.log('Tool completed:', currentToolId);
+                console.log('✅ Tool completed:', currentToolId);
               }
               
               // Mark all executing tools as completed
@@ -254,9 +264,9 @@ const AIAgentChat: React.FC = () => {
 
         // Add final assistant message
         if (finalResult && finalResult.success) {
-          console.log('Adding final assistant message');
+          console.log('📝 Adding final assistant message');
           const assistantMessage: ConversationMessage = {
-            id: (Date.now() + 1).toString(),
+            id: `final-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             role: 'assistant',
             content: finalResult.message,
             timestamp: new Date(),
@@ -274,17 +284,17 @@ const AIAgentChat: React.FC = () => {
             }
           }
         } else {
-          console.warn('No final result found in streaming response');
+          console.warn('⚠️ No valid final result found in streaming response');
         }
       } else {
         // Fallback to non-streaming response
-        console.log('Using non-streaming fallback');
+        console.log('🔄 Using non-streaming fallback');
         if (!data || !data.success) {
           throw new Error(data?.error || 'Failed to get response from AI agent');
         }
 
         const assistantMessage: ConversationMessage = {
-          id: (Date.now() + 1).toString(),
+          id: `fallback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           role: 'assistant',
           content: data.message,
           timestamp: new Date(),
@@ -305,7 +315,7 @@ const AIAgentChat: React.FC = () => {
       }
 
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error sending message:', error);
       
       // Mark any executing tools as failed
       tools.forEach(tool => {
@@ -320,7 +330,7 @@ const AIAgentChat: React.FC = () => {
       });
 
       const errorMessage: ConversationMessage = {
-        id: (Date.now() + 1).toString(),
+        id: `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
         content: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
         timestamp: new Date()
@@ -338,14 +348,17 @@ const AIAgentChat: React.FC = () => {
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !user || !currentSessionId) return;
 
+    console.log('📤 Sending message:', input);
+
     // Add user message IMMEDIATELY before clearing input
     const userMessage: ConversationMessage = {
-      id: Date.now().toString(),
+      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
       content: input,
       timestamp: new Date()
     };
 
+    console.log('👤 Adding user message:', userMessage.id);
     // Add user message to conversations immediately
     addMessage(userMessage);
     
@@ -378,6 +391,13 @@ const AIAgentChat: React.FC = () => {
           onNewSession={startNewSession}
           isLoading={isLoading}
         />
+        
+        {/* Debug Panel - Remove this after testing */}
+        <div className="bg-yellow-50 border-b border-yellow-200 p-2 text-xs">
+          <strong>🐛 Debug:</strong> {conversations.length} messages in state | 
+          Last: {conversations.length > 0 ? conversations[conversations.length - 1].role : 'none'} | 
+          Session: {currentSessionId ? 'active' : 'none'}
+        </div>
         
         <SimplifiedChatInterface
           conversations={conversations}

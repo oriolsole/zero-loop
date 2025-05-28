@@ -51,6 +51,7 @@ export const useAgentConversation = () => {
     const newSessionId = generateSessionId();
     setCurrentSessionId(newSessionId);
     setConversations([]);
+    console.log('🔄 Starting new session:', newSessionId);
 
     try {
       const { error } = await supabase
@@ -138,6 +139,7 @@ export const useAgentConversation = () => {
         : [];
       
       setConversations(parsedMessages);
+      console.log('📥 Loaded session with messages:', parsedMessages.length);
     } catch (error) {
       console.error('Error loading session:', error);
     }
@@ -172,18 +174,48 @@ export const useAgentConversation = () => {
     }
   };
 
-  // Add a message to the current conversation
+  // Add a message to the current conversation with extensive debugging
   const addMessage = async (message: ConversationMessage) => {
-    if (!currentSessionId || !user) return;
+    if (!currentSessionId || !user) {
+      console.error('❌ Cannot add message: missing sessionId or user');
+      return;
+    }
 
-    const newConversations = [...conversations, message];
-    setConversations(newConversations);
+    console.log('📨 Adding message:', {
+      id: message.id,
+      role: message.role,
+      type: message.messageType,
+      content: message.content.substring(0, 50) + '...',
+      timestamp: message.timestamp
+    });
+
+    // Use functional update to ensure we get the latest state
+    setConversations(prevConversations => {
+      const newConversations = [...prevConversations, message];
+      console.log('💬 Conversations updated:', {
+        previousCount: prevConversations.length,
+        newCount: newConversations.length,
+        latestMessage: {
+          id: message.id,
+          role: message.role,
+          type: message.messageType || 'response'
+        }
+      });
+      
+      // Log all message IDs for debugging
+      console.log('📋 All message IDs:', newConversations.map(m => ({ id: m.id, role: m.role, type: m.messageType })));
+      
+      return newConversations;
+    });
 
     try {
+      // Get the updated conversations for saving
+      const updatedConversations = [...conversations, message];
+      
       const { error } = await supabase
         .from('agent_sessions')
         .update({
-          messages: newConversations.map(msg => ({
+          messages: updatedConversations.map(msg => ({
             ...msg,
             timestamp: msg.timestamp.toISOString()
           })),
@@ -197,7 +229,7 @@ export const useAgentConversation = () => {
       }
 
       // Update session title if this is the first user message
-      if (message.role === 'user' && newConversations.filter(m => m.role === 'user').length === 1) {
+      if (message.role === 'user' && updatedConversations.filter(m => m.role === 'user').length === 1) {
         const title = message.content.length > 50 
           ? message.content.substring(0, 47) + '...'
           : message.content;
@@ -215,13 +247,24 @@ export const useAgentConversation = () => {
 
   // Update an existing message
   const updateMessage = async (messageId: string, updates: Partial<ConversationMessage>) => {
-    const updatedConversations = conversations.map(msg => 
-      msg.id === messageId ? { ...msg, ...updates } : msg
-    );
-    setConversations(updatedConversations);
+    console.log('🔄 Updating message:', messageId, updates);
+    
+    setConversations(prevConversations => {
+      const updatedConversations = prevConversations.map(msg => 
+        msg.id === messageId ? { ...msg, ...updates } : msg
+      );
+      
+      console.log('📝 Message updated in conversations');
+      return updatedConversations;
+    });
 
     if (currentSessionId && user) {
       try {
+        // Use current conversations state for saving
+        const updatedConversations = conversations.map(msg => 
+          msg.id === messageId ? { ...msg, ...updates } : msg
+        );
+        
         await supabase
           .from('agent_sessions')
           .update({
@@ -241,7 +284,7 @@ export const useAgentConversation = () => {
 
   // Get conversation history for API calls
   const getConversationHistory = () => {
-    return conversations
+    const history = conversations
       .filter(msg => msg.messageType !== 'step-announcement' && 
                     msg.messageType !== 'partial-result' && 
                     msg.messageType !== 'tool-announcement')
@@ -249,15 +292,27 @@ export const useAgentConversation = () => {
         role: msg.role,
         content: msg.content
       }));
+    
+    console.log('📖 Getting conversation history:', history.length, 'messages');
+    return history;
   };
 
   // Initialize session on user change
   useEffect(() => {
     if (user && !currentSessionId) {
+      console.log('🚀 Initializing session for user:', user.id);
       startNewSession();
       loadSessions();
     }
   }, [user]);
+
+  // Debug log whenever conversations change
+  useEffect(() => {
+    console.log('🔍 Conversations state changed:', {
+      count: conversations.length,
+      messages: conversations.map(m => ({ id: m.id, role: m.role, type: m.messageType, content: m.content.substring(0, 30) + '...' }))
+    });
+  }, [conversations]);
 
   return {
     currentSessionId,
