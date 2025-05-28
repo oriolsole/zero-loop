@@ -1,4 +1,3 @@
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
@@ -25,6 +24,7 @@ export async function handleUnifiedQuery(
   let finalResponse = '';
   let allToolsUsed: any[] = [];
   let loopEvaluation = null;
+  const toolMessageMap = new Map<string, string>(); // Track tool message IDs
 
   try {
     // Helper function to check if message already exists in database
@@ -50,17 +50,17 @@ export async function handleUnifiedQuery(
     };
 
     // Helper function to insert message with duplicate prevention
-    const insertMessage = async (content: string, messageType: string, additionalData: any = {}): Promise<boolean> => {
-      if (!userId || !sessionId) return false;
+    const insertMessage = async (content: string, messageType: string, additionalData: any = {}): Promise<string | null> => {
+      if (!userId || !sessionId) return null;
       
       const exists = await messageExists(content, messageType, loopIteration);
       if (exists) {
         console.log(`Message already exists: ${messageType} (loop ${loopIteration})`);
-        return false;
+        return null;
       }
       
       try {
-        const { error } = await supabase.from('agent_conversations').insert({
+        const { data, error } = await supabase.from('agent_conversations').insert({
           user_id: userId,
           session_id: sessionId,
           role: 'assistant',
@@ -69,17 +69,44 @@ export async function handleUnifiedQuery(
           loop_iteration: loopIteration,
           created_at: new Date().toISOString(),
           ...additionalData
-        });
+        }).select('id').single();
         
         if (error) {
           console.error(`Failed to insert message: ${messageType}`, error);
-          return false;
+          return null;
         }
         
         console.log(`✅ Inserted message: ${messageType} (loop ${loopIteration})`);
-        return true;
+        return data.id;
       } catch (error) {
         console.error(`Failed to insert message: ${messageType}`, error);
+        return null;
+      }
+    };
+
+    // Helper function to update existing message
+    const updateMessage = async (messageId: string, content: string, additionalData: any = {}): Promise<boolean> => {
+      if (!userId || !sessionId || !messageId) return false;
+      
+      try {
+        const { error } = await supabase
+          .from('agent_conversations')
+          .update({
+            content,
+            updated_at: new Date().toISOString(),
+            ...additionalData
+          })
+          .eq('id', messageId);
+        
+        if (error) {
+          console.error(`Failed to update message: ${messageId}`, error);
+          return false;
+        }
+        
+        console.log(`✅ Updated message: ${messageId}`);
+        return true;
+      } catch (error) {
+        console.error(`Failed to update message: ${messageId}`, error);
         return false;
       }
     };
@@ -153,7 +180,7 @@ export async function handleUnifiedQuery(
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
       console.log(`🛠️ LLM chose to use ${data.choices[0].message.tool_calls.length} tools (loop ${loopIteration})`);
       
-      // Store individual tool execution messages as JSON with enhanced metadata
+      // Create initial tool execution messages
       for (const toolCall of data.choices[0].message.tool_calls) {
         const toolName = toolCall.function.name.replace('execute_', '');
         const mcpInfo = mcps?.find(m => m.default_key === toolName);
@@ -172,13 +199,18 @@ export async function handleUnifiedQuery(
           status: 'executing',
           parameters: parameters,
           startTime: new Date().toISOString(),
-          progress: 0
+          toolCallId: toolCall.id
         };
         
-        await insertMessage(
+        const messageId = await insertMessage(
           JSON.stringify(toolExecutionData),
           'tool-executing'
         );
+        
+        // Store the mapping of tool call ID to message ID
+        if (messageId) {
+          toolMessageMap.set(toolCall.id, messageId);
+        }
       }
       
       const { toolResults, toolsUsed } = await executeTools(
@@ -190,26 +222,31 @@ export async function handleUnifiedQuery(
       
       allToolsUsed = toolsUsed;
       
-      // Store tool completion messages with results as JSON
-      for (const tool of toolsUsed) {
-        const toolName = tool.name.replace('execute_', '');
+      // Update existing tool messages with completion data
+      for (const toolCall of data.choices[0].message.tool_calls) {
+        const messageId = toolMessageMap.get(toolCall.id);
+        if (!messageId) continue;
+        
+        const toolName = toolCall.function.name.replace('execute_', '');
         const mcpInfo = mcps?.find(m => m.default_key === toolName);
+        const tool = toolsUsed.find(t => t.name === toolCall.function.name);
         
-        const toolCompletionData = {
-          toolName: toolName,
-          displayName: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-          status: tool.success ? 'completed' : 'failed',
-          result: tool.result,
-          error: tool.success ? undefined : (tool.error || 'Tool execution failed'),
-          success: tool.success,
-          endTime: new Date().toISOString(),
-          progress: tool.success ? 100 : 0
-        };
-        
-        await insertMessage(
-          JSON.stringify(toolCompletionData),
-          'tool-executing'
-        );
+        if (tool) {
+          const toolCompletionData = {
+            toolName: toolName,
+            displayName: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            status: tool.success ? 'completed' : 'failed',
+            parameters: tool.parameters || {},
+            result: tool.result,
+            error: tool.success ? undefined : (tool.error || 'Tool execution failed'),
+            success: tool.success,
+            startTime: JSON.parse(await getMessageContent(messageId) || '{}').startTime,
+            endTime: new Date().toISOString(),
+            toolCallId: toolCall.id
+          };
+          
+          await updateMessage(messageId, JSON.stringify(toolCompletionData));
+        }
       }
       
       // 6. Synthesize tool results
@@ -230,6 +267,21 @@ export async function handleUnifiedQuery(
       }
     } else {
       console.log(`✅ LLM responded directly without tools (loop ${loopIteration})`);
+    }
+
+    // Helper function to get message content
+    async function getMessageContent(messageId: string): Promise<string | null> {
+      try {
+        const { data, error } = await supabase
+          .from('agent_conversations')
+          .select('content')
+          .eq('id', messageId)
+          .single();
+        
+        return error ? null : data.content;
+      } catch {
+        return null;
+      }
     }
 
     // 7. Store current iteration response
