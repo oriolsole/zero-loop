@@ -153,11 +153,34 @@ export async function handleUnifiedQuery(
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
       console.log(`🛠️ LLM chose to use ${data.choices[0].message.tool_calls.length} tools (loop ${loopIteration})`);
       
-      // Store tool execution message
-      await insertMessage(
-        `🛠️ Using ${data.choices[0].message.tool_calls.length} tool(s) to enhance response...`,
-        'tool-executing'
-      );
+      // Store individual tool execution messages with enhanced metadata
+      for (const toolCall of data.choices[0].message.tool_calls) {
+        const toolName = toolCall.function.name.replace('execute_', '');
+        const mcpInfo = mcps?.find(m => m.default_key === toolName);
+        
+        let parameters;
+        try {
+          parameters = JSON.parse(toolCall.function.arguments);
+        } catch (e) {
+          parameters = {};
+        }
+        
+        await insertMessage(
+          JSON.stringify({
+            toolName: toolName,
+            displayName: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            status: 'executing',
+            parameters: parameters,
+            startTime: new Date().toISOString()
+          }),
+          'tool-execution',
+          { 
+            tool_name: toolName,
+            tool_display_name: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            tool_parameters: parameters
+          }
+        );
+      }
       
       const { toolResults, toolsUsed } = await executeTools(
         data.choices[0].message.tool_calls,
@@ -167,6 +190,26 @@ export async function handleUnifiedQuery(
       );
       
       allToolsUsed = toolsUsed;
+      
+      // Store tool completion messages with results
+      for (const tool of toolsUsed) {
+        await insertMessage(
+          JSON.stringify({
+            toolName: tool.name.replace('execute_', ''),
+            displayName: tool.name.replace('execute_', '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            status: tool.success ? 'completed' : 'failed',
+            result: tool.result,
+            success: tool.success,
+            endTime: new Date().toISOString()
+          }),
+          'tool-completion',
+          { 
+            tool_name: tool.name.replace('execute_', ''),
+            tool_success: tool.success,
+            tool_result: tool.result
+          }
+        );
+      }
       
       // 6. Synthesize tool results
       if (toolsUsed.length > 0) {

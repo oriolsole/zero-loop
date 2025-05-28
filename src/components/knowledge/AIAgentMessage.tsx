@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Bot, User, RotateCcw, Lightbulb, Wrench, CheckCircle, Eye } from 'lucide-react';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 import MarkdownRenderer from './MarkdownRenderer';
+import EnhancedToolCard from './EnhancedToolCard';
+import { ToolProgressItem } from '@/types/tools';
 
 interface AIAgentMessageProps {
   message: ConversationMessage;
@@ -23,6 +25,8 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
       case 'loop-reflection':
         return <Eye className="h-3 w-3 text-purple-500 dark:text-purple-400" />;
       case 'tool-executing':
+      case 'tool-execution':
+      case 'tool-completion':
         return <Wrench className="h-3 w-3 text-orange-500 dark:text-orange-400" />;
       case 'loop-enhancement':
         return <Lightbulb className="h-3 w-3 text-green-500 dark:text-green-400" />;
@@ -33,6 +37,68 @@ const AIAgentMessage: React.FC<AIAgentMessageProps> = ({ message, onFollowUpActi
     }
   };
 
+  // Parse tool execution messages
+  const parseToolMessage = (content: string) => {
+    try {
+      return JSON.parse(content);
+    } catch {
+      return null;
+    }
+  };
+
+  // Check if this is a tool message and should be rendered as a tool card
+  const isToolMessage = message.messageType === 'tool-execution' || message.messageType === 'tool-completion';
+  const toolData = isToolMessage ? parseToolMessage(message.content) : null;
+
+  // Render tool execution/completion as enhanced tool card
+  if (isToolMessage && toolData) {
+    const toolProgressItem: ToolProgressItem = {
+      id: `${message.id}-tool`,
+      name: toolData.toolName,
+      displayName: toolData.displayName,
+      status: toolData.status as any,
+      startTime: toolData.startTime,
+      endTime: toolData.endTime,
+      parameters: toolData.parameters,
+      result: toolData.result,
+      progress: toolData.status === 'completed' ? 100 : toolData.status === 'executing' ? 50 : 0
+    };
+
+    return (
+      <div className="flex gap-4 justify-start">
+        <Avatar className="w-8 h-8 flex-shrink-0">
+          <AvatarFallback className="bg-primary/10">
+            <Bot className="h-5 w-5 text-primary" />
+          </AvatarFallback>
+        </Avatar>
+        
+        <div className="flex-1 max-w-4xl mr-12">
+          {/* Loop iteration and message type indicator */}
+          {(isLoopIteration || message.messageType) && (
+            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground/90 dark:text-muted-foreground/80">
+              {getMessageTypeIcon()}
+              {isLoopIteration && (
+                <span className="text-foreground/90 dark:text-foreground/80 font-medium">Loop {message.loopIteration}</span>
+              )}
+              {message.messageType && (
+                <Badge variant="outline" className="text-xs border-current/40 dark:border-current/30 bg-background/60 dark:bg-background/40 text-foreground/80 dark:text-foreground/70">
+                  {message.messageType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </Badge>
+              )}
+            </div>
+          )}
+          
+          <EnhancedToolCard tool={toolProgressItem} compact={false} />
+          
+          <div className="text-xs text-muted-foreground/70 mt-2 dark:text-muted-foreground/60">
+            {message.timestamp.toLocaleTimeString()}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular message rendering
   return (
     <div className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && (
