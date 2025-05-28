@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -55,6 +56,7 @@ export const useAgentConversation = () => {
       stepNumber
     };
 
+    console.log('🔧 Adding atomic step locally:', { messageType, content: content.substring(0, 50) + '...' });
     setConversations(prev => [...prev, atomicMessage]);
 
     // Store in database for persistence
@@ -78,6 +80,7 @@ export const useAgentConversation = () => {
 
   // Update existing message (for streaming updates)
   const updateAtomicStep = useCallback((messageId: string, content: string) => {
+    console.log('🔧 Updating atomic step:', messageId, content.substring(0, 50) + '...');
     setConversations(prev => prev.map(msg => 
       msg.id === messageId ? { ...msg, content } : msg
     ));
@@ -144,7 +147,7 @@ export const useAgentConversation = () => {
           .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
 
         setSessions(sessionsArray);
-        console.log(`Loaded ${sessionsArray.length} existing sessions`);
+        console.log(`📦 Loaded ${sessionsArray.length} existing sessions`);
       }
     } catch (error) {
       console.error('Error loading existing sessions:', error);
@@ -169,11 +172,13 @@ export const useAgentConversation = () => {
     };
     
     setSessions(prev => [newSession, ...prev]);
+    console.log('🆕 Started new session:', sessionId);
   }, [user]);
 
   const addMessage = useCallback(async (message: ConversationMessage) => {
     if (!currentSessionId || !user) return;
 
+    console.log('💬 Adding message:', { role: message.role, messageType: message.messageType, content: message.content.substring(0, 50) + '...' });
     setConversations(prev => [...prev, message]);
 
     // Update session metadata
@@ -229,6 +234,7 @@ export const useAgentConversation = () => {
   const loadSession = useCallback(async (sessionId: string) => {
     if (!user) return;
 
+    console.log('📂 Loading session:', sessionId);
     setCurrentSessionId(sessionId);
     
     try {
@@ -253,7 +259,10 @@ export const useAgentConversation = () => {
       }));
 
       setConversations(messages);
-      console.log(`Loaded ${messages.length} messages for session ${sessionId}`);
+      console.log(`📂 Loaded ${messages.length} messages for session ${sessionId}`, {
+        messageTypes: messages.map(m => m.messageType).filter(Boolean),
+        roles: messages.map(m => m.role)
+      });
     } catch (error) {
       console.error('Error loading session:', error);
     }
@@ -281,19 +290,24 @@ export const useAgentConversation = () => {
   }, [user, currentSessionId]);
 
   const getConversationHistory = useCallback(() => {
+    // Only include user messages and final assistant responses for conversation history
+    // Exclude atomic steps (thinking, tool-usage, etc.) from history sent to backend
     return conversations
-      .filter(msg => (msg.role === 'user' || msg.role === 'assistant') && msg.messageType !== 'thinking' && msg.messageType !== 'tool-usage' && msg.messageType !== 'reflection')
+      .filter(msg => 
+        (msg.role === 'user') || 
+        (msg.role === 'assistant' && (!msg.messageType || msg.messageType === 'standard'))
+      )
       .map(msg => ({
         role: msg.role,
         content: msg.content
       }));
   }, [conversations]);
 
-  // Listen for autonomous messages
+  // Listen for autonomous messages and atomic steps
   const startListeningForAutonomousMessages = useCallback(() => {
     if (!currentSessionId || !user) return;
 
-    console.log('🔄 Starting to listen for autonomous messages');
+    console.log('🔄 Starting to listen for autonomous messages and atomic steps for session:', currentSessionId);
 
     const channel = supabase
       .channel(`session-${currentSessionId}`)
@@ -308,9 +322,15 @@ export const useAgentConversation = () => {
         (payload) => {
           const newRow = payload.new as any;
           
+          console.log('🔄 Received real-time message:', {
+            role: newRow.role,
+            messageType: newRow.message_type,
+            content: newRow.content.substring(0, 50) + '...',
+            toolName: newRow.tool_name,
+            stepNumber: newRow.step_number
+          });
+          
           if (newRow.role === 'assistant') {
-            console.log('🤖 Received message:', newRow.content);
-            
             const autonomousMessage: ConversationMessage = {
               id: newRow.id.toString(),
               role: 'assistant',
@@ -324,7 +344,15 @@ export const useAgentConversation = () => {
 
             setConversations(prev => {
               const exists = prev.some(msg => msg.id === autonomousMessage.id);
-              if (exists) return prev;
+              if (exists) {
+                console.log('🔄 Message already exists, skipping:', autonomousMessage.id);
+                return prev;
+              }
+              console.log('🔄 Adding new real-time message:', {
+                id: autonomousMessage.id,
+                messageType: autonomousMessage.messageType,
+                content: autonomousMessage.content.substring(0, 50) + '...'
+              });
               return [...prev, autonomousMessage];
             });
 
@@ -341,9 +369,12 @@ export const useAgentConversation = () => {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('🔄 Real-time subscription status:', status);
+      });
 
     return () => {
+      console.log('🔄 Cleaning up real-time subscription');
       supabase.removeChannel(channel);
     };
   }, [currentSessionId, user]);
