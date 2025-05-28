@@ -8,7 +8,7 @@ import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 import { shouldContinueLoop, MAX_LOOPS } from './loop-evaluator.ts';
 
 /**
- * Unified query handler with self-improvement loop capability
+ * Unified query handler with visible self-improvement loop capability
  */
 export async function handleUnifiedQuery(
   message: string,
@@ -27,7 +27,20 @@ export async function handleUnifiedQuery(
   let loopEvaluation = null;
 
   try {
-    // 1. Get available tools
+    // 1. Store loop start message
+    if (userId && sessionId && loopIteration > 0) {
+      await supabase.from('agent_conversations').insert({
+        user_id: userId,
+        session_id: sessionId,
+        role: 'assistant',
+        content: `🔄 Improving response (Loop ${loopIteration})...`,
+        message_type: 'loop-start',
+        loop_iteration: loopIteration,
+        created_at: new Date().toISOString()
+      });
+    }
+
+    // 2. Get available tools
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
       .select('*')
@@ -41,7 +54,7 @@ export async function handleUnifiedQuery(
     const tools = convertMCPsToTools(mcps);
     const systemPrompt = generateUnifiedSystemPrompt(mcps, loopIteration);
 
-    // 2. Prepare messages
+    // 3. Prepare messages
     const messages = createKnowledgeAwareMessages(
       systemPrompt,
       conversationHistory,
@@ -50,7 +63,7 @@ export async function handleUnifiedQuery(
 
     console.log(`🧠 Calling LLM (loop ${loopIteration})`);
 
-    // 3. LLM call with tool decision-making
+    // 4. LLM call with tool decision-making
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
@@ -84,9 +97,22 @@ export async function handleUnifiedQuery(
     const data = response.data;
     finalResponse = extractAssistantMessage(data) || '';
 
-    // 4. Execute tools if LLM chose to use them
+    // 5. Execute tools if LLM chose to use them
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
       console.log(`🛠️ LLM chose to use ${data.choices[0].message.tool_calls.length} tools (loop ${loopIteration})`);
+      
+      // Store tool execution message
+      if (userId && sessionId) {
+        await supabase.from('agent_conversations').insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'assistant',
+          content: `🛠️ Using ${data.choices[0].message.tool_calls.length} tool(s) to enhance response...`,
+          message_type: 'tool-executing',
+          loop_iteration: loopIteration,
+          created_at: new Date().toISOString()
+        });
+      }
       
       const { toolResults, toolsUsed } = await executeTools(
         data.choices[0].message.tool_calls,
@@ -97,7 +123,7 @@ export async function handleUnifiedQuery(
       
       allToolsUsed = toolsUsed;
       
-      // 5. Synthesize tool results
+      // 6. Synthesize tool results
       if (toolsUsed.length > 0) {
         console.log(`🔄 Synthesizing tool results (loop ${loopIteration})`);
         const synthesizedResponse = await synthesizeResults(
@@ -117,7 +143,21 @@ export async function handleUnifiedQuery(
       console.log(`✅ LLM responded directly without tools (loop ${loopIteration})`);
     }
 
-    // 6. Self-improvement loop evaluation (only for initial iterations)
+    // 7. Store current iteration response
+    if (userId && sessionId) {
+      await supabase.from('agent_conversations').insert({
+        user_id: userId,
+        session_id: sessionId,
+        role: 'assistant',
+        content: finalResponse,
+        message_type: loopIteration === 0 ? 'response' : 'loop-enhancement',
+        tools_used: allToolsUsed,
+        loop_iteration: loopIteration,
+        created_at: new Date().toISOString()
+      });
+    }
+
+    // 8. Self-improvement loop evaluation (only for initial iterations)
     if (loopIteration < MAX_LOOPS && !streaming) {
       console.log(`🔍 Evaluating if response can be improved (loop ${loopIteration})`);
       
@@ -130,18 +170,18 @@ export async function handleUnifiedQuery(
         modelSettings
       );
 
-      // 7. Continue loop if improvement is suggested
+      // 9. Store reflection and continue loop if improvement is suggested
       if (loopEvaluation.shouldContinue) {
         console.log(`🔄 Continuing to loop ${loopIteration + 1}: ${loopEvaluation.reasoning}`);
         
-        // Store current iteration result
+        // Store reflection message
         if (userId && sessionId) {
           await supabase.from('agent_conversations').insert({
             user_id: userId,
             session_id: sessionId,
             role: 'assistant',
-            content: finalResponse,
-            tools_used: allToolsUsed,
+            content: `🔍 **Reflection**: ${loopEvaluation.reasoning}`,
+            message_type: 'loop-reflection',
             loop_iteration: loopIteration,
             improvement_reasoning: loopEvaluation.reasoning,
             should_continue_loop: true,
@@ -162,10 +202,25 @@ export async function handleUnifiedQuery(
           supabase,
           loopIteration + 1
         );
+      } else {
+        // Store loop completion message
+        if (userId && sessionId && loopIteration > 0) {
+          await supabase.from('agent_conversations').insert({
+            user_id: userId,
+            session_id: sessionId,
+            role: 'assistant',
+            content: `✅ **Loop Complete**: Enhanced response ready after ${loopIteration + 1} iteration(s)`,
+            message_type: 'loop-complete',
+            loop_iteration: loopIteration,
+            improvement_reasoning: loopEvaluation.reasoning,
+            should_continue_loop: false,
+            created_at: new Date().toISOString()
+          });
+        }
       }
     }
 
-    // 8. Persist insights for multi-tool queries
+    // 10. Persist insights for multi-tool queries
     if (userId && allToolsUsed.length > 1) {
       try {
         await persistInsightAsKnowledgeNode(
@@ -181,24 +236,9 @@ export async function handleUnifiedQuery(
       }
     }
 
-    // 9. Validate response
+    // 11. Validate response
     if (!finalResponse || !finalResponse.trim()) {
       finalResponse = createFallbackResponse(message, allToolsUsed);
-    }
-
-    // 10. Store final response
-    if (userId && sessionId) {
-      await supabase.from('agent_conversations').insert({
-        user_id: userId,
-        session_id: sessionId,
-        role: 'assistant',
-        content: finalResponse,
-        tools_used: allToolsUsed,
-        loop_iteration: loopIteration,
-        improvement_reasoning: loopEvaluation?.reasoning || null,
-        should_continue_loop: false,
-        created_at: new Date().toISOString()
-      });
     }
 
     return {
@@ -208,7 +248,8 @@ export async function handleUnifiedQuery(
       toolsUsed: allToolsUsed,
       sessionId,
       loopIteration,
-      improvementReasoning: loopEvaluation?.reasoning
+      improvementReasoning: loopEvaluation?.reasoning,
+      streamedSteps: true // Flag to indicate steps were streamed
     };
 
   } catch (error) {
@@ -366,9 +407,6 @@ Create a clear, helpful response that integrates this information naturally. For
   }
 }
 
-/**
- * Create fallback response when main response fails
- */
 function createFallbackResponse(message: string, toolsUsed: any[]): string {
   if (toolsUsed && toolsUsed.length > 0) {
     const successfulTools = toolsUsed.filter(t => t.success);

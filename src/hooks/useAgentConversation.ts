@@ -7,7 +7,7 @@ export interface ConversationMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed';
+  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed' | 'loop-start' | 'loop-reflection' | 'loop-enhancement' | 'loop-complete' | 'tool-executing';
   isStreaming?: boolean;
   toolsUsed?: Array<{
     name: string;

@@ -50,6 +50,52 @@ const AIAgentChat: React.FC = () => {
     }
   }, [conversations, tools]);
 
+  // Refresh conversation every 2 seconds while loading to catch loop steps
+  useEffect(() => {
+    let refreshInterval: NodeJS.Timeout;
+    
+    if (isLoading && currentSessionId) {
+      refreshInterval = setInterval(async () => {
+        try {
+          const { data, error } = await supabase
+            .from('agent_conversations')
+            .select('*')
+            .eq('session_id', currentSessionId)
+            .eq('user_id', user?.id)
+            .order('created_at', { ascending: true });
+
+          if (!error && data) {
+            const messages: ConversationMessage[] = data.map(row => ({
+              id: row.id.toString(),
+              role: row.role as ConversationMessage['role'],
+              content: row.content,
+              timestamp: new Date(row.created_at),
+              messageType: row.message_type as ConversationMessage['messageType'] || undefined,
+              toolsUsed: Array.isArray(row.tools_used) ? row.tools_used : undefined,
+              loopIteration: row.loop_iteration || 0,
+              improvementReasoning: row.improvement_reasoning || undefined,
+              shouldContinueLoop: row.should_continue_loop || undefined
+            }));
+
+            // Update conversations if new messages found
+            if (messages.length > conversations.length) {
+              const newMessages = messages.slice(conversations.length);
+              newMessages.forEach(msg => addMessage(msg));
+            }
+          }
+        } catch (error) {
+          console.warn('Error refreshing conversation:', error);
+        }
+      }, 2000);
+    }
+
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [isLoading, currentSessionId, user?.id, conversations.length, addMessage]);
+
   // Load model settings on component mount and when they change
   useEffect(() => {
     const loadSettings = () => {
@@ -68,25 +114,6 @@ const AIAgentChat: React.FC = () => {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
-
-  const addStatusMessage = (content: string) => {
-    const statusMessage: ConversationMessage = {
-      id: `status-${Date.now()}`,
-      role: 'assistant',
-      content,
-      timestamp: new Date(),
-      messageType: 'status' as any
-    };
-    addMessage(statusMessage);
-    return statusMessage.id;
-  };
-
-  const removeStatusMessage = (messageId: string) => {
-    updateMessage(messageId, { 
-      content: '✓ Complete',
-      messageType: 'status' as any
-    });
-  };
 
   const handleFollowUpAction = async (action: string) => {
     if (!user || !currentSessionId) return;
@@ -110,8 +137,6 @@ const AIAgentChat: React.FC = () => {
     setIsLoading(true);
     clearTools();
 
-    const statusId = addStatusMessage("Processing your request...");
-
     try {
       const conversationHistory = getConversationHistory();
 
@@ -134,19 +159,60 @@ const AIAgentChat: React.FC = () => {
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
-      removeStatusMessage(statusId);
+      // If streamedSteps flag is true, the backend has already inserted step messages
+      // We just need to refresh the conversation to show them
+      if (data.streamedSteps) {
+        // Allow time for final database writes to complete
+        setTimeout(async () => {
+          try {
+            const { data: refreshData, error: refreshError } = await supabase
+              .from('agent_conversations')
+              .select('*')
+              .eq('session_id', currentSessionId)
+              .eq('user_id', user.id)
+              .order('created_at', { ascending: true });
 
-      const assistantMessage: ConversationMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.message,
-        timestamp: new Date(),
-        messageType: 'response',
-        toolsUsed: data.toolsUsed || [],
-        aiReasoning: data.aiReasoning || undefined
-      };
+            if (!refreshError && refreshData) {
+              const messages: ConversationMessage[] = refreshData.map(row => ({
+                id: row.id.toString(),
+                role: row.role as ConversationMessage['role'],
+                content: row.content,
+                timestamp: new Date(row.created_at),
+                messageType: row.message_type as ConversationMessage['messageType'] || undefined,
+                toolsUsed: Array.isArray(row.tools_used) ? row.tools_used : undefined,
+                loopIteration: row.loop_iteration || 0,
+                improvementReasoning: row.improvement_reasoning || undefined,
+                shouldContinueLoop: row.should_continue_loop || undefined
+              }));
 
-      addMessage(assistantMessage);
+              // Force refresh conversation state
+              const userMessages = messages.filter(m => m.role === 'user');
+              const lastUserMessage = userMessages[userMessages.length - 1];
+              
+              if (lastUserMessage && lastUserMessage.content === message) {
+                // Load fresh conversation state
+                await loadSession(currentSessionId);
+              }
+            }
+          } catch (refreshError) {
+            console.warn('Error refreshing conversation after loop:', refreshError);
+          }
+        }, 1000);
+      } else {
+        // Fallback: add traditional single response message
+        const assistantMessage: ConversationMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.message,
+          timestamp: new Date(),
+          messageType: 'response',
+          toolsUsed: data.toolsUsed || [],
+          loopIteration: data.loopIteration || 0,
+          improvementReasoning: data.improvementReasoning || undefined
+        };
+
+        addMessage(assistantMessage);
+      }
 
       if (data.toolsUsed && data.toolsUsed.length > 0) {
         const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
@@ -158,11 +224,6 @@ const AIAgentChat: React.FC = () => {
     } catch (error) {
       console.error('Error sending message:', error);
       
-      updateMessage(statusId, { 
-        content: `❌ Error: ${error.message}`,
-        messageType: 'status' as any
-      });
-
       toast.error('Failed to send message', {
         description: error.message || 'Please try again.',
         duration: 10000
