@@ -1,7 +1,6 @@
 
 import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
@@ -17,7 +16,6 @@ const EnhancedToolCard: React.FC<EnhancedToolCardProps> = ({ tool, compact = fal
   const [isExpanded, setIsExpanded] = useState(false);
   const ToolIcon = getToolIcon(tool.name);
   const displayName = getToolDisplayName(tool.name);
-  const colorClass = getToolColor(tool.name);
 
   const getStatusIcon = () => {
     switch (tool.status) {
@@ -53,20 +51,15 @@ const EnhancedToolCard: React.FC<EnhancedToolCardProps> = ({ tool, compact = fal
 
   if (compact) {
     return (
-      <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-sm ${colorClass}`}>
-        <ToolIcon className="h-5 w-5 flex-shrink-0" />
+      <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/30 border border-border/40">
+        <ToolIcon className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium truncate">{displayName}</span>
+            <span className="text-sm font-medium text-muted-foreground truncate">{displayName}</span>
             {getStatusIcon()}
           </div>
-          {tool.progress !== undefined && tool.status === 'executing' && (
-            <div className="mt-1">
-              <Progress value={tool.progress} className="w-full h-1" />
-            </div>
-          )}
         </div>
-        <Badge variant="outline" className="text-xs">
+        <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30">
           {getStatusText()}
         </Badge>
       </div>
@@ -74,18 +67,18 @@ const EnhancedToolCard: React.FC<EnhancedToolCardProps> = ({ tool, compact = fal
   }
 
   return (
-    <div className={`rounded-xl border shadow-sm ${colorClass}`}>
+    <div className="rounded-lg border border-border/40 bg-muted/20 shadow-sm">
       <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-        <div className="p-4">
+        <div className="p-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <ToolIcon className="h-5 w-5 flex-shrink-0" />
+              <ToolIcon className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium">{displayName}</span>
+                  <span className="font-medium text-sm text-muted-foreground">{displayName}</span>
                   {getStatusIcon()}
                 </div>
-                <div className="text-xs opacity-75 mt-1">
+                <div className="text-xs text-muted-foreground/70 mt-1">
                   {getStatusText()}
                   {tool.startTime && (
                     <span className="ml-2">
@@ -97,50 +90,40 @@ const EnhancedToolCard: React.FC<EnhancedToolCardProps> = ({ tool, compact = fal
             </div>
             
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30">
                 {tool.status}
               </Badge>
               {hasDetails && (
                 <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground">
                     {isExpanded ? (
-                      <ChevronDown className="h-4 w-4" />
+                      <ChevronDown className="h-3 w-3" />
                     ) : (
-                      <ChevronRight className="h-4 w-4" />
+                      <ChevronRight className="h-3 w-3" />
                     )}
                   </Button>
                 </CollapsibleTrigger>
               )}
             </div>
           </div>
-          
-          {tool.progress !== undefined && tool.status === 'executing' && (
-            <div className="mt-3">
-              <div className="flex justify-between text-xs opacity-75 mb-1">
-                <span>Progress</span>
-                <span>{tool.progress}%</span>
-              </div>
-              <Progress value={tool.progress} className="w-full h-2" />
-            </div>
-          )}
         </div>
 
         {hasDetails && (
           <CollapsibleContent>
-            <div className="border-t px-4 pb-4 pt-3 space-y-3">
+            <div className="border-t border-border/30 px-3 pb-3 pt-2 space-y-2">
               {tool.parameters && Object.keys(tool.parameters).length > 0 && (
-                <div className="bg-background/50 p-3 rounded-lg">
-                  <div className="text-xs font-medium mb-2 opacity-75">Parameters</div>
-                  <pre className="text-xs opacity-75 whitespace-pre-wrap overflow-x-auto">
+                <div className="bg-muted/30 p-2 rounded border border-border/30">
+                  <div className="text-xs font-medium mb-1 text-muted-foreground/90">Parameters</div>
+                  <pre className="text-xs text-muted-foreground/80 whitespace-pre-wrap overflow-x-auto">
                     {JSON.stringify(tool.parameters, null, 2)}
                   </pre>
                 </div>
               )}
               
               {tool.result && (
-                <div className="bg-background/50 p-3 rounded-lg">
-                  <div className="text-xs font-medium mb-2 opacity-75">Result</div>
-                  <div className="text-xs opacity-75">
+                <div className="bg-muted/30 p-2 rounded border border-border/30">
+                  <div className="text-xs font-medium mb-1 text-muted-foreground/90">Result</div>
+                  <div className="text-xs text-muted-foreground/80">
                     {typeof tool.result === 'string' ? (
                       <p className="whitespace-pre-wrap">{tool.result}</p>
                     ) : (
@@ -153,14 +136,14 @@ const EnhancedToolCard: React.FC<EnhancedToolCardProps> = ({ tool, compact = fal
               )}
               
               {tool.error && (
-                <div className="bg-red-50 dark:bg-red-950/20 p-3 rounded-lg border border-red-200 dark:border-red-800/30">
-                  <div className="text-xs font-medium mb-2 text-red-600 dark:text-red-400">Error</div>
+                <div className="bg-red-50 dark:bg-red-950/20 p-2 rounded border border-red-200 dark:border-red-800/30">
+                  <div className="text-xs font-medium mb-1 text-red-600 dark:text-red-400">Error</div>
                   <p className="text-xs text-red-600 dark:text-red-400">{tool.error}</p>
                 </div>
               )}
               
               {tool.endTime && (
-                <div className="text-xs opacity-75">
+                <div className="text-xs text-muted-foreground/70">
                   Completed at {new Date(tool.endTime).toLocaleTimeString()}
                   {tool.startTime && (
                     <span className="ml-2">
