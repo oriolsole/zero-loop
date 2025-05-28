@@ -1,7 +1,12 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { load } from "https://esm.sh/cheerio@1.0.0-rc.12";
-import { corsHeaders } from "./cors.ts";
+
+// CORS headers for all responses
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 interface ScraperOptions {
   url: string;
@@ -9,6 +14,16 @@ interface ScraperOptions {
   format?: 'html' | 'text' | 'markdown';
   includeMetadata?: boolean;
   maxDepth?: number;
+}
+
+// Helper function to validate URLs
+function isValidUrl(string: string): boolean {
+  try {
+    new URL(string);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 // Main handler for the edge function
@@ -19,7 +34,8 @@ serve(async (req) => {
   }
 
   try {
-    const { url, selector, format = 'markdown', includeMetadata = true } = await req.json() as ScraperOptions;
+    const requestBody = await req.json();
+    const { url, selector, format = 'markdown', includeMetadata = true } = requestBody as ScraperOptions;
 
     if (!url) {
       return new Response(
@@ -28,8 +44,28 @@ serve(async (req) => {
       );
     }
 
-    // Fetch the content from the provided URL
-    const response = await fetch(url);
+    // Validate URL format
+    if (!isValidUrl(url)) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid URL format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Scraping URL:', url);
+
+    // Fetch the content from the provided URL with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ZeroLoop Web Scraper)',
+      }
+    });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       return new Response(
@@ -47,11 +83,11 @@ serve(async (req) => {
     // Extract metadata
     const metadata: Record<string, string> = {};
     if (includeMetadata) {
-      metadata.title = $('title').text() || '';
-      metadata.description = $('meta[name="description"]').attr('content') || '';
-      metadata.ogTitle = $('meta[property="og:title"]').attr('content') || '';
-      metadata.ogDescription = $('meta[property="og:description"]').attr('content') || '';
-      metadata.ogImage = $('meta[property="og:image"]').attr('content') || '';
+      metadata.title = $('title').text().trim() || '';
+      metadata.description = $('meta[name="description"]').attr('content')?.trim() || '';
+      metadata.ogTitle = $('meta[property="og:title"]').attr('content')?.trim() || '';
+      metadata.ogDescription = $('meta[property="og:description"]').attr('content')?.trim() || '';
+      metadata.ogImage = $('meta[property="og:image"]').attr('content')?.trim() || '';
       metadata.url = url;
       metadata.domain = new URL(url).hostname;
       metadata.scrapedAt = new Date().toISOString();
@@ -68,23 +104,32 @@ serve(async (req) => {
     } else {
       // Default to body content if no selector provided
       if (format === 'html') {
-        // Remove script tags to clean up the HTML
+        // Remove script and style tags to clean up the HTML
         $('script').remove();
         $('style').remove();
+        $('nav').remove(); // Remove navigation
+        $('header').remove(); // Remove header
+        $('footer').remove(); // Remove footer
         content = $('body').html() || '';
       } else {
         // Extract main content, prioritizing article or main tags
         const mainContent = $('article').length ? $('article') : $('main').length ? $('main') : $('body');
-        // Clean up the text
+        // Clean up the content
         $('script', mainContent).remove();
         $('style', mainContent).remove();
+        $('nav', mainContent).remove();
+        $('header', mainContent).remove();
+        $('footer', mainContent).remove();
+        $('aside', mainContent).remove(); // Remove sidebars
+        $('.advertisement', mainContent).remove(); // Remove ads
+        $('.ad', mainContent).remove(); // Remove ads
         content = mainContent.text().replace(/\s+/g, ' ').trim();
       }
     }
     
     // Convert HTML to Markdown if requested
     if (format === 'markdown') {
-      // Very simple HTML to Markdown conversion
+      // Improved HTML to Markdown conversion
       content = content
         .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
         .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
@@ -98,14 +143,33 @@ serve(async (req) => {
         .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
         .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
         .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
+        .replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
+        .replace(/<pre[^>]*>(.*?)<\/pre>/gis, '```\n$1\n```\n')
         .replace(/<ul[^>]*>(.*?)<\/ul>/gis, '$1\n')
         .replace(/<ol[^>]*>(.*?)<\/ol>/gis, '$1\n')
         .replace(/<li[^>]*>(.*?)<\/li>/gi, '* $1\n')
         .replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, '> $1\n\n')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<hr\s*\/?>/gi, '\n---\n')
         .replace(/<[^>]+>/g, '') // Remove remaining HTML tags
-        .replace(/\n\s*\n/g, '\n\n') // Normalize line breaks
+        .replace(/\n\s*\n\s*\n/g, '\n\n') // Normalize multiple line breaks
+        .replace(/^\s+|\s+$/g, '') // Trim whitespace
         .trim();
     }
+
+    // Check if content was successfully extracted
+    if (!content || content.length < 10) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'No meaningful content could be extracted from the page',
+          metadata
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Successfully scraped content:', content.length, 'characters');
 
     return new Response(
       JSON.stringify({
