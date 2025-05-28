@@ -6,7 +6,7 @@ import { createMCPSummary, formatMCPForPrompt } from './mcp-summary.ts';
  */
 
 /**
- * Generates a comprehensive system prompt with unified strategy
+ * Generates a comprehensive system prompt with unified strategy and tool introspection
  */
 export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): string {
   const mcpSummaries = mcps?.map(mcp => createMCPSummary(mcp)) || [];
@@ -28,6 +28,9 @@ export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): st
 
 **🛠️ Available Tools:**
 ${toolDescriptions}
+
+**🧠 Tool Introspection:**
+If the user asks what tools you have access to, list and explain the tools above with their descriptions, categories, and use cases.
 
 **💡 Natural Decision Making:**
 - For simple greetings or basic questions, respond directly

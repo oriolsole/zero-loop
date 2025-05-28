@@ -46,9 +46,9 @@ export function createMCPSummary(mcp: any): MCPSummary {
     parameters = [];
   }
 
-  // Extract key parameters (first 3 most important ones)
+  // Extract key parameters (first 2 most important ones for token efficiency)
   const keyParameters = parameters
-    .slice(0, 3)
+    .slice(0, 2)
     .map((param: any) => ({
       name: param.name,
       type: param.type,
@@ -56,10 +56,10 @@ export function createMCPSummary(mcp: any): MCPSummary {
       description: param.description
     }));
 
-  // Extract sample use cases (first 3)
+  // Extract sample use cases (first 2 for conciseness)
   let sampleUseCases: string[] = [];
   if (mcp.sampleUseCases && Array.isArray(mcp.sampleUseCases)) {
-    sampleUseCases = mcp.sampleUseCases.slice(0, 3);
+    sampleUseCases = mcp.sampleUseCases.slice(0, 2);
   }
 
   return {
@@ -75,40 +75,26 @@ export function createMCPSummary(mcp: any): MCPSummary {
 }
 
 /**
- * Formats MCP summary for inclusion in system prompt
+ * Formats MCP summary for inclusion in system prompt with compact inline format
  */
 export function formatMCPForPrompt(summary: MCPSummary): string {
-  const parts = [`**${summary.title}** (${summary.default_key})`];
+  // Compact inline format: **ToolName** (category) — description
+  const categoryText = summary.category ? ` (${summary.category})` : '';
+  let result = `**${summary.title}**${categoryText} — ${summary.description}`;
   
-  // Add description
-  parts.push(`Description: ${summary.description}`);
-  
-  // Add category and tags if available
-  if (summary.category) {
-    parts.push(`Category: ${summary.category}`);
-  }
-  
-  if (summary.tags && summary.tags.length > 0) {
-    parts.push(`Tags: ${summary.tags.join(', ')}`);
-  }
-  
-  // Add key parameters
+  // Add parameters in compact format
   if (summary.keyParameters.length > 0) {
-    parts.push('Key Parameters:');
-    summary.keyParameters.forEach(param => {
-      const requiredText = param.required ? ' (required)' : ' (optional)';
-      const descText = param.description ? ` - ${param.description}` : '';
-      parts.push(`  • ${param.name}: ${param.type}${requiredText}${descText}`);
-    });
+    const paramsList = summary.keyParameters.map(param => {
+      const requiredText = param.required ? ', required' : '';
+      return `${param.name} (${param.type}${requiredText})`;
+    }).join(', ');
+    result += `\n• Parameters: ${paramsList}`;
   }
   
-  // Add sample use cases
+  // Add use cases separated by semicolons for efficiency
   if (summary.sampleUseCases.length > 0) {
-    parts.push('Sample Use Cases:');
-    summary.sampleUseCases.forEach(useCase => {
-      parts.push(`  • ${useCase}`);
-    });
+    result += `\n• Use cases: ${summary.sampleUseCases.join('; ')}`;
   }
   
-  return parts.join('\n');
+  return result;
 }
