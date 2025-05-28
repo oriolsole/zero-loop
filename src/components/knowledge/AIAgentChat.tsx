@@ -51,8 +51,9 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = React.useState(false);
   const [modelSettings, setModelSettings] = React.useState(getModelSettings());
 
-  // Track active requests to prevent duplicates
+  // Enhanced request tracking to prevent duplicates
   const activeRequests = useRef<Set<string>>(new Set());
+  const processedMessages = useRef<Set<string>>(new Set());
   
   const {
     tools: hookTools,
@@ -148,9 +149,10 @@ const AIAgentChat: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Load sessions on mount
+  // Enhanced session loading on mount
   useEffect(() => {
     if (user && sessions.length === 0 && !isLoadingSessions) {
+      console.log('🔄 Loading sessions on mount');
       loadExistingSessions();
     }
   }, [user, sessions.length, loadExistingSessions, isLoadingSessions]);
@@ -158,13 +160,24 @@ const AIAgentChat: React.FC = () => {
   // Auto-start new session if none exists
   useEffect(() => {
     if (user && !currentSessionId && sessions.length === 0 && !isLoadingSessions) {
+      console.log('🆕 Auto-starting new session');
       startNewSession();
     }
   }, [user, currentSessionId, sessions.length, startNewSession, isLoadingSessions]);
 
+  // Clear processed messages when session changes
+  useEffect(() => {
+    if (currentSessionId) {
+      processedMessages.current.clear();
+      console.log('🧹 Cleared processed messages for new session:', currentSessionId);
+    }
+  }, [currentSessionId]);
+
   // Handle session loading with new persistence hook
   const handleLoadSession = async (sessionId: string) => {
     if (!loadConversation) return;
+    
+    console.log(`📂 Loading session: ${sessionId}`);
     
     // Find session data from sessions list
     const sessionData = sessions.find(s => s.id === sessionId);
@@ -172,6 +185,9 @@ const AIAgentChat: React.FC = () => {
       setCurrentSession(sessionData);
     }
 
+    // Clear processed messages for new session
+    processedMessages.current.clear();
+    
     // Load messages for this session
     await loadConversation(sessionId);
   };
@@ -179,8 +195,16 @@ const AIAgentChat: React.FC = () => {
   const handleFollowUpAction = async (action: string) => {
     if (!user || !currentSessionId) return;
 
-    // Create unique message ID to prevent duplicates
+    // Enhanced message ID generation with timestamp
     const messageId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if we've already processed this exact action recently
+    const actionKey = `${action}-${Date.now()}`;
+    if (processedMessages.current.has(action)) {
+      console.log('⚠️ Action already processed recently, skipping:', action);
+      return;
+    }
+    processedMessages.current.add(action);
     
     const followUpMessage: ConversationMessage = {
       id: messageId,
@@ -189,22 +213,25 @@ const AIAgentChat: React.FC = () => {
       timestamp: new Date()
     };
 
+    console.log(`📤 Processing follow-up action: ${messageId}`);
+    
     if (persistMessage) {
       await persistMessage(followUpMessage);
     }
     setInput('');
     
-    await processMessage(action);
+    await processMessage(action, messageId);
   };
 
-  const processMessage = async (message: string) => {
+  const processMessage = async (message: string, existingMessageId?: string) => {
     if (!user || !currentSessionId) return;
 
-    // Create a unique request key to prevent duplicates
-    const requestKey = `${currentSessionId}-${Date.now()}-${message.substring(0, 50)}`;
+    // Enhanced request tracking with message content hash
+    const contentHash = btoa(message).substring(0, 16);
+    const requestKey = `${currentSessionId}-${contentHash}-${existingMessageId || Date.now()}`;
     
     if (activeRequests.current.has(requestKey)) {
-      console.log('Request already in progress, skipping');
+      console.log('⚠️ Request already in progress, skipping:', requestKey);
       return;
     }
 
@@ -212,11 +239,15 @@ const AIAgentChat: React.FC = () => {
     setIsLoading(true);
     clearTools();
 
+    console.log(`🚀 Processing message: ${requestKey}`);
+
     try {
       const conversationHistory = messages.filter(msg => msg.role === 'user' || msg.role === 'assistant').map(msg => ({
         role: msg.role,
         content: msg.content
       }));
+
+      console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages`);
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
@@ -237,8 +268,14 @@ const AIAgentChat: React.FC = () => {
         throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
+      console.log('✅ AI agent response received:', { 
+        streamedSteps: data.streamedSteps, 
+        messageLength: data.message?.length 
+      });
+
       // If streamedSteps flag is true, the backend has already inserted step messages
       if (data.streamedSteps) {
+        console.log('🔄 Backend used streamedSteps, refreshing conversation');
         // Refresh conversation to show new messages
         setTimeout(() => {
           if (refreshMessages) {
@@ -260,6 +297,8 @@ const AIAgentChat: React.FC = () => {
           improvementReasoning: data.improvementReasoning || undefined
         };
 
+        console.log(`💬 Adding assistant response: ${assistantMessageId}`);
+
         if (persistMessage) {
           await persistMessage(assistantMessage);
         }
@@ -273,7 +312,7 @@ const AIAgentChat: React.FC = () => {
       }
 
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error sending message:', error);
       
       toast.error('Failed to send message', {
         description: error.message || 'Please try again.',
@@ -295,14 +334,27 @@ const AIAgentChat: React.FC = () => {
     } finally {
       setIsLoading(false);
       activeRequests.current.delete(requestKey);
+      
+      // Clean up processed messages after some time
+      setTimeout(() => {
+        processedMessages.current.clear();
+      }, 30000); // Clear after 30 seconds
     }
   };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !user || !currentSessionId) return;
 
-    // Create unique message ID to prevent duplicates
+    // Enhanced message ID generation with better uniqueness
     const messageId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Check for rapid duplicate submissions
+    const inputHash = btoa(input.trim()).substring(0, 16);
+    if (processedMessages.current.has(inputHash)) {
+      console.log('⚠️ Duplicate message detected, skipping:', input.substring(0, 50));
+      return;
+    }
+    processedMessages.current.add(inputHash);
 
     const userMessage: ConversationMessage = {
       id: messageId,
@@ -311,13 +363,16 @@ const AIAgentChat: React.FC = () => {
       timestamp: new Date()
     };
 
+    console.log(`📤 Sending user message: ${messageId}`);
+
     if (persistMessage) {
       await persistMessage(userMessage);
     }
+    
     const messageToProcess = input;
     setInput('');
     
-    await processMessage(messageToProcess);
+    await processMessage(messageToProcess, messageId);
   };
 
   return (

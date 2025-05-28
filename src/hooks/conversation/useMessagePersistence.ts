@@ -5,6 +5,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useConversationContext } from '@/contexts/ConversationContext';
 import { ConversationMessage } from '@/hooks/useAgentConversation';
 
+// Simple hash function for message deduplication
+const createMessageHash = (content: string, role: string, sessionId: string): string => {
+  const text = `${content}-${role}-${sessionId}`;
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+};
+
 export const useMessagePersistence = () => {
   const { user } = useAuth();
   const { 
@@ -107,29 +119,56 @@ export const useMessagePersistence = () => {
       return;
     }
 
-    // Check if similar message already exists in database (same content, role, session within last 5 minutes)
+    // Enhanced duplicate detection using multiple strategies
     try {
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      // Strategy 1: Check for exact duplicates within last 10 seconds (reduced from 5 minutes)
+      const tenSecondsAgo = new Date(Date.now() - 10 * 1000).toISOString();
       
-      const { data: existingMessages, error: checkError } = await supabase
+      const { data: recentDuplicates, error: checkError } = await supabase
         .from('agent_conversations')
-        .select('id, content, role')
+        .select('id, content, role, message_type')
         .eq('session_id', sessionId)
         .eq('user_id', user.id)
         .eq('content', message.content)
         .eq('role', message.role)
-        .gte('created_at', fiveMinutesAgo)
+        .gte('created_at', tenSecondsAgo)
         .limit(1);
 
       if (checkError) {
-        console.error('Error checking for duplicate messages:', checkError);
-      } else if (existingMessages && existingMessages.length > 0) {
-        console.log(`⚠️ Similar message already exists in database, skipping: ${existingMessages[0].id}`);
+        console.error('Error checking for recent duplicates:', checkError);
+      } else if (recentDuplicates && recentDuplicates.length > 0) {
+        console.log(`⚠️ Recent duplicate message detected, skipping: ${recentDuplicates[0].id}`);
         return;
       }
+
+      // Strategy 2: Hash-based deduplication for broader duplicate detection
+      const messageHash = createMessageHash(message.content, message.role, sessionId);
+      
+      // Check for hash-based duplicates in longer time window (1 minute)
+      const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+      
+      const { data: hashDuplicates } = await supabase
+        .from('agent_conversations')
+        .select('id, content, role')
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id)
+        .gte('created_at', oneMinuteAgo);
+
+      if (hashDuplicates) {
+        const hasDuplicate = hashDuplicates.some(row => {
+          const existingHash = createMessageHash(row.content, row.role, sessionId);
+          return existingHash === messageHash;
+        });
+        
+        if (hasDuplicate) {
+          console.log(`⚠️ Hash-based duplicate detected for message hash: ${messageHash}, skipping`);
+          return;
+        }
+      }
+
     } catch (error) {
-      console.error('Error checking for duplicates:', error);
-      // Continue with insertion if check fails
+      console.error('Error in duplicate detection:', error);
+      // Continue with insertion if check fails, but log the issue
     }
 
     // Update context state immediately for better UX
@@ -137,8 +176,17 @@ export const useMessagePersistence = () => {
     setMessages(updatedMessages);
     console.log(`✅ Message ${message.id} added to context`);
 
-    // Save to database
+    // Save to database with enhanced logging
     try {
+      console.log(`💾 Inserting message to database:`, {
+        sessionId,
+        userId: user.id,
+        role: message.role,
+        contentLength: message.content.length,
+        messageType: message.messageType,
+        timestamp: message.timestamp.toISOString()
+      });
+
       const { error } = await supabase
         .from('agent_conversations')
         .insert({
@@ -163,12 +211,14 @@ export const useMessagePersistence = () => {
         if (!error.message.includes('unique constraint') && !error.message.includes('duplicate')) {
           const filteredMessages = messages.filter(m => m.id !== message.id);
           setMessages(filteredMessages);
+        } else {
+          console.log('💡 Duplicate constraint prevented insertion - this is expected and good');
         }
       } else {
-        console.log(`💾 Message ${message.id} saved to database`);
+        console.log(`💾 Message ${message.id} saved to database successfully`);
       }
     } catch (error) {
-      console.error('❌ Error saving message:', error);
+      console.error('❌ Exception saving message:', error);
       // Remove from local state on error
       const filteredMessages = messages.filter(m => m.id !== message.id);
       setMessages(filteredMessages);

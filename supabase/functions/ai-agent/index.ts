@@ -77,17 +77,9 @@ serve(async (req) => {
       testMode
     });
 
-    // Store user message in database if userId and sessionId provided (skip in test mode)
-    if (userId && sessionId && !testMode) {
-      const validatedUserMessage = validateAndEnsureContent(message, 'User Message');
-      await supabase.from('agent_conversations').insert({
-        user_id: userId,
-        session_id: sessionId,
-        role: 'user',
-        content: validatedUserMessage,
-        created_at: new Date().toISOString()
-      });
-    }
+    // CRITICAL FIX: Do NOT store user message in database here
+    // The frontend already handles user message insertion to prevent duplicates
+    console.log('🚫 Skipping user message insertion - handled by frontend to prevent duplicates');
 
     // In test mode, return basic response for validation
     if (testMode) {
