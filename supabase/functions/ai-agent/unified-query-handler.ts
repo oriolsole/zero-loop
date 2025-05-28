@@ -5,10 +5,10 @@ import { convertMCPsToTools } from './mcp-tools.ts';
 import { generateSystemPrompt, createKnowledgeAwareMessages } from './system-prompts.ts';
 import { extractAssistantMessage } from './response-handler.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
+import { shouldContinueLoop, MAX_LOOPS } from './loop-evaluator.ts';
 
 /**
- * Unified query handler that lets the LLM naturally decide tool usage
- * Knowledge retrieval is now tool-based only, not forced
+ * Unified query handler with self-improvement loop capability
  */
 export async function handleUnifiedQuery(
   message: string,
@@ -17,15 +17,17 @@ export async function handleUnifiedQuery(
   sessionId: string | null,
   modelSettings: any,
   streaming: boolean,
-  supabase: any
+  supabase: any,
+  loopIteration: number = 0
 ): Promise<any> {
-  console.log('🤖 Starting unified query handler with optional knowledge');
+  console.log(`🤖 Starting unified query handler (loop ${loopIteration})`);
 
   let finalResponse = '';
   let allToolsUsed: any[] = [];
+  let loopEvaluation = null;
 
   try {
-    // 1. Get available tools (knowledge search is just one of many available tools)
+    // 1. Get available tools
     const { data: mcps, error: mcpError } = await supabase
       .from('mcps')
       .select('*')
@@ -37,23 +39,22 @@ export async function handleUnifiedQuery(
     }
 
     const tools = convertMCPsToTools(mcps);
-    const systemPrompt = generateUnifiedSystemPrompt(mcps);
+    const systemPrompt = generateUnifiedSystemPrompt(mcps, loopIteration);
 
-    // 2. Prepare messages WITHOUT any forced knowledge injection
+    // 2. Prepare messages
     const messages = createKnowledgeAwareMessages(
       systemPrompt,
       conversationHistory,
       message
-      // NO relevantKnowledge parameter - let LLM decide via tools
     );
 
-    console.log('🧠 Calling LLM with natural tool choice (no forced knowledge)');
+    console.log(`🧠 Calling LLM (loop ${loopIteration})`);
 
-    // 3. Single LLM call with natural tool decision-making
+    // 3. LLM call with tool decision-making
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: 'auto', // LLM decides which tools to use
+      tool_choice: 'auto',
       temperature: 0.7,
       max_tokens: 2000,
       stream: streaming,
@@ -83,9 +84,9 @@ export async function handleUnifiedQuery(
     const data = response.data;
     finalResponse = extractAssistantMessage(data) || '';
 
-    // 4. Execute tools ONLY if LLM chose to use them
+    // 4. Execute tools if LLM chose to use them
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
-      console.log('🛠️ LLM chose to use', data.choices[0].message.tool_calls.length, 'tools');
+      console.log(`🛠️ LLM chose to use ${data.choices[0].message.tool_calls.length} tools (loop ${loopIteration})`);
       
       const { toolResults, toolsUsed } = await executeTools(
         data.choices[0].message.tool_calls,
@@ -96,9 +97,9 @@ export async function handleUnifiedQuery(
       
       allToolsUsed = toolsUsed;
       
-      // 5. Synthesize tool results if tools were used
+      // 5. Synthesize tool results
       if (toolsUsed.length > 0) {
-        console.log('🔄 Synthesizing tool results');
+        console.log(`🔄 Synthesizing tool results (loop ${loopIteration})`);
         const synthesizedResponse = await synthesizeResults(
           message,
           conversationHistory,
@@ -113,10 +114,58 @@ export async function handleUnifiedQuery(
         }
       }
     } else {
-      console.log('✅ LLM responded directly without using any tools');
+      console.log(`✅ LLM responded directly without tools (loop ${loopIteration})`);
     }
 
-    // 6. Persist valuable insights if multiple tools were used
+    // 6. Self-improvement loop evaluation (only for initial iterations)
+    if (loopIteration < MAX_LOOPS && !streaming) {
+      console.log(`🔍 Evaluating if response can be improved (loop ${loopIteration})`);
+      
+      loopEvaluation = await shouldContinueLoop(
+        finalResponse,
+        allToolsUsed,
+        loopIteration,
+        message,
+        supabase,
+        modelSettings
+      );
+
+      // 7. Continue loop if improvement is suggested
+      if (loopEvaluation.shouldContinue) {
+        console.log(`🔄 Continuing to loop ${loopIteration + 1}: ${loopEvaluation.reasoning}`);
+        
+        // Store current iteration result
+        if (userId && sessionId) {
+          await supabase.from('agent_conversations').insert({
+            user_id: userId,
+            session_id: sessionId,
+            role: 'assistant',
+            content: finalResponse,
+            tools_used: allToolsUsed,
+            loop_iteration: loopIteration,
+            improvement_reasoning: loopEvaluation.reasoning,
+            should_continue_loop: true,
+            created_at: new Date().toISOString()
+          });
+        }
+
+        // Create improvement message and recurse
+        const improvementMessage = `Reflecting to improve prior response. Previous iteration: "${finalResponse.substring(0, 100)}..."`;
+        
+        return await handleUnifiedQuery(
+          improvementMessage,
+          [...conversationHistory, { role: 'assistant', content: finalResponse }],
+          userId,
+          sessionId,
+          modelSettings,
+          streaming,
+          supabase,
+          loopIteration + 1
+        );
+      }
+    }
+
+    // 8. Persist insights for multi-tool queries
     if (userId && allToolsUsed.length > 1) {
       try {
         await persistInsightAsKnowledgeNode(
@@ -124,7 +173,7 @@ export async function handleUnifiedQuery(
           finalResponse,
           [{ toolsUsed: allToolsUsed, response: finalResponse }],
           userId,
-          { classification: 'UNIFIED', reasoning: 'Multi-tool unified query processing' },
+          { classification: 'UNIFIED_LOOP', reasoning: `Loop ${loopIteration} with ${allToolsUsed.length} tools` },
           supabase
         );
       } catch (error) {
@@ -132,12 +181,12 @@ export async function handleUnifiedQuery(
       }
     }
 
-    // 7. Validate and ensure response quality
+    // 9. Validate response
     if (!finalResponse || !finalResponse.trim()) {
       finalResponse = createFallbackResponse(message, allToolsUsed);
     }
 
-    // 8. Store response in database
+    // 10. Store final response
     if (userId && sessionId) {
       await supabase.from('agent_conversations').insert({
         user_id: userId,
@@ -145,6 +194,9 @@ export async function handleUnifiedQuery(
         role: 'assistant',
         content: finalResponse,
         tools_used: allToolsUsed,
+        loop_iteration: loopIteration,
+        improvement_reasoning: loopEvaluation?.reasoning || null,
+        should_continue_loop: false,
         created_at: new Date().toISOString()
       });
     }
@@ -154,13 +206,14 @@ export async function handleUnifiedQuery(
       message: finalResponse,
       unifiedApproach: true,
       toolsUsed: allToolsUsed,
-      sessionId
+      sessionId,
+      loopIteration,
+      improvementReasoning: loopEvaluation?.reasoning
     };
 
   } catch (error) {
-    console.error('❌ Error in unified query handler:', error);
+    console.error(`❌ Error in unified query handler (loop ${loopIteration}):`, error);
     
-    // Emergency fallback response
     finalResponse = `I apologize, but I encountered an error while processing your message "${message}". Please try again or rephrase your question.`;
     
     if (userId && sessionId) {
@@ -171,6 +224,7 @@ export async function handleUnifiedQuery(
           role: 'assistant',
           content: finalResponse,
           tools_used: [],
+          loop_iteration: loopIteration,
           created_at: new Date().toISOString()
         });
       } catch (dbError) {
@@ -184,15 +238,16 @@ export async function handleUnifiedQuery(
       unifiedApproach: true,
       toolsUsed: [],
       sessionId,
+      loopIteration,
       error: 'Processed with fallback response'
     };
   }
 }
 
 /**
- * Generate unified system prompt emphasizing natural tool usage
+ * Generate unified system prompt with loop-awareness
  */
-function generateUnifiedSystemPrompt(mcps: any[]): string {
+function generateUnifiedSystemPrompt(mcps: any[], loopIteration: number = 0): string {
   const mcpSummaries = mcps?.map(mcp => ({
     name: mcp.title,
     description: mcp.description,
@@ -202,6 +257,18 @@ function generateUnifiedSystemPrompt(mcps: any[]): string {
   const toolDescriptions = mcpSummaries
     .map(summary => `**${summary.name}**: ${summary.description}`)
     .join('\n');
+
+  const loopGuidance = loopIteration > 0 ? `
+
+**🔄 IMPROVEMENT CONTEXT:**
+This is loop iteration ${loopIteration + 1}. You are reflecting on and improving a previous response. Focus on:
+- Adding valuable information that was missing
+- Using tools that could enhance the answer
+- Providing deeper analysis or additional perspectives
+- Ensuring comprehensive coverage of the user's request` : `
+
+**🔄 SELF-IMPROVEMENT:**
+After completing your response, you may have the opportunity to reflect and improve it further through additional tool usage or refinement.`;
 
   return `You are an intelligent AI assistant with access to powerful tools when needed.
 
@@ -214,7 +281,7 @@ function generateUnifiedSystemPrompt(mcps: any[]): string {
    - Other tools: When specific external data is needed
 
 **🛠️ Available Tools (use only when valuable):**
-${toolDescriptions}
+${toolDescriptions}${loopGuidance}
 
 **💡 Decision Guidelines:**
 - Simple greetings like "hello" → respond directly

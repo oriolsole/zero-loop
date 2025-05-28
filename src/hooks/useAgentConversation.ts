@@ -180,6 +180,9 @@ export const useAgentConversation = () => {
           self_reflection: message.selfReflection || null,
           tool_decision: message.toolDecision || null,
           ai_reasoning: message.aiReasoning || null,
+          loop_iteration: message.loopIteration || 0,
+          improvement_reasoning: message.improvementReasoning || null,
+          should_continue_loop: message.shouldContinueLoop || null,
           created_at: message.timestamp.toISOString()
         });
     } catch (error) {
@@ -223,7 +226,10 @@ export const useAgentConversation = () => {
         selfReflection: row.self_reflection || undefined,
         toolDecision: row.tool_decision && typeof row.tool_decision === 'object' ? 
           row.tool_decision as { reasoning: string; selectedTools: string[]; } : undefined,
-        aiReasoning: row.ai_reasoning || undefined
+        aiReasoning: row.ai_reasoning || undefined,
+        loopIteration: row.loop_iteration || 0,
+        improvementReasoning: row.improvement_reasoning || undefined,
+        shouldContinueLoop: row.should_continue_loop || undefined
       }));
 
       setConversations(messages);

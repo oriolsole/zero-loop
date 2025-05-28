@@ -1,13 +1,14 @@
+
 import { createMCPSummary, formatMCPForPrompt } from './mcp-summary.ts';
 
 /**
- * System prompt generation utilities for unified knowledge-first approach
+ * System prompt generation utilities for unified knowledge-first approach with self-improvement loops
  */
 
 /**
  * Generates a comprehensive system prompt with unified strategy and tool introspection
  */
-export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): string {
+export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[], loopIteration: number = 0): string {
   // Sort MCPs by priority before creating summaries (highest priority first)
   const sortedMCPs = [...(mcps || [])].sort((a, b) => (b.priority || 1) - (a.priority || 1));
   const mcpSummaries = sortedMCPs.map(mcp => createMCPSummary(mcp));
@@ -16,7 +17,24 @@ export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): st
     .map(summary => formatMCPForPrompt(summary))
     .join('\n\n');
 
-  return `You are an intelligent AI assistant with access to powerful tools and previous knowledge.
+  const loopGuidance = loopIteration > 0 ? `
+
+**🔄 IMPROVEMENT ITERATION ${loopIteration + 1}:**
+You are in a self-improvement loop, reflecting on and enhancing a previous response. Focus on:
+- Identifying gaps in the previous answer
+- Using additional tools that could provide valuable information
+- Providing deeper analysis or alternative perspectives
+- Ensuring the user's request is comprehensively addressed
+- Building upon previous work rather than repeating it` : `
+
+**🔄 SELF-IMPROVEMENT CAPABILITY:**
+After providing your initial response, you may reflect and decide to improve it further through:
+- Additional tool usage for more comprehensive information
+- Deeper analysis of the topic
+- Alternative perspectives or approaches
+- Enhanced detail where valuable`;
+
+  return `You are an intelligent AI assistant with access to powerful tools and self-improvement capabilities.
 
 **🧠 UNIFIED RESPONSE STRATEGY:**
 1. **ANSWER DIRECTLY** from your general knowledge for simple questions
@@ -26,7 +44,7 @@ export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[]): st
    - External data not in your general knowledge
    - Multi-step research or analysis
    - Specific data from external sources
-3. **BE PROACTIVE** - When users describe problems that match tool use cases, suggest or use tools directly, even if they don't mention them by name
+3. **BE PROACTIVE** - When users describe problems that match tool use cases, suggest or use tools directly, even if they don't mention them by name${loopGuidance}
 
 **🛠️ Available Tools:**
 ${toolDescriptions}
