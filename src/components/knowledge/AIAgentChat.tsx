@@ -103,13 +103,13 @@ const AIAgentChat: React.FC = () => {
       const parsed = JSON.parse(line);
       console.log('Parsed streaming chunk:', parsed);
       
-      // Handle thinking step messages - add them as individual chat messages
+      // Handle streaming step messages - add them as individual chat messages
       if (parsed.type === 'step-announcement' || 
           parsed.type === 'partial-result' || 
           parsed.type === 'tool-announcement') {
         
-        const thinkingMessage: ConversationMessage = {
-          id: parsed.id || `thinking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        const streamingMessage: ConversationMessage = {
+          id: parsed.id || `streaming-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           role: 'assistant',
           content: parsed.content,
           timestamp: new Date(parsed.timestamp || Date.now()),
@@ -118,15 +118,16 @@ const AIAgentChat: React.FC = () => {
           toolAction: parsed.toolAction
         };
         
-        addMessage(thinkingMessage);
-        console.log('Added thinking message:', thinkingMessage);
+        // Add the streaming message immediately to show thinking process
+        addMessage(streamingMessage);
+        console.log('Added streaming message:', streamingMessage);
         
         // Also update working status for live feedback
         if (parsed.type === 'step-announcement') {
           setWorkingStatus(parsed.content);
         }
         
-        return { type: 'thinking-message', data: thinkingMessage };
+        return { type: 'streaming-message', data: streamingMessage };
       }
       
       // Handle tool announcements
@@ -337,7 +338,7 @@ const AIAgentChat: React.FC = () => {
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !user || !currentSessionId) return;
 
-    // CRITICAL: Add user message IMMEDIATELY before clearing input
+    // Add user message IMMEDIATELY before clearing input
     const userMessage: ConversationMessage = {
       id: Date.now().toString(),
       role: 'user',

@@ -64,14 +64,12 @@ export const useAgentConversation = () => {
 
       if (error) {
         console.error('Error creating session:', error);
-        // Continue with local session management as fallback
         console.log('Using local session management as fallback');
       }
 
       await loadSessions();
     } catch (error) {
       console.error('Error starting new session:', error);
-      // Continue with local session management
     }
   };
 
@@ -131,10 +129,13 @@ export const useAgentConversation = () => {
       setCurrentSessionId(sessionId);
       
       const messages = data.messages || [];
-      const parsedMessages: ConversationMessage[] = messages.map((msg: any) => ({
-        ...msg,
-        timestamp: new Date(msg.timestamp)
-      }));
+      // Fix TypeScript error: ensure messages is an array before mapping
+      const parsedMessages: ConversationMessage[] = Array.isArray(messages) 
+        ? messages.map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }))
+        : [];
       
       setConversations(parsedMessages);
     } catch (error) {
@@ -159,7 +160,6 @@ export const useAgentConversation = () => {
         return;
       }
 
-      // If we're deleting the current session, start a new one
       if (sessionId === currentSessionId) {
         await startNewSession();
       }
@@ -180,7 +180,6 @@ export const useAgentConversation = () => {
     setConversations(newConversations);
 
     try {
-      // Update the session with the new message
       const { error } = await supabase
         .from('agent_sessions')
         .update({
