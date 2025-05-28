@@ -54,6 +54,36 @@ export const useMessageManager = () => {
     return validTypes.includes(messageType) ? messageType : undefined;
   }, []);
 
+  // Helper to safely convert toolDecision from database JSON to TypeScript interface
+  const safeToolDecision = useCallback((toolDecision: any): ConversationMessage['toolDecision'] => {
+    if (!toolDecision) return undefined;
+    
+    try {
+      let parsedDecision;
+      if (typeof toolDecision === 'string') {
+        parsedDecision = JSON.parse(toolDecision);
+      } else if (typeof toolDecision === 'object' && toolDecision !== null) {
+        parsedDecision = toolDecision;
+      } else {
+        return undefined;
+      }
+      
+      // Validate the structure matches expected interface
+      if (parsedDecision && 
+          typeof parsedDecision.reasoning === 'string' && 
+          Array.isArray(parsedDecision.selectedTools)) {
+        return {
+          reasoning: parsedDecision.reasoning,
+          selectedTools: parsedDecision.selectedTools
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to parse toolDecision:', e);
+    }
+    
+    return undefined;
+  }, []);
+
   // Database-only persistence with conflict resolution
   const persistMessageToDatabase = useCallback(async (
     message: ConversationMessage,
@@ -142,7 +172,7 @@ export const useMessageManager = () => {
         messageType: safeMessageType(row.message_type),
         toolsUsed: safeToolsUsed(row.tools_used),
         selfReflection: row.self_reflection || undefined,
-        toolDecision: row.tool_decision || undefined,
+        toolDecision: safeToolDecision(row.tool_decision),
         aiReasoning: row.ai_reasoning || undefined,
         loopIteration: row.loop_iteration || 0,
         improvementReasoning: row.improvement_reasoning || undefined,
@@ -155,7 +185,7 @@ export const useMessageManager = () => {
       console.error(`❌ Error loading conversation:`, error);
       return [];
     }
-  }, [user, safeMessageType, safeToolsUsed]);
+  }, [user, safeMessageType, safeToolsUsed, safeToolDecision]);
 
   return {
     generateMessageId,
