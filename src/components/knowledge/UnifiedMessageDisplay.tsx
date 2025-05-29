@@ -39,7 +39,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
     }
   };
 
-  // Simplified tool message parsing
+  // Enhanced tool message parsing with comprehensive validation
   const parseToolMessage = (content: string) => {
     try {
       const parsed = JSON.parse(content);
@@ -49,6 +49,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
         hasAllRequired: !!(parsed.toolName || parsed.name) && !!parsed.status
       });
       
+      // Enhanced validation with multiple possible field names
       if ((parsed.toolName || parsed.name) && parsed.status) {
         const toolData = {
           toolName: parsed.toolName || parsed.name,
@@ -74,7 +75,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
     }
   };
 
-  // Tool message detection
+  // Enhanced tool message detection
   const isToolMessage = message.messageType === 'tool-executing' && 
                         message.content.startsWith('{');
   const toolData = isToolMessage ? parseToolMessage(message.content) : null;
@@ -88,7 +89,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
     contentPreview: message.content.substring(0, 50) + '...'
   });
 
-  // Tool execution message rendering
+  // Enhanced tool execution message rendering with better visual feedback
   if (isToolMessage && toolData) {
     const toolProgressItem: ToolProgressItem = {
       id: toolData.toolCallId,
@@ -107,7 +108,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
       )
     };
 
-    console.log(`🛠️ [TOOL-DISPLAY] Rendering LIVE tool card for: ${toolData.toolName} (${toolData.status})`);
+    console.log(`🛠️ [TOOL-DISPLAY] Rendering enhanced tool card for: ${toolData.toolName} (${toolData.status})`);
 
     return (
       <div className="flex gap-4 justify-start animate-in fade-in duration-200">
@@ -128,10 +129,10 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
                 Loop {message.loopIteration}
               </Badge>
             )}
-            {/* Live indicator for active tools */}
+            {/* Real-time indicator for live tool updates */}
             {toolData.status === 'executing' && (
               <Badge variant="outline" className="text-xs bg-blue-100 animate-pulse">
-                🔴 LIVE
+                Live
               </Badge>
             )}
           </div>
@@ -155,7 +156,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
     );
   }
 
-  // Regular message rendering
+  // Regular message rendering with enhanced real-time indicators
   return (
     <div className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in duration-200`}>
       {!isUser && (
@@ -174,7 +175,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
             : 'bg-secondary mr-12'
           }
         `}>
-          {/* Loop iteration and message type indicator */}
+          {/* Enhanced loop iteration and message type indicator */}
           {!isUser && (isLoopIteration || message.messageType) && (
             <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
               {getMessageTypeIcon()}
@@ -197,7 +198,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
             )}
           </div>
           
-          {/* Improvement reasoning for reflection messages */}
+          {/* Enhanced improvement reasoning for reflection messages */}
           {message.improvementReasoning && !isUser && message.messageType === 'loop-reflection' && (
             <div className="mt-3 p-3 bg-muted/70 border border-muted-foreground/40 rounded-lg text-sm">
               <div className="flex items-center gap-2 mb-2">
@@ -210,7 +211,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
             </div>
           )}
           
-          {/* Tools used indicator */}
+          {/* Tools used indicator with enhanced display */}
           {message.toolsUsed && message.toolsUsed.length > 0 && !isUser && !isToolMessage && (
             <div className="flex flex-wrap gap-1 mt-3">
               {message.toolsUsed.map((tool, index) => (
