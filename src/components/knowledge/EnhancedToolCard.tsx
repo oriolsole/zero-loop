@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -16,17 +17,8 @@ const EnhancedToolCard: React.FC<EnhancedToolCardProps> = ({
   compact = false
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [previousStatus, setPreviousStatus] = useState(tool.status);
   const ToolIcon = getToolIcon(tool.name);
   const displayName = getToolDisplayName(tool.name);
-
-  // Auto-expand when tool completes or fails (but only once per status change)
-  useEffect(() => {
-    if (previousStatus !== tool.status && (tool.status === 'completed' || tool.status === 'failed')) {
-      setIsExpanded(true);
-      setPreviousStatus(tool.status);
-    }
-  }, [tool.status, previousStatus]);
 
   const getStatusIcon = () => {
     switch (tool.status) {
