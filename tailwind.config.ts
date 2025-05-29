@@ -88,6 +88,16 @@ export default {
           "0%, 100%": { opacity: "0.6" },
           "50%": { opacity: "1" },
         },
+        bounce: {
+          "0%, 80%, 100%": { 
+            transform: "translateY(0)",
+            animationTimingFunction: "cubic-bezier(0.8, 0, 1, 1)"
+          },
+          "40%": { 
+            transform: "translateY(-8px)",
+            animationTimingFunction: "cubic-bezier(0, 0, 0.2, 1)"
+          },
+        },
         slideRight: {
           "0%": { transform: "translateX(-100%)", opacity: "0" },
           "100%": { transform: "translateX(0)", opacity: "1" },
@@ -101,6 +111,7 @@ export default {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         pulse: "pulse 2s infinite",
+        bounce: "bounce 1s infinite",
         slideRight: "slideRight 0.5s ease-out forwards",
         slideUp: "slideUp 0.5s ease-out forwards",
       },
