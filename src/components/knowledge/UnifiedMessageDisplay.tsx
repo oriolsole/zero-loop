@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -7,21 +6,18 @@ import { ConversationMessage } from '@/hooks/useAgentConversation';
 import { ToolProgressItem } from '@/types/tools';
 import MarkdownRenderer from './MarkdownRenderer';
 import EnhancedToolCard from './EnhancedToolCard';
-
 interface UnifiedMessageDisplayProps {
   message: ConversationMessage;
   activeTool?: ToolProgressItem | null;
   onFollowUpAction?: (action: string) => void;
 }
-
-const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({ 
-  message, 
-  activeTool, 
-  onFollowUpAction 
+const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
+  message,
+  activeTool,
+  onFollowUpAction
 }) => {
   const isUser = message.role === 'user';
   const isLoopIteration = (message.loopIteration || 0) > 0;
-
   const getMessageTypeIcon = () => {
     switch (message.messageType) {
       case 'loop-start':
@@ -48,7 +44,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
         status: parsed.status,
         hasAllRequired: !!(parsed.toolName || parsed.name) && !!parsed.status
       });
-      
+
       // Enhanced validation with multiple possible field names
       if ((parsed.toolName || parsed.name) && parsed.status) {
         const toolData = {
@@ -66,7 +62,6 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
         console.log(`✅ [TOOL-DISPLAY] Successfully parsed tool data:`, toolData);
         return toolData;
       }
-      
       console.log(`⚠️ [TOOL-DISPLAY] Missing required fields in tool data:`, parsed);
       return null;
     } catch (error) {
@@ -76,10 +71,8 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
   };
 
   // Enhanced tool message detection
-  const isToolMessage = message.messageType === 'tool-executing' && 
-                        message.content.startsWith('{');
+  const isToolMessage = message.messageType === 'tool-executing' && message.content.startsWith('{');
   const toolData = isToolMessage ? parseToolMessage(message.content) : null;
-
   console.log(`🎨 [TOOL-DISPLAY] Rendering message ${message.id}:`, {
     role: message.role,
     messageType: message.messageType,
@@ -101,17 +94,10 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
       parameters: toolData.parameters,
       result: toolData.result,
       error: toolData.error,
-      progress: toolData.progress || (
-        toolData.status === 'completed' ? 100 : 
-        toolData.status === 'failed' ? 0 : 
-        toolData.status === 'executing' ? 50 : 0
-      )
+      progress: toolData.progress || (toolData.status === 'completed' ? 100 : toolData.status === 'failed' ? 0 : toolData.status === 'executing' ? 50 : 0)
     };
-
     console.log(`🛠️ [TOOL-DISPLAY] Rendering enhanced tool card for: ${toolData.toolName} (${toolData.status})`);
-
-    return (
-      <div className="flex gap-4 justify-start animate-in fade-in duration-200">
+    return <div className="flex gap-4 justify-start animate-in fade-in duration-200">
         <Avatar className="w-8 h-8 flex-shrink-0">
           <AvatarFallback className="bg-primary/10">
             <Bot className="h-5 w-5 text-primary" />
@@ -124,70 +110,46 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
             <Badge variant="outline" className="text-xs">
               Tool Execution
             </Badge>
-            {isLoopIteration && (
-              <Badge variant="outline" className="text-xs bg-blue-50">
-                Loop {message.loopIteration}
-              </Badge>
-            )}
+            {isLoopIteration}
             {/* Real-time indicator for live tool updates */}
-            {toolData.status === 'executing' && (
-              <Badge variant="outline" className="text-xs bg-blue-100 animate-pulse">
+            {toolData.status === 'executing' && <Badge variant="outline" className="text-xs bg-blue-100 animate-pulse">
                 Live
-              </Badge>
-            )}
+              </Badge>}
           </div>
           
           <EnhancedToolCard tool={toolProgressItem} compact={false} />
         </div>
-      </div>
-    );
+      </div>;
   }
 
   // Regular message rendering with enhanced real-time indicators
-  return (
-    <div className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in duration-200`}>
-      {!isUser && (
-        <Avatar className="w-8 h-8 flex-shrink-0">
+  return <div className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in duration-200`}>
+      {!isUser && <Avatar className="w-8 h-8 flex-shrink-0">
           <AvatarFallback className="bg-primary/10">
             <Bot className="h-5 w-5 text-primary" />
           </AvatarFallback>
-        </Avatar>
-      )}
+        </Avatar>}
       
       <div className={`flex-1 max-w-4xl ${isUser ? 'flex justify-end' : ''}`}>
         <div className={`
           rounded-2xl px-4 py-3 border
-          ${isUser 
-            ? 'bg-primary text-primary-foreground ml-12' 
-            : 'bg-secondary mr-12'
-          }
+          ${isUser ? 'bg-primary text-primary-foreground ml-12' : 'bg-secondary mr-12'}
         `}>
           {/* Enhanced loop iteration and message type indicator */}
-          {!isUser && (isLoopIteration || message.messageType) && (
-            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
+          {!isUser && (isLoopIteration || message.messageType) && <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
               {getMessageTypeIcon()}
-              {isLoopIteration && (
-                <span className="text-foreground font-medium">Loop {message.loopIteration}</span>
-              )}
-              {message.messageType && (
-                <Badge variant="outline" className="text-xs">
+              {isLoopIteration && <span className="text-foreground font-medium">Loop {message.loopIteration}</span>}
+              {message.messageType && <Badge variant="outline" className="text-xs">
                   {message.messageType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </Badge>
-              )}
-            </div>
-          )}
+                </Badge>}
+            </div>}
           
           <div className="prose prose-sm max-w-none dark:prose-invert">
-            {isUser ? (
-              <p className="text-primary-foreground m-0">{message.content}</p>
-            ) : (
-              <MarkdownRenderer content={message.content} />
-            )}
+            {isUser ? <p className="text-primary-foreground m-0">{message.content}</p> : <MarkdownRenderer content={message.content} />}
           </div>
           
           {/* Enhanced improvement reasoning for reflection messages */}
-          {message.improvementReasoning && !isUser && message.messageType === 'loop-reflection' && (
-            <div className="mt-3 p-3 bg-muted/70 border border-muted-foreground/40 rounded-lg text-sm">
+          {message.improvementReasoning && !isUser && message.messageType === 'loop-reflection' && <div className="mt-3 p-3 bg-muted/70 border border-muted-foreground/40 rounded-lg text-sm">
               <div className="flex items-center gap-2 mb-2">
                 <Eye className="h-4 w-4 text-purple-500" />
                 <span className="font-medium text-purple-700">
@@ -195,24 +157,15 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
                 </span>
               </div>
               <p className="m-0 text-muted-foreground leading-relaxed">{message.improvementReasoning}</p>
-            </div>
-          )}
+            </div>}
           
           {/* Tools used indicator with enhanced display */}
-          {message.toolsUsed && message.toolsUsed.length > 0 && !isUser && !isToolMessage && (
-            <div className="flex flex-wrap gap-1 mt-3">
-              {message.toolsUsed.map((tool, index) => (
-                <Badge 
-                  key={index} 
-                  variant={tool.success ? "default" : "destructive"}
-                  className="text-xs"
-                >
+          {message.toolsUsed && message.toolsUsed.length > 0 && !isUser && !isToolMessage && <div className="flex flex-wrap gap-1 mt-3">
+              {message.toolsUsed.map((tool, index) => <Badge key={index} variant={tool.success ? "default" : "destructive"} className="text-xs">
                   {tool.name}
                   {tool.success ? ' ✓' : ' ✗'}
-                </Badge>
-              ))}
-            </div>
-          )}
+                </Badge>)}
+            </div>}
           
           <div className="text-xs text-muted-foreground mt-2">
             {message.timestamp.toLocaleTimeString()}
@@ -220,15 +173,11 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
         </div>
       </div>
       
-      {isUser && (
-        <Avatar className="w-8 h-8 flex-shrink-0">
+      {isUser && <Avatar className="w-8 h-8 flex-shrink-0">
           <AvatarFallback className="bg-secondary">
             <User className="h-5 w-5" />
           </AvatarFallback>
-        </Avatar>
-      )}
-    </div>
-  );
+        </Avatar>}
+    </div>;
 };
-
 export default UnifiedMessageDisplay;
