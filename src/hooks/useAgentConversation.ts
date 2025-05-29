@@ -5,11 +5,11 @@ import { useMessageDeduplication } from './useMessageDeduplication';
 
 export interface ConversationMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed' | 'loop-start' | 'loop-reflection' | 'loop-enhancement' | 'loop-complete' | 'tool-update' | 'tool-executing';
-  isStreaming?: boolean;
+  updatedAt?: Date; // New field to track when message was last updated
+  messageType?: 'analysis' | 'planning' | 'execution' | 'tool-update' | 'response' | 'step-executing' | 'step-completed' | 'loop-start' | 'loop-reflection' | 'loop-enhancement' | 'loop-complete' | 'tool-executing';
   toolsUsed?: Array<{
     name: string;
     success: boolean;
@@ -21,9 +21,7 @@ export interface ConversationMessage {
     reasoning: string;
     selectedTools: string[];
   };
-  executionPlan?: any;
   aiReasoning?: string;
-  followUpSuggestions?: string[];
   loopIteration?: number;
   improvementReasoning?: string;
   shouldContinueLoop?: boolean;

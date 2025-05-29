@@ -185,6 +185,7 @@ export const useMessageManager = () => {
         role: row.role as ConversationMessage['role'],
         content: row.content,
         timestamp: new Date(row.created_at),
+        updatedAt: row.updated_at ? new Date(row.updated_at) : undefined, // Include updatedAt from database
         messageType: safeMessageType(row.message_type),
         toolsUsed: safeToolsUsed(row.tools_used),
         selfReflection: row.self_reflection || undefined,

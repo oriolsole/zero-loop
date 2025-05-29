@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -53,14 +54,16 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const { user } = useAuth();
   const { persistMessageToDatabase, loadConversationFromDatabase } = useMessageManager();
 
-  // Get the latest timestamp from either created_at or updated_at for polling
+  // Enhanced timestamp tracking that considers both created_at and updated_at
   const lastMessageTimestamp = useMemo(() => {
     if (messages.length === 0) return null;
     
-    // Find the most recent timestamp from all messages
+    // Find the most recent timestamp from all messages, considering both timestamp and updatedAt
     const latestTimestamp = messages.reduce((latest, message) => {
       const messageTime = message.timestamp.getTime();
-      return messageTime > latest ? messageTime : latest;
+      const updatedTime = message.updatedAt?.getTime() || messageTime;
+      const maxTime = Math.max(messageTime, updatedTime);
+      return maxTime > latest ? maxTime : latest;
     }, 0);
     
     return latestTimestamp > 0 ? new Date(latestTimestamp) : null;
@@ -94,26 +97,38 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     ));
   }, []);
 
+  // Enhanced message update/replacement for tool updates
+  const updateOrAddMessage = useCallback((newMessage: ConversationMessage) => {
+    setMessages(prev => {
+      // Check if this is an update to an existing message (same content but different timestamp/status)
+      const existingIndex = prev.findIndex(m => 
+        m.id === newMessage.id || 
+        (m.role === newMessage.role && m.content === newMessage.content && m.messageType === newMessage.messageType)
+      );
+      
+      if (existingIndex !== -1) {
+        // Update the existing message with new timestamp data
+        const updated = [...prev];
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          ...newMessage,
+          updatedAt: newMessage.updatedAt || new Date() // Ensure we track when it was updated
+        };
+        console.log(`🔄 [CONTEXT] Updated existing message: ${newMessage.id}`);
+        return updated.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      } else {
+        // Add new message
+        console.log(`➕ [CONTEXT] Added new message: ${newMessage.id}`);
+        return [...prev, newMessage].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      }
+    });
+  }, []);
+
   // Simple add message with automatic session title update
   const addMessage = useCallback((message: ConversationMessage) => {
     console.log(`📝 [CONTEXT] Adding message: ${message.id} (${message.role}) - type: ${message.messageType || 'none'}`);
     
-    setMessages(prev => {
-      // Check if message already exists using ID
-      const existingIndex = prev.findIndex(m => m.id === message.id);
-      if (existingIndex !== -1) {
-        console.log(`⚠️ [CONTEXT] Message ${message.id} already exists, skipping`);
-        return prev;
-      }
-      
-      // Add and sort by timestamp
-      const newMessages = [...prev, message].sort((a, b) => 
-        a.timestamp.getTime() - b.timestamp.getTime()
-      );
-      
-      console.log(`✅ [CONTEXT] Message added successfully (total: ${newMessages.length})`);
-      return newMessages;
-    });
+    updateOrAddMessage(message);
 
     // Update session title if this is the first user message
     if (message.role === 'user' && currentSessionId) {
@@ -166,65 +181,55 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         console.warn('Failed to parse tool execution message:', e);
       }
     }
-  }, [currentSessionId, messages, generateSessionTitle, updateSessionTitle]);
+  }, [currentSessionId, messages, generateSessionTitle, updateSessionTitle, updateOrAddMessage]);
 
-  // Handle polling messages received with enhanced deduplication
+  // Enhanced handling of polling messages with proper update detection
   const handlePollingMessages = useCallback((polledMessages: ConversationMessage[]) => {
     console.log(`📥 [POLLING] Processing ${polledMessages.length} polled messages`);
     
-    setMessages(prev => {
-      const existingIds = new Set(prev.map(m => m.id));
-      const newMessages = polledMessages.filter(msg => !existingIds.has(msg.id));
+    polledMessages.forEach(msg => {
+      console.log(`🔍 [POLLING] Processing message: ${msg.id} (${msg.role}) - type: ${msg.messageType || 'none'}, updatedAt: ${msg.updatedAt?.toISOString() || 'none'}`);
       
-      if (newMessages.length > 0) {
-        console.log(`✅ [POLLING] Adding ${newMessages.length} new messages from polling`);
-        
-        // Process tool messages for active tool updates
-        newMessages.forEach(msg => {
-          if (msg.messageType === 'tool-executing' && msg.content.startsWith('{')) {
-            try {
-              const toolData = JSON.parse(msg.content);
-              if (toolData.toolName && toolData.status) {
-                const toolItem: ToolProgressItem = {
-                  id: toolData.toolCallId || `tool-${Date.now()}`,
-                  name: toolData.toolName,
-                  displayName: toolData.displayName || toolData.toolName,
-                  status: toolData.status as any,
-                  startTime: toolData.startTime || new Date().toISOString(),
-                  endTime: toolData.endTime,
-                  parameters: toolData.parameters || {},
-                  result: toolData.result,
-                  error: toolData.error,
-                  progress: toolData.progress || (
-                    toolData.status === 'completed' ? 100 : 
-                    toolData.status === 'failed' ? 0 : 50
-                  )
-                };
-                
-                console.log(`🛠️ [POLLING] Setting active tool from polling:`, toolItem.name, toolItem.status);
-                setActiveTool(toolItem);
-                
-                if (toolData.status === 'completed' || toolData.status === 'failed') {
-                  setTimeout(() => {
-                    console.log(`🧹 [POLLING] Clearing completed tool: ${toolItem.id}`);
-                    setActiveTool(null);
-                  }, 8000);
-                }
-              }
-            } catch (e) {
-              console.warn('Failed to parse tool execution message from polling:', e);
+      // Use updateOrAddMessage which handles both new and updated messages
+      updateOrAddMessage(msg);
+      
+      // Process tool messages for active tool updates
+      if (msg.messageType === 'tool-executing' && msg.content.startsWith('{')) {
+        try {
+          const toolData = JSON.parse(msg.content);
+          if (toolData.toolName && toolData.status) {
+            const toolItem: ToolProgressItem = {
+              id: toolData.toolCallId || `tool-${Date.now()}`,
+              name: toolData.toolName,
+              displayName: toolData.displayName || toolData.toolName,
+              status: toolData.status as any,
+              startTime: toolData.startTime || new Date().toISOString(),
+              endTime: toolData.endTime,
+              parameters: toolData.parameters || {},
+              result: toolData.result,
+              error: toolData.error,
+              progress: toolData.progress || (
+                toolData.status === 'completed' ? 100 : 
+                toolData.status === 'failed' ? 0 : 50
+              )
+            };
+            
+            console.log(`🛠️ [POLLING] Setting active tool from polling:`, toolItem.name, toolItem.status);
+            setActiveTool(toolItem);
+            
+            if (toolData.status === 'completed' || toolData.status === 'failed') {
+              setTimeout(() => {
+                console.log(`🧹 [POLLING] Clearing completed tool: ${toolItem.id}`);
+                setActiveTool(null);
+              }, 8000);
             }
           }
-        });
-        
-        return [...prev, ...newMessages].sort((a, b) => 
-          a.timestamp.getTime() - b.timestamp.getTime()
-        );
+        } catch (e) {
+          console.warn('Failed to parse tool execution message from polling:', e);
+        }
       }
-      
-      return prev;
     });
-  }, []);
+  }, [updateOrAddMessage]);
 
   // Set up polling hook with enhanced timestamp tracking
   useMessagePolling({
@@ -272,14 +277,14 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       // Add all loaded messages
       loadedMessages.forEach((message, index) => {
         console.log(`📨 [CONTEXT] Loading message ${index + 1}/${loadedMessages.length}: ${message.id} (${message.role}) - type: ${message.messageType || 'none'}`);
-        addMessage(message);
+        updateOrAddMessage(message);
       });
       
       console.log(`✅ [CONTEXT] Conversation loaded successfully`);
     } catch (error) {
       console.error(`❌ [CONTEXT] Failed to load conversation:`, error);
     }
-  }, [loadConversationFromDatabase, clearMessages, addMessage]);
+  }, [loadConversationFromDatabase, clearMessages, updateOrAddMessage]);
 
   const contextValue: ConversationContextType = {
     messages,
