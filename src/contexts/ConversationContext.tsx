@@ -1,10 +1,10 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConversation';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { ToolProgressItem } from '@/types/tools';
 import { useMessageManager } from '@/hooks/conversation/useMessageManager';
+import { useMessagePolling } from '@/hooks/conversation/useMessagePolling';
 
 interface ConversationContextType {
   // Messages - simplified state management
@@ -53,8 +53,8 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const { user } = useAuth();
   const { persistMessageToDatabase, loadConversationFromDatabase } = useMessageManager();
 
-  // Track locally added messages to prevent duplicates
-  const localMessageIds = useRef<Set<string>>(new Set());
+  // Track user messages to prevent duplicates during polling
+  const userMessageIds = useRef<Set<string>>(new Set());
   
   // Helper to safely convert messageType
   const safeMessageType = (messageType: any): ConversationMessage['messageType'] => {
@@ -98,38 +98,37 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return undefined;
   };
 
-  // Enhanced add message with better real-time handling
+  // Simple add message without complex tracking
   const addMessage = useCallback((message: ConversationMessage) => {
-    console.log(`📝 [REALTIME-CONTEXT] Adding message: ${message.id} (${message.role}) - type: ${message.messageType || 'none'}`);
+    console.log(`📝 [CONTEXT] Adding message: ${message.id} (${message.role}) - type: ${message.messageType || 'none'}`);
     
-    // Track user messages as local to prevent duplicates from realtime
+    // Track user messages to prevent duplicates
     if (message.role === 'user') {
-      localMessageIds.current.add(message.id);
-      console.log(`👤 [REALTIME-CONTEXT] Tracked user message: ${message.id}`);
+      userMessageIds.current.add(message.id);
     }
     
     setMessages(prev => {
       // Check if message already exists
       const existingIndex = prev.findIndex(m => m.id === message.id);
       if (existingIndex !== -1) {
-        console.log(`⚠️ [REALTIME-CONTEXT] Message ${message.id} already exists, skipping`);
+        console.log(`⚠️ [CONTEXT] Message ${message.id} already exists, skipping`);
         return prev;
       }
       
-      // Add and sort by timestamp for consistent ordering
+      // Add and sort by timestamp
       const newMessages = [...prev, message].sort((a, b) => 
         a.timestamp.getTime() - b.timestamp.getTime()
       );
       
-      console.log(`✅ [REALTIME-CONTEXT] Message added successfully (total: ${newMessages.length})`);
+      console.log(`✅ [CONTEXT] Message added successfully (total: ${newMessages.length})`);
       return newMessages;
     });
 
-    // Enhanced tool execution message handling
+    // Handle tool execution messages
     if (message.messageType === 'tool-executing' && message.content.startsWith('{')) {
       try {
         const toolData = JSON.parse(message.content);
-        console.log(`🔧 [REALTIME-CONTEXT] Processing tool execution:`, {
+        console.log(`🔧 [CONTEXT] Processing tool execution:`, {
           toolName: toolData.toolName,
           status: toolData.status,
           toolCallId: toolData.toolCallId
@@ -152,15 +151,15 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             )
           };
           
-          console.log(`🛠️ [REALTIME-CONTEXT] Setting active tool:`, toolItem.name, toolItem.status);
+          console.log(`🛠️ [CONTEXT] Setting active tool:`, toolItem.name, toolItem.status);
           setActiveTool(toolItem);
           
-          // Clear tool after completion/failure with longer delay for visibility
+          // Clear tool after completion/failure
           if (toolData.status === 'completed' || toolData.status === 'failed') {
             setTimeout(() => {
-              console.log(`🧹 [REALTIME-CONTEXT] Clearing completed tool: ${toolItem.id}`);
+              console.log(`🧹 [CONTEXT] Clearing completed tool: ${toolItem.id}`);
               setActiveTool(null);
-            }, 8000); // Increased from 5s to 8s for better visibility
+            }, 8000);
           }
         }
       } catch (e) {
@@ -169,127 +168,132 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, []);
 
+  // Handle polling messages received
+  const handlePollingMessages = useCallback((polledMessages: ConversationMessage[]) => {
+    console.log(`📥 [POLLING] Processing ${polledMessages.length} polled messages`);
+    
+    setMessages(prev => {
+      const existingIds = new Set(prev.map(m => m.id));
+      const newMessages = polledMessages.filter(msg => {
+        // Skip user messages that we've already added locally
+        if (msg.role === 'user' && userMessageIds.current.has(msg.id)) {
+          return false;
+        }
+        // Skip messages we already have
+        return !existingIds.has(msg.id);
+      });
+      
+      if (newMessages.length > 0) {
+        console.log(`✅ [POLLING] Adding ${newMessages.length} new messages from polling`);
+        
+        // Process tool messages for active tool updates
+        newMessages.forEach(msg => {
+          if (msg.messageType === 'tool-executing' && msg.content.startsWith('{')) {
+            try {
+              const toolData = JSON.parse(msg.content);
+              if (toolData.toolName && toolData.status) {
+                const toolItem: ToolProgressItem = {
+                  id: toolData.toolCallId || `tool-${Date.now()}`,
+                  name: toolData.toolName,
+                  displayName: toolData.displayName || toolData.toolName,
+                  status: toolData.status as any,
+                  startTime: toolData.startTime || new Date().toISOString(),
+                  endTime: toolData.endTime,
+                  parameters: toolData.parameters || {},
+                  result: toolData.result,
+                  error: toolData.error,
+                  progress: toolData.progress || (
+                    toolData.status === 'completed' ? 100 : 
+                    toolData.status === 'failed' ? 0 : 50
+                  )
+                };
+                
+                console.log(`🛠️ [POLLING] Setting active tool from polling:`, toolItem.name, toolItem.status);
+                setActiveTool(toolItem);
+                
+                if (toolData.status === 'completed' || toolData.status === 'failed') {
+                  setTimeout(() => {
+                    console.log(`🧹 [POLLING] Clearing completed tool: ${toolItem.id}`);
+                    setActiveTool(null);
+                  }, 8000);
+                }
+              }
+            } catch (e) {
+              console.warn('Failed to parse tool execution message from polling:', e);
+            }
+          }
+        });
+        
+        return [...prev, ...newMessages].sort((a, b) => 
+          a.timestamp.getTime() - b.timestamp.getTime()
+        );
+      }
+      
+      return prev;
+    });
+  }, []);
+
+  // Set up polling hook
+  useMessagePolling({
+    sessionId: currentSessionId,
+    isLoading,
+    onMessagesReceived: handlePollingMessages,
+    currentMessageCount: messages.length
+  });
+
   // Add assistant response (for compatibility)
   const addAssistantResponse = useCallback((message: ConversationMessage) => {
-    console.log(`🤖 [REALTIME-CONTEXT] Adding assistant response: ${message.id}`);
+    console.log(`🤖 [CONTEXT] Adding assistant response: ${message.id}`);
     addMessage(message);
   }, [addMessage]);
 
   // Clear messages
   const clearMessages = useCallback(() => {
-    console.log('🧹 [REALTIME-CONTEXT] Clearing all messages');
+    console.log('🧹 [CONTEXT] Clearing all messages');
     setMessages([]);
     setActiveTool(null);
-    localMessageIds.current.clear();
+    userMessageIds.current.clear();
   }, []);
 
   // Persist message to database
   const persistMessage = useCallback(async (message: ConversationMessage): Promise<boolean> => {
     if (!currentSessionId) {
-      console.error('❌ [REALTIME-CONTEXT] No session for persistence');
+      console.error('❌ [CONTEXT] No session for persistence');
       return false;
     }
 
-    console.log(`💾 [REALTIME-CONTEXT] Persisting message: ${message.id}`);
+    console.log(`💾 [CONTEXT] Persisting message: ${message.id}`);
     const result = await persistMessageToDatabase(message, currentSessionId);
-    console.log(`${result ? '✅' : '❌'} [REALTIME-CONTEXT] Persistence ${result ? 'succeeded' : 'failed'}`);
+    console.log(`${result ? '✅' : '❌'} [CONTEXT] Persistence ${result ? 'succeeded' : 'failed'}`);
     return result;
   }, [currentSessionId, persistMessageToDatabase]);
 
-  // Load conversation with better error handling
+  // Load conversation 
   const loadConversation = useCallback(async (sessionId: string) => {
-    console.log(`📂 [REALTIME-CONTEXT] Loading conversation: ${sessionId}`);
+    console.log(`📂 [CONTEXT] Loading conversation: ${sessionId}`);
     clearMessages();
     
     try {
       const loadedMessages = await loadConversationFromDatabase(sessionId);
-      console.log(`📥 [REALTIME-CONTEXT] Loaded ${loadedMessages.length} messages from database`);
+      console.log(`📥 [CONTEXT] Loaded ${loadedMessages.length} messages from database`);
       
-      // Process each message type correctly with detailed logging
+      // Add all loaded messages
       loadedMessages.forEach((message, index) => {
-        console.log(`📨 [REALTIME-CONTEXT] Loading message ${index + 1}/${loadedMessages.length}: ${message.id} (${message.role}) - type: ${message.messageType || 'none'}`);
+        console.log(`📨 [CONTEXT] Loading message ${index + 1}/${loadedMessages.length}: ${message.id} (${message.role}) - type: ${message.messageType || 'none'}`);
         addMessage(message);
       });
       
-      console.log(`✅ [REALTIME-CONTEXT] Conversation loaded successfully`);
+      console.log(`✅ [CONTEXT] Conversation loaded successfully`);
     } catch (error) {
-      console.error(`❌ [REALTIME-CONTEXT] Failed to load conversation:`, error);
+      console.error(`❌ [CONTEXT] Failed to load conversation:`, error);
     }
   }, [loadConversationFromDatabase, clearMessages, addMessage]);
-
-  // Enhanced real-time subscription with improved filtering and logging
-  useEffect(() => {
-    if (!user?.id || !currentSessionId) {
-      console.log(`🔌 [REALTIME-SUB] No user (${!!user?.id}) or session (${!!currentSessionId}) for subscription`);
-      return;
-    }
-
-    console.log(`🔗 [REALTIME-SUB] Setting up enhanced subscription for session: ${currentSessionId}`);
-
-    const channel = supabase
-      .channel(`agent-conversations-${currentSessionId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'agent_conversations',
-          filter: `user_id=eq.${user.id},session_id=eq.${currentSessionId}`
-        },
-        (payload) => {
-          console.log(`📡 [REALTIME-SUB] Received INSERT payload:`, {
-            id: payload.new?.id,
-            role: payload.new?.role,
-            messageType: payload.new?.message_type,
-            contentPreview: payload.new?.content?.substring(0, 50) + '...'
-          });
-          
-          if (payload.new && typeof payload.new === 'object' && 'id' in payload.new) {
-            const record = payload.new as Record<string, any>;
-            
-            // More lenient filtering for real-time messages
-            if (record.role === 'user' && localMessageIds.current.has(record.id)) {
-              console.log(`⚠️ [REALTIME-SUB] Skipping duplicate local user message: ${record.id}`);
-              return;
-            }
-            
-            const newMessage: ConversationMessage = {
-              id: record.id,
-              role: record.role,
-              content: record.content,
-              timestamp: new Date(record.created_at),
-              messageType: safeMessageType(record.message_type),
-              loopIteration: record.loop_iteration || 0,
-              toolsUsed: safeToolsUsed(record.tools_used),
-              improvementReasoning: record.improvement_reasoning
-            };
-            
-            console.log(`📨 [REALTIME-SUB] Processing real-time message: ${record.id} (${record.role}) - type: ${record.message_type || 'none'}`);
-            
-            // Immediately add to context - this is the critical fix
-            addMessage(newMessage);
-            
-            console.log(`🎯 [REALTIME-SUB] Real-time message added to context successfully`);
-          } else {
-            console.warn(`⚠️ [REALTIME-SUB] Invalid payload structure:`, payload);
-          }
-        }
-      )
-      .subscribe((status) => {
-        console.log(`🔗 [REALTIME-SUB] Subscription status: ${status}`);
-      });
-
-    return () => {
-      console.log(`🔌 [REALTIME-SUB] Cleaning up subscription for session: ${currentSessionId}`);
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id, currentSessionId, addMessage]);
 
   // Clear tracking when session changes
   useEffect(() => {
     if (currentSessionId) {
-      localMessageIds.current.clear();
-      console.log(`🧹 [REALTIME-CONTEXT] Cleared local tracking for new session: ${currentSessionId}`);
+      userMessageIds.current.clear();
+      console.log(`🧹 [CONTEXT] Cleared user tracking for new session: ${currentSessionId}`);
     }
   }, [currentSessionId]);
 
