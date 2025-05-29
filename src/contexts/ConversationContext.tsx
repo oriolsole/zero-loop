@@ -11,6 +11,8 @@ interface ConversationContextType {
   messages: ConversationMessage[];
   addMessage: (message: ConversationMessage) => void;
   clearMessages: () => void;
+  setMessages: React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
+  addAssistantResponse: (message: ConversationMessage) => void;
   
   // Session management
   currentSessionId: string | null;
@@ -96,9 +98,9 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return undefined;
   };
 
-  // SIMPLIFIED: Direct message addition with immediate display
+  // Add message with immediate display
   const addMessage = useCallback((message: ConversationMessage) => {
-    console.log(`📝 [CONTEXT] Adding message: ${message.id} (${message.role}) - "${message.content.substring(0, 50)}..."`);
+    console.log(`📝 [CONTEXT] Adding message: ${message.id} (${message.role})`);
     
     // Track user messages as local
     if (message.role === 'user') {
@@ -112,7 +114,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         return prev;
       }
       
-      // Add and sort by timestamp - IMMEDIATE display
+      // Add and sort by timestamp
       const newMessages = [...prev, message].sort((a, b) => 
         a.timestamp.getTime() - b.timestamp.getTime()
       );
@@ -121,7 +123,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return newMessages;
     });
 
-    // Handle tool execution messages immediately
+    // Handle tool execution messages
     if (message.messageType === 'tool-executing' && message.content.startsWith('{')) {
       try {
         const toolData = JSON.parse(message.content);
@@ -161,6 +163,12 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, []);
 
+  // Add assistant response (for compatibility)
+  const addAssistantResponse = useCallback((message: ConversationMessage) => {
+    console.log(`🤖 [CONTEXT] Adding assistant response: ${message.id}`);
+    addMessage(message);
+  }, [addMessage]);
+
   // Clear messages
   const clearMessages = useCallback(() => {
     console.log('🧹 [CONTEXT] Clearing all messages');
@@ -182,7 +190,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return result;
   }, [currentSessionId, persistMessageToDatabase]);
 
-  // Load conversation - SIMPLIFIED
+  // Load conversation with better error handling
   const loadConversation = useCallback(async (sessionId: string) => {
     console.log(`📂 [CONTEXT] Loading conversation: ${sessionId}`);
     clearMessages();
@@ -191,8 +199,9 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const loadedMessages = await loadConversationFromDatabase(sessionId);
       console.log(`📥 [CONTEXT] Loaded ${loadedMessages.length} messages`);
       
-      // Add messages immediately - no delays
+      // Process each message type correctly
       loadedMessages.forEach(message => {
+        console.log(`📨 [CONTEXT] Loading message: ${message.id} (${message.role}) - type: ${message.messageType}`);
         addMessage(message);
       });
       
@@ -202,7 +211,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [loadConversationFromDatabase, clearMessages, addMessage]);
 
-  // SIMPLIFIED: Real-time subscription with immediate processing
+  // Real-time subscription with better message handling
   useEffect(() => {
     if (!user?.id || !currentSessionId) {
       console.log(`🔌 [REALTIME] No user or session for subscription`);
@@ -244,7 +253,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               improvementReasoning: record.improvement_reasoning
             };
             
-            console.log(`📨 [REALTIME] Adding real-time message: ${record.id} (${record.role})`);
+            console.log(`📨 [REALTIME] Adding real-time message: ${record.id} (${record.role}) - type: ${record.message_type}`);
             addMessage(newMessage);
           }
         }
@@ -269,6 +278,8 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     messages,
     addMessage,
     clearMessages,
+    setMessages,
+    addAssistantResponse,
     currentSessionId,
     setCurrentSessionId,
     currentSession,

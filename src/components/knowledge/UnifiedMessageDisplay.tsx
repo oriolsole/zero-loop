@@ -39,33 +39,57 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
     }
   };
 
-  // Parse tool message if it's a tool execution
+  // Enhanced tool message parsing with better error handling
   const parseToolMessage = (content: string) => {
     try {
       const parsed = JSON.parse(content);
-      if (parsed.toolName && parsed.status) {
-        return parsed;
+      console.log(`🔍 [TOOL-DISPLAY] Parsed tool data:`, parsed);
+      
+      // More flexible tool detection
+      if ((parsed.toolName || parsed.name) && parsed.status) {
+        return {
+          toolName: parsed.toolName || parsed.name,
+          displayName: parsed.displayName || parsed.toolName || parsed.name,
+          status: parsed.status,
+          toolCallId: parsed.toolCallId || parsed.id,
+          startTime: parsed.startTime,
+          endTime: parsed.endTime,
+          parameters: parsed.parameters || parsed.params || {},
+          result: parsed.result,
+          error: parsed.error,
+          progress: parsed.progress
+        };
       }
       return null;
-    } catch {
+    } catch (error) {
+      console.warn(`⚠️ [TOOL-DISPLAY] Failed to parse tool message:`, error);
       return null;
     }
   };
 
+  // Check if this is a tool execution message
   const isToolMessage = message.messageType === 'tool-executing' && 
                         message.content.startsWith('{');
   const toolData = isToolMessage ? parseToolMessage(message.content) : null;
+
+  console.log(`🎨 [TOOL-DISPLAY] Rendering message ${message.id}:`, {
+    role: message.role,
+    messageType: message.messageType,
+    isToolMessage,
+    toolData: toolData ? `${toolData.toolName} - ${toolData.status}` : 'none',
+    contentPreview: message.content.substring(0, 50)
+  });
 
   // For tool execution messages, show the tool card
   if (isToolMessage && toolData) {
     const toolProgressItem: ToolProgressItem = {
       id: toolData.toolCallId || `${message.id}-tool`,
       name: toolData.toolName,
-      displayName: toolData.displayName || toolData.toolName,
+      displayName: toolData.displayName,
       status: toolData.status as any,
       startTime: toolData.startTime,
       endTime: toolData.endTime,
-      parameters: toolData.parameters || {},
+      parameters: toolData.parameters,
       result: toolData.result,
       error: toolData.error,
       progress: toolData.progress || (
@@ -74,6 +98,8 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
         toolData.status === 'executing' ? 50 : 0
       )
     };
+
+    console.log(`🛠️ [TOOL-DISPLAY] Rendering tool card for: ${toolData.toolName}`);
 
     return (
       <div className="flex gap-4 justify-start animate-in fade-in duration-200">
@@ -89,6 +115,11 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
             <Badge variant="outline" className="text-xs">
               Tool Execution
             </Badge>
+            {isLoopIteration && (
+              <Badge variant="outline" className="text-xs bg-blue-50">
+                Loop {message.loopIteration}
+              </Badge>
+            )}
           </div>
           
           <EnhancedToolCard tool={toolProgressItem} compact={false} />
