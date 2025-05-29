@@ -7,36 +7,36 @@ interface UseMessagePollingProps {
   sessionId: string | null;
   isLoading: boolean;
   onMessagesReceived: (messages: ConversationMessage[]) => void;
-  currentMessageCount: number;
+  lastMessageTimestamp: Date | null;
 }
 
 export const useMessagePolling = ({
   sessionId,
   isLoading,
   onMessagesReceived,
-  currentMessageCount
+  lastMessageTimestamp
 }: UseMessagePollingProps) => {
   const { loadConversationFromDatabase } = useMessageManager();
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastMessageCountRef = useRef(currentMessageCount);
 
   const pollMessages = useCallback(async () => {
     if (!sessionId) return;
 
     try {
-      console.log(`🔄 [POLLING] Checking for new messages in session: ${sessionId}`);
-      const messages = await loadConversationFromDatabase(sessionId);
+      console.log(`🔄 [POLLING] Checking for new messages in session: ${sessionId} after ${lastMessageTimestamp?.toISOString() || 'beginning'}`);
+      
+      // Only fetch messages newer than the last displayed message
+      const messages = await loadConversationFromDatabase(sessionId, lastMessageTimestamp || undefined);
       
       // Only update if we have new messages
-      if (messages.length > lastMessageCountRef.current) {
-        console.log(`📥 [POLLING] Found ${messages.length - lastMessageCountRef.current} new messages`);
+      if (messages.length > 0) {
+        console.log(`📥 [POLLING] Found ${messages.length} new messages`);
         onMessagesReceived(messages);
-        lastMessageCountRef.current = messages.length;
       }
     } catch (error) {
       console.error('❌ [POLLING] Error polling messages:', error);
     }
-  }, [sessionId, loadConversationFromDatabase, onMessagesReceived]);
+  }, [sessionId, loadConversationFromDatabase, onMessagesReceived, lastMessageTimestamp]);
 
   // Start/stop polling based on loading state
   useEffect(() => {
@@ -62,11 +62,6 @@ export const useMessagePolling = ({
       }
     };
   }, [isLoading, sessionId, pollMessages]);
-
-  // Update message count reference when current count changes
-  useEffect(() => {
-    lastMessageCountRef.current = currentMessageCount;
-  }, [currentMessageCount]);
 
   return { pollMessages };
 };

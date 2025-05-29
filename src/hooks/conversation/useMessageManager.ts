@@ -1,3 +1,4 @@
+
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -152,19 +153,28 @@ export const useMessageManager = () => {
     }
   }, [user]);
 
-  // Load conversation from database
-  const loadConversationFromDatabase = useCallback(async (sessionId: string): Promise<ConversationMessage[]> => {
+  // Enhanced load conversation with timestamp filtering to prevent duplicates
+  const loadConversationFromDatabase = useCallback(async (
+    sessionId: string, 
+    afterTimestamp?: Date
+  ): Promise<ConversationMessage[]> => {
     if (!user) return [];
 
     try {
-      console.log(`📂 Loading conversation from database: ${sessionId}`);
+      console.log(`📂 Loading conversation from database: ${sessionId}${afterTimestamp ? ` after ${afterTimestamp.toISOString()}` : ''}`);
       
-      const { data, error } = await supabase
+      let query = supabase
         .from('agent_conversations')
         .select('*')
         .eq('session_id', sessionId)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
+        .eq('user_id', user.id);
+
+      // Add timestamp filtering if provided
+      if (afterTimestamp) {
+        query = query.gt('created_at', afterTimestamp.toISOString());
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: true });
 
       if (error) throw error;
 
@@ -183,7 +193,7 @@ export const useMessageManager = () => {
         shouldContinueLoop: row.should_continue_loop || undefined
       }));
 
-      console.log(`✅ Loaded ${messages.length} messages from database`);
+      console.log(`✅ Loaded ${messages.length} messages from database${afterTimestamp ? ' (new messages only)' : ''}`);
       return messages;
     } catch (error) {
       console.error(`❌ Error loading conversation:`, error);

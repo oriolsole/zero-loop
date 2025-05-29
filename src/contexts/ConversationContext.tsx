@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
 import { ToolProgressItem } from '@/types/tools';
@@ -37,6 +37,7 @@ interface ConversationContextType {
   // Database operations
   persistMessage: (message: ConversationMessage) => Promise<boolean>;
   loadConversation: (sessionId: string) => Promise<void>;
+  updateSessionTitle: (sessionId: string, title: string) => void;
 }
 
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);
@@ -53,62 +54,47 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const { user } = useAuth();
   const { persistMessageToDatabase, loadConversationFromDatabase } = useMessageManager();
 
-  // Track user messages to prevent duplicates during polling
-  const userMessageIds = useRef<Set<string>>(new Set());
-  
-  // Helper to safely convert messageType
-  const safeMessageType = (messageType: any): ConversationMessage['messageType'] => {
-    const validTypes = [
-      'analysis', 'planning', 'execution', 'tool-update', 'response', 
-      'step-executing', 'step-completed', 'loop-start', 'loop-reflection', 
-      'loop-enhancement', 'loop-complete', 'tool-executing'
-    ];
-    return validTypes.includes(messageType) ? messageType : undefined;
-  };
+  // Get the timestamp of the last message for polling
+  const lastMessageTimestamp = useMemo(() => {
+    if (messages.length === 0) return null;
+    const sortedMessages = [...messages].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    return sortedMessages[0]?.timestamp || null;
+  }, [messages]);
 
-  // Helper to safely convert toolsUsed
-  const safeToolsUsed = (toolsUsed: any): ConversationMessage['toolsUsed'] => {
-    if (!toolsUsed) return undefined;
-    
-    try {
-      if (typeof toolsUsed === 'string') {
-        const parsed = JSON.parse(toolsUsed);
-        if (Array.isArray(parsed)) {
-          return parsed.map((tool: any) => ({
-            name: tool.name || 'Unknown Tool',
-            success: Boolean(tool.success),
-            result: tool.result,
-            error: tool.error
-          }));
-        }
-      }
-      
-      if (Array.isArray(toolsUsed)) {
-        return toolsUsed.map((tool: any) => ({
-          name: tool.name || 'Unknown Tool',
-          success: Boolean(tool.success),
-          result: tool.result,
-          error: tool.error
-        }));
-      }
-    } catch (e) {
-      console.warn('Failed to parse toolsUsed:', e);
-    }
-    
-    return undefined;
-  };
+  // Helper to generate session title from first user message
+  const generateSessionTitle = useCallback((firstMessage: string): string => {
+    const truncated = firstMessage.length > 50 
+      ? firstMessage.substring(0, 50) + '...' 
+      : firstMessage;
+    return truncated;
+  }, []);
 
-  // Simple add message without complex tracking
+  // Update session title when first user message is added
+  const updateSessionTitle = useCallback((sessionId: string, title: string) => {
+    console.log(`📝 [CONTEXT] Updating session title: ${sessionId} -> ${title}`);
+    
+    // Update current session if it matches
+    setCurrentSession(prev => {
+      if (prev && prev.id === sessionId) {
+        return { ...prev, title };
+      }
+      return prev;
+    });
+
+    // Update sessions list
+    setSessions(prev => prev.map(session => 
+      session.id === sessionId 
+        ? { ...session, title, updated_at: new Date() }
+        : session
+    ));
+  }, []);
+
+  // Simple add message with automatic session title update
   const addMessage = useCallback((message: ConversationMessage) => {
     console.log(`📝 [CONTEXT] Adding message: ${message.id} (${message.role}) - type: ${message.messageType || 'none'}`);
     
-    // Track user messages to prevent duplicates
-    if (message.role === 'user') {
-      userMessageIds.current.add(message.id);
-    }
-    
     setMessages(prev => {
-      // Check if message already exists
+      // Check if message already exists using ID
       const existingIndex = prev.findIndex(m => m.id === message.id);
       if (existingIndex !== -1) {
         console.log(`⚠️ [CONTEXT] Message ${message.id} already exists, skipping`);
@@ -123,6 +109,15 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       console.log(`✅ [CONTEXT] Message added successfully (total: ${newMessages.length})`);
       return newMessages;
     });
+
+    // Update session title if this is the first user message
+    if (message.role === 'user' && currentSessionId) {
+      const isFirstUserMessage = messages.filter(m => m.role === 'user').length === 0;
+      if (isFirstUserMessage) {
+        const title = generateSessionTitle(message.content);
+        updateSessionTitle(currentSessionId, title);
+      }
+    }
 
     // Handle tool execution messages
     if (message.messageType === 'tool-executing' && message.content.startsWith('{')) {
@@ -166,22 +161,15 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         console.warn('Failed to parse tool execution message:', e);
       }
     }
-  }, []);
+  }, [currentSessionId, messages, generateSessionTitle, updateSessionTitle]);
 
-  // Handle polling messages received
+  // Handle polling messages received - simplified without complex filtering
   const handlePollingMessages = useCallback((polledMessages: ConversationMessage[]) => {
     console.log(`📥 [POLLING] Processing ${polledMessages.length} polled messages`);
     
     setMessages(prev => {
       const existingIds = new Set(prev.map(m => m.id));
-      const newMessages = polledMessages.filter(msg => {
-        // Skip user messages that we've already added locally
-        if (msg.role === 'user' && userMessageIds.current.has(msg.id)) {
-          return false;
-        }
-        // Skip messages we already have
-        return !existingIds.has(msg.id);
-      });
+      const newMessages = polledMessages.filter(msg => !existingIds.has(msg.id));
       
       if (newMessages.length > 0) {
         console.log(`✅ [POLLING] Adding ${newMessages.length} new messages from polling`);
@@ -233,12 +221,12 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     });
   }, []);
 
-  // Set up polling hook
+  // Set up polling hook with timestamp filtering
   useMessagePolling({
     sessionId: currentSessionId,
     isLoading,
     onMessagesReceived: handlePollingMessages,
-    currentMessageCount: messages.length
+    lastMessageTimestamp
   });
 
   // Add assistant response (for compatibility)
@@ -252,7 +240,6 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     console.log('🧹 [CONTEXT] Clearing all messages');
     setMessages([]);
     setActiveTool(null);
-    userMessageIds.current.clear();
   }, []);
 
   // Persist message to database
@@ -289,14 +276,6 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [loadConversationFromDatabase, clearMessages, addMessage]);
 
-  // Clear tracking when session changes
-  useEffect(() => {
-    if (currentSessionId) {
-      userMessageIds.current.clear();
-      console.log(`🧹 [CONTEXT] Cleared user tracking for new session: ${currentSessionId}`);
-    }
-  }, [currentSessionId]);
-
   const contextValue: ConversationContextType = {
     messages,
     addMessage,
@@ -318,7 +297,8 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     activeTool,
     setActiveTool,
     persistMessage,
-    loadConversation
+    loadConversation,
+    updateSessionTitle
   };
 
   return (
