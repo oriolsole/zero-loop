@@ -138,19 +138,6 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
           </div>
           
           <EnhancedToolCard tool={toolProgressItem} compact={false} />
-          
-          <div className="text-xs text-muted-foreground mt-2 flex items-center gap-2">
-            <span>{message.timestamp.toLocaleTimeString()}</span>
-            {toolData.status === 'executing' && (
-              <span className="text-blue-600 animate-pulse">• Running live</span>
-            )}
-            {toolData.status === 'completed' && (
-              <span className="text-green-600">• Completed</span>
-            )}
-            {toolData.status === 'failed' && (
-              <span className="text-red-600">• Failed</span>
-            )}
-          </div>
         </div>
       </div>
     );
