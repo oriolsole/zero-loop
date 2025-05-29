@@ -39,19 +39,23 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
     }
   };
 
-  // Enhanced tool message parsing with better error handling
+  // Enhanced tool message parsing with comprehensive validation
   const parseToolMessage = (content: string) => {
     try {
       const parsed = JSON.parse(content);
-      console.log(`🔍 [TOOL-DISPLAY] Parsed tool data:`, parsed);
+      console.log(`🔍 [TOOL-DISPLAY] Parsing tool content for message ${message.id}:`, {
+        toolName: parsed.toolName || parsed.name,
+        status: parsed.status,
+        hasAllRequired: !!(parsed.toolName || parsed.name) && !!parsed.status
+      });
       
-      // More flexible tool detection
+      // Enhanced validation with multiple possible field names
       if ((parsed.toolName || parsed.name) && parsed.status) {
-        return {
+        const toolData = {
           toolName: parsed.toolName || parsed.name,
           displayName: parsed.displayName || parsed.toolName || parsed.name,
           status: parsed.status,
-          toolCallId: parsed.toolCallId || parsed.id,
+          toolCallId: parsed.toolCallId || parsed.id || `tool-${message.id}`,
           startTime: parsed.startTime,
           endTime: parsed.endTime,
           parameters: parsed.parameters || parsed.params || {},
@@ -59,15 +63,19 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
           error: parsed.error,
           progress: parsed.progress
         };
+        console.log(`✅ [TOOL-DISPLAY] Successfully parsed tool data:`, toolData);
+        return toolData;
       }
+      
+      console.log(`⚠️ [TOOL-DISPLAY] Missing required fields in tool data:`, parsed);
       return null;
     } catch (error) {
-      console.warn(`⚠️ [TOOL-DISPLAY] Failed to parse tool message:`, error);
+      console.warn(`❌ [TOOL-DISPLAY] Failed to parse tool message for ${message.id}:`, error);
       return null;
     }
   };
 
-  // Check if this is a tool execution message
+  // Enhanced tool message detection
   const isToolMessage = message.messageType === 'tool-executing' && 
                         message.content.startsWith('{');
   const toolData = isToolMessage ? parseToolMessage(message.content) : null;
@@ -76,14 +84,15 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
     role: message.role,
     messageType: message.messageType,
     isToolMessage,
-    toolData: toolData ? `${toolData.toolName} - ${toolData.status}` : 'none',
-    contentPreview: message.content.substring(0, 50)
+    toolDataPresent: !!toolData,
+    toolName: toolData?.toolName || 'none',
+    contentPreview: message.content.substring(0, 50) + '...'
   });
 
-  // For tool execution messages, show the tool card
+  // Enhanced tool execution message rendering with better visual feedback
   if (isToolMessage && toolData) {
     const toolProgressItem: ToolProgressItem = {
-      id: toolData.toolCallId || `${message.id}-tool`,
+      id: toolData.toolCallId,
       name: toolData.toolName,
       displayName: toolData.displayName,
       status: toolData.status as any,
@@ -99,7 +108,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
       )
     };
 
-    console.log(`🛠️ [TOOL-DISPLAY] Rendering tool card for: ${toolData.toolName}`);
+    console.log(`🛠️ [TOOL-DISPLAY] Rendering enhanced tool card for: ${toolData.toolName} (${toolData.status})`);
 
     return (
       <div className="flex gap-4 justify-start animate-in fade-in duration-200">
@@ -120,19 +129,34 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
                 Loop {message.loopIteration}
               </Badge>
             )}
+            {/* Real-time indicator for live tool updates */}
+            {toolData.status === 'executing' && (
+              <Badge variant="outline" className="text-xs bg-blue-100 animate-pulse">
+                Live
+              </Badge>
+            )}
           </div>
           
           <EnhancedToolCard tool={toolProgressItem} compact={false} />
           
-          <div className="text-xs text-muted-foreground mt-2">
-            {message.timestamp.toLocaleTimeString()}
+          <div className="text-xs text-muted-foreground mt-2 flex items-center gap-2">
+            <span>{message.timestamp.toLocaleTimeString()}</span>
+            {toolData.status === 'executing' && (
+              <span className="text-blue-600 animate-pulse">• Running live</span>
+            )}
+            {toolData.status === 'completed' && (
+              <span className="text-green-600">• Completed</span>
+            )}
+            {toolData.status === 'failed' && (
+              <span className="text-red-600">• Failed</span>
+            )}
           </div>
         </div>
       </div>
     );
   }
 
-  // Regular message rendering
+  // Regular message rendering with enhanced real-time indicators
   return (
     <div className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in duration-200`}>
       {!isUser && (
@@ -151,7 +175,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
             : 'bg-secondary mr-12'
           }
         `}>
-          {/* Loop iteration and message type indicator */}
+          {/* Enhanced loop iteration and message type indicator */}
           {!isUser && (isLoopIteration || message.messageType) && (
             <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
               {getMessageTypeIcon()}
@@ -174,7 +198,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
             )}
           </div>
           
-          {/* Improvement reasoning for reflection messages */}
+          {/* Enhanced improvement reasoning for reflection messages */}
           {message.improvementReasoning && !isUser && message.messageType === 'loop-reflection' && (
             <div className="mt-3 p-3 bg-muted/70 border border-muted-foreground/40 rounded-lg text-sm">
               <div className="flex items-center gap-2 mb-2">
@@ -187,7 +211,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
             </div>
           )}
           
-          {/* Tools used indicator */}
+          {/* Tools used indicator with enhanced display */}
           {message.toolsUsed && message.toolsUsed.length > 0 && !isUser && !isToolMessage && (
             <div className="flex flex-wrap gap-1 mt-3">
               {message.toolsUsed.map((tool, index) => (
@@ -197,6 +221,7 @@ const UnifiedMessageDisplay: React.FC<UnifiedMessageDisplayProps> = ({
                   className="text-xs"
                 >
                   {tool.name}
+                  {tool.success ? ' ✓' : ' ✗'}
                 </Badge>
               ))}
             </div>
