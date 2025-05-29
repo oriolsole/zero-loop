@@ -153,7 +153,7 @@ export const useMessageManager = () => {
     }
   }, [user]);
 
-  // Enhanced load conversation with timestamp filtering to prevent duplicates
+  // Enhanced load conversation that fetches both new and updated messages
   const loadConversationFromDatabase = useCallback(async (
     sessionId: string, 
     afterTimestamp?: Date
@@ -169,9 +169,11 @@ export const useMessageManager = () => {
         .eq('session_id', sessionId)
         .eq('user_id', user.id);
 
-      // Add timestamp filtering if provided
+      // Enhanced timestamp filtering: fetch messages that are either created OR updated after the timestamp
       if (afterTimestamp) {
-        query = query.gt('created_at', afterTimestamp.toISOString());
+        const timestampString = afterTimestamp.toISOString();
+        query = query.or(`created_at.gt.${timestampString},updated_at.gt.${timestampString}`);
+        console.log(`🔍 Fetching messages created OR updated after: ${timestampString}`);
       }
 
       const { data, error } = await query.order('created_at', { ascending: true });
@@ -193,7 +195,7 @@ export const useMessageManager = () => {
         shouldContinueLoop: row.should_continue_loop || undefined
       }));
 
-      console.log(`✅ Loaded ${messages.length} messages from database${afterTimestamp ? ' (new messages only)' : ''}`);
+      console.log(`✅ Loaded ${messages.length} messages from database${afterTimestamp ? ' (new or updated messages)' : ''}`);
       return messages;
     } catch (error) {
       console.error(`❌ Error loading conversation:`, error);

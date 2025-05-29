@@ -23,14 +23,14 @@ export const useMessagePolling = ({
     if (!sessionId) return;
 
     try {
-      console.log(`🔄 [POLLING] Checking for new messages in session: ${sessionId} after ${lastMessageTimestamp?.toISOString() || 'beginning'}`);
+      console.log(`🔄 [POLLING] Checking for new/updated messages in session: ${sessionId} after ${lastMessageTimestamp?.toISOString() || 'beginning'}`);
       
-      // Only fetch messages newer than the last displayed message
+      // Fetch messages that are either new or have been updated since the last poll
       const messages = await loadConversationFromDatabase(sessionId, lastMessageTimestamp || undefined);
       
-      // Only update if we have new messages
+      // Only update if we have new/updated messages
       if (messages.length > 0) {
-        console.log(`📥 [POLLING] Found ${messages.length} new messages`);
+        console.log(`📥 [POLLING] Found ${messages.length} new/updated messages`);
         onMessagesReceived(messages);
       }
     } catch (error) {

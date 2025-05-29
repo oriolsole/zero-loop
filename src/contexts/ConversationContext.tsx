@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -54,11 +53,17 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const { user } = useAuth();
   const { persistMessageToDatabase, loadConversationFromDatabase } = useMessageManager();
 
-  // Get the timestamp of the last message for polling
+  // Get the latest timestamp from either created_at or updated_at for polling
   const lastMessageTimestamp = useMemo(() => {
     if (messages.length === 0) return null;
-    const sortedMessages = [...messages].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-    return sortedMessages[0]?.timestamp || null;
+    
+    // Find the most recent timestamp from all messages
+    const latestTimestamp = messages.reduce((latest, message) => {
+      const messageTime = message.timestamp.getTime();
+      return messageTime > latest ? messageTime : latest;
+    }, 0);
+    
+    return latestTimestamp > 0 ? new Date(latestTimestamp) : null;
   }, [messages]);
 
   // Helper to generate session title from first user message
@@ -163,7 +168,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [currentSessionId, messages, generateSessionTitle, updateSessionTitle]);
 
-  // Handle polling messages received - simplified without complex filtering
+  // Handle polling messages received with enhanced deduplication
   const handlePollingMessages = useCallback((polledMessages: ConversationMessage[]) => {
     console.log(`📥 [POLLING] Processing ${polledMessages.length} polled messages`);
     
@@ -221,7 +226,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     });
   }, []);
 
-  // Set up polling hook with timestamp filtering
+  // Set up polling hook with enhanced timestamp tracking
   useMessagePolling({
     sessionId: currentSessionId,
     isLoading,
