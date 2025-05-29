@@ -89,7 +89,7 @@ export const useMessageManager = () => {
     return undefined;
   }, []);
 
-  // Database-only persistence with conflict resolution
+  // Enhanced database persistence with better conflict resolution
   const persistMessageToDatabase = useCallback(async (
     message: ConversationMessage,
     sessionId: string
@@ -102,28 +102,37 @@ export const useMessageManager = () => {
     try {
       console.log(`💾 Persisting message to database: ${message.id}`);
 
-      // Check if message already exists first
-      const { data: existing } = await supabase
+      // Enhanced duplicate detection using the new index structure
+      let query = supabase
         .from('agent_conversations')
         .select('id')
         .eq('session_id', sessionId)
         .eq('user_id', user.id)
         .eq('role', message.role)
-        .eq('content', message.content)
-        .maybeSingle();
+        .eq('created_at', message.timestamp.toISOString());
+
+      // Add message_type filter based on the new index structure
+      if (message.messageType) {
+        query = query.eq('message_type', message.messageType);
+      } else {
+        query = query.is('message_type', null);
+      }
+
+      const { data: existing } = await query.maybeSingle();
 
       if (existing) {
         console.log(`⚠️ Message already exists in database: ${existing.id}`);
         return true; // Consider this success since message exists
       }
 
+      // Insert the message with proper timestamp handling
       const { error } = await supabase
         .from('agent_conversations')
         .insert({
           session_id: sessionId,
           user_id: user.id,
           role: message.role,
-          content: message.content,
+          content: message.content, // Now supports large content without btree limit
           message_type: message.messageType || null,
           tools_used: message.toolsUsed || null,
           self_reflection: message.selfReflection || null,
@@ -136,8 +145,8 @@ export const useMessageManager = () => {
         });
 
       if (error) {
-        // Handle duplicate key constraint gracefully
-        if (error.code === '23505' && error.message.includes('idx_unique_message_per_session_no_type')) {
+        // Handle any remaining duplicate constraints gracefully
+        if (error.code === '23505') {
           console.log('💡 Duplicate message prevented by constraint - this is expected');
           return true;
         }
@@ -185,7 +194,7 @@ export const useMessageManager = () => {
         role: row.role as ConversationMessage['role'],
         content: row.content,
         timestamp: new Date(row.created_at),
-        updatedAt: row.updated_at ? new Date(row.updated_at) : undefined, // Include updatedAt from database
+        updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
         messageType: safeMessageType(row.message_type),
         toolsUsed: safeToolsUsed(row.tools_used),
         selfReflection: row.self_reflection || undefined,
