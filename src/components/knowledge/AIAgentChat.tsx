@@ -6,6 +6,7 @@ import { useConversationContext } from '@/contexts/ConversationContext';
 import { useAIAgentChat } from '@/hooks/conversation/useAIAgentChat';
 import { useChatActions } from '@/hooks/conversation/useChatActions';
 import { useChatInitialization } from '@/hooks/conversation/useChatInitialization';
+import { useQuickModelChange } from '@/hooks/conversation/useQuickModelChange';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
@@ -27,7 +28,8 @@ const AIAgentChat: React.FC = () => {
     handleToggleLoop,
     handleAgentChange,
     processMessage,
-    currentAgent
+    currentAgent,
+    setCurrentAgent
   } = useAIAgentChat();
 
   const { handleFollowUpAction, sendMessage } = useChatActions(processMessage);
@@ -39,6 +41,8 @@ const AIAgentChat: React.FC = () => {
     deleteSession,
     handleLoadSession
   } = useChatInitialization();
+
+  const { changeAgentModel } = useQuickModelChange();
 
   const [showSessions, setShowSessions] = useState(false);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
@@ -69,6 +73,15 @@ const AIAgentChat: React.FC = () => {
     }
   }, [messages, activeTool]);
 
+  const handleModelChange = async (modelId: string) => {
+    if (!currentAgent) return;
+
+    const updatedAgent = await changeAgentModel(currentAgent, modelId);
+    if (updatedAgent && setCurrentAgent) {
+      setCurrentAgent(updatedAgent);
+    }
+  };
+
   return (
     <div className="flex h-full">
       {showSessions && (
@@ -95,6 +108,7 @@ const AIAgentChat: React.FC = () => {
           useCustomPrompt={useCustomPrompt}
           currentAgent={currentAgent}
           onAgentChange={handleAgentChange}
+          onModelChange={handleModelChange}
         />
         
         <SimplifiedChatInterface
