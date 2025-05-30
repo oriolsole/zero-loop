@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -13,6 +13,7 @@ import { Settings, Save, RefreshCw } from 'lucide-react';
 import { Agent, AgentToolConfig } from '@/services/agentService';
 import { MCP } from '@/types/mcp';
 import { useAgentToolConfigs } from '@/hooks/useAgentToolConfigs';
+import { getToolIcon, getToolColor } from '@/utils/toolIcons';
 import { toast } from '@/components/ui/sonner';
 
 interface AgentToolsManagerProps {
@@ -29,6 +30,51 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
   const { toolConfigs, isLoading, updateToolConfig, deleteToolConfig } = useAgentToolConfigs(agent.id);
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
   const [editingConfigs, setEditingConfigs] = useState<Record<string, Partial<AgentToolConfig>>>({});
+  const [hasInitializedDefaults, setHasInitializedDefaults] = useState(false);
+
+  // Auto-enable core tools for default agents
+  useEffect(() => {
+    const initializeDefaultTools = async () => {
+      if (!agent.is_default || hasInitializedDefaults || isLoading || toolConfigs.length > 0) {
+        return;
+      }
+
+      // Core tools that should be enabled by default for General Assistant
+      const defaultToolKeys = [
+        'web_search',
+        'knowledge_search', 
+        'web_scraper',
+        'github_tools'
+      ];
+
+      const coreTools = availableTools.filter(tool => 
+        defaultToolKeys.includes(tool.default_key || tool.title.toLowerCase().replace(/\s+/g, '_'))
+      );
+
+      for (const tool of coreTools) {
+        try {
+          await updateToolConfig(tool.id, { 
+            is_active: true,
+            custom_title: '',
+            custom_description: '',
+            priority_override: 0,
+            custom_use_cases: []
+          });
+        } catch (error) {
+          console.error(`Failed to enable default tool ${tool.title}:`, error);
+        }
+      }
+
+      setHasInitializedDefaults(true);
+      onToolConfigUpdate?.();
+      
+      if (coreTools.length > 0) {
+        toast.success(`Enabled ${coreTools.length} core tools for General Assistant`);
+      }
+    };
+
+    initializeDefaultTools();
+  }, [agent.is_default, availableTools, toolConfigs.length, isLoading, hasInitializedDefaults, updateToolConfig, onToolConfigUpdate]);
 
   const handleToolToggle = async (mcpId: string, enabled: boolean) => {
     if (enabled) {
@@ -113,14 +159,18 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
             const isEnabled = isToolEnabled(tool.id);
             const isExpanded = expandedTool === tool.id;
             const editingConfig = getEditingConfig(tool.id);
+            const IconComponent = getToolIcon(tool.title);
+            const colorClasses = getToolColor(tool.title);
 
             return (
-              <Card key={tool.id} className={`transition-all ${isEnabled ? 'border-primary/20' : ''}`}>
+              <Card key={tool.id} className={`transition-all ${isEnabled ? 'border-primary/20 bg-primary/5' : ''}`}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <div className="text-2xl">{tool.icon}</div>
+                        <div className={`p-2 rounded-lg border ${colorClasses}`}>
+                          <IconComponent className="h-5 w-5" />
+                        </div>
                         <div>
                           <CardTitle className="text-base">{tool.title}</CardTitle>
                           <p className="text-sm text-muted-foreground">{tool.description}</p>
