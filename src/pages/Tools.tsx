@@ -4,9 +4,10 @@ import MainLayout from '@/components/layouts/MainLayout';
 import KnowledgeEngines from '@/components/knowledge/KnowledgeEngines';
 import WebScraper from '@/components/knowledge/WebScraper';
 import MCPsTab from '@/components/knowledge/MCPsTab';
+import GoogleDriveConnection from '@/components/knowledge/GoogleDriveConnection';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wrench, Cog, FileSearch, Terminal } from "lucide-react";
+import { Wrench, Cog, FileSearch, Terminal, HardDrive } from "lucide-react";
 
 const Tools: React.FC = () => {
   return (
@@ -34,6 +35,12 @@ const Tools: React.FC = () => {
               <span className="flex items-center gap-1">
                 <FileSearch className="h-4 w-4" />
                 Web Scraper
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="google-drive">
+              <span className="flex items-center gap-1">
+                <HardDrive className="h-4 w-4" />
+                Google Drive
               </span>
             </TabsTrigger>
             <TabsTrigger value="mcps">
@@ -64,6 +71,24 @@ const Tools: React.FC = () => {
           
           <TabsContent value="scraper">
             <WebScraper />
+          </TabsContent>
+          
+          <TabsContent value="google-drive">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <HardDrive className="h-5 w-5" />
+                  Google Drive Integration
+                </CardTitle>
+                <CardDescription>
+                  Connect your Google Drive to access your files through the AI agent
+                </CardDescription>
+              </CardHeader>
+              
+              <CardContent>
+                <GoogleDriveConnection />
+              </CardContent>
+            </Card>
           </TabsContent>
           
           <TabsContent value="mcps">

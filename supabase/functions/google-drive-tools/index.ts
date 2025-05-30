@@ -1,6 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { create, getNumericDate, Header, Payload } from "https://deno.land/x/djwt@v3.0.1/mod.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,104 +28,102 @@ interface DriveResponse {
   nextPageToken?: string;
 }
 
-interface ServiceAccountKey {
-  type: string;
-  project_id: string;
-  private_key_id: string;
-  private_key: string;
-  client_email: string;
-  client_id: string;
-  auth_uri: string;
-  token_uri: string;
-  auth_provider_x509_cert_url: string;
-  client_x509_cert_url: string;
-}
+// Cache for access tokens per user
+const tokenCache = new Map<string, { token: string; expires: number }>();
 
-// Cache for access tokens
-let cachedToken: { token: string; expires: number } | null = null;
-
-async function getAccessToken(): Promise<string> {
-  // Check if we have a valid cached token
-  if (cachedToken && cachedToken.expires > Date.now()) {
-    return cachedToken.token;
+async function getValidAccessToken(userId: string, supabase: any): Promise<string> {
+  // Check cache first
+  const cached = tokenCache.get(userId);
+  if (cached && cached.expires > Date.now()) {
+    return cached.token;
   }
 
-  console.log('Getting new access token from service account');
+  console.log('Getting OAuth token for user:', userId);
 
-  const serviceAccountKeyJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY');
-  if (!serviceAccountKeyJson) {
-    throw new Error('Google Service Account key not configured. Please add GOOGLE_SERVICE_ACCOUNT_KEY to Supabase secrets.');
+  // Get stored OAuth tokens
+  const { data: tokenData, error } = await supabase
+    .from('google_oauth_tokens')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (error || !tokenData) {
+    throw new Error('Google Drive not connected. Please connect your Google Drive account first.');
   }
 
-  let serviceAccountKey: ServiceAccountKey;
-  try {
-    serviceAccountKey = JSON.parse(serviceAccountKeyJson);
-  } catch (error) {
-    throw new Error('Invalid Google Service Account key format. Please ensure it\'s valid JSON.');
+  // Check if token is still valid
+  const expiresAt = new Date(tokenData.expires_at);
+  const now = new Date();
+
+  if (expiresAt > now) {
+    // Token is still valid, cache and return
+    tokenCache.set(userId, {
+      token: tokenData.access_token,
+      expires: expiresAt.getTime()
+    });
+    return tokenData.access_token;
   }
 
-  // Create JWT for Google Service Account authentication
-  const now = Math.floor(Date.now() / 1000);
-  const header: Header = {
-    alg: "RS256",
-    typ: "JWT",
-  };
+  // Token expired, refresh it
+  if (!tokenData.refresh_token) {
+    throw new Error('Google Drive connection expired. Please reconnect your account.');
+  }
 
-  const payload: Payload = {
-    iss: serviceAccountKey.client_email,
-    scope: "https://www.googleapis.com/auth/drive",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: getNumericDate(60 * 60), // 1 hour
-    iat: getNumericDate(0),
-  };
+  console.log('Refreshing expired OAuth token for user:', userId);
 
-  // Import the private key
-  const privateKey = await crypto.subtle.importKey(
-    "pkcs8",
-    new TextEncoder().encode(
-      serviceAccountKey.private_key
-        .replace(/-----BEGIN PRIVATE KEY-----/, "")
-        .replace(/-----END PRIVATE KEY-----/, "")
-        .replace(/\s/g, "")
-    ),
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      hash: "SHA-256",
-    },
-    false,
-    ["sign"]
-  );
+  const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
+  const clientSecret = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET');
 
-  const jwt = await create(header, payload, privateKey);
+  if (!clientId || !clientSecret) {
+    throw new Error('Google OAuth credentials not configured');
+  }
 
-  // Exchange JWT for access token
-  const tokenResponse = await fetch(GOOGLE_TOKEN_URL, {
+  // Refresh the token
+  const refreshResponse = await fetch(GOOGLE_TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: jwt,
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: tokenData.refresh_token,
+      grant_type: 'refresh_token',
     }),
   });
 
-  if (!tokenResponse.ok) {
-    const errorText = await tokenResponse.text();
-    console.error('Token exchange failed:', errorText);
-    throw new Error(`Failed to get access token: ${tokenResponse.status} - ${errorText}`);
+  if (!refreshResponse.ok) {
+    const errorText = await refreshResponse.text();
+    console.error('Token refresh failed:', errorText);
+    throw new Error('Failed to refresh Google Drive access. Please reconnect your account.');
   }
 
-  const tokenData = await tokenResponse.json();
-  
-  // Cache the token (expires in 1 hour, cache for 50 minutes to be safe)
-  cachedToken = {
-    token: tokenData.access_token,
-    expires: Date.now() + (50 * 60 * 1000), // 50 minutes
-  };
+  const refreshData = await refreshResponse.json();
+  const newExpiresAt = new Date(Date.now() + (refreshData.expires_in * 1000));
 
-  console.log('Successfully obtained access token');
-  return tokenData.access_token;
+  // Update stored tokens
+  const { error: updateError } = await supabase
+    .from('google_oauth_tokens')
+    .update({
+      access_token: refreshData.access_token,
+      expires_at: newExpiresAt.toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('user_id', userId);
+
+  if (updateError) {
+    console.error('Failed to update refreshed tokens:', updateError);
+    throw new Error('Failed to update authentication tokens');
+  }
+
+  // Cache the new token
+  tokenCache.set(userId, {
+    token: refreshData.access_token,
+    expires: newExpiresAt.getTime()
+  });
+
+  console.log('Successfully refreshed OAuth token for user:', userId);
+  return refreshData.access_token;
 }
 
 serve(async (req) => {
@@ -153,8 +151,18 @@ serve(async (req) => {
       throw new Error('Action parameter is required');
     }
 
-    // Get access token using service account
-    const accessToken = await getAccessToken();
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    // Initialize Supabase client
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Get valid access token (handles refresh if needed)
+    const accessToken = await getValidAccessToken(userId, supabase);
 
     const headers = {
       'Authorization': `Bearer ${accessToken}`,
@@ -230,7 +238,9 @@ serve(async (req) => {
       JSON.stringify({
         success: false,
         error: error.message,
-        details: 'Make sure Google Service Account key is properly configured in Supabase secrets'
+        details: error.message.includes('not connected') ? 
+          'Connect your Google Drive account in the Tools page' : 
+          'Check your Google Drive connection'
       }),
       { 
         status: 400,
