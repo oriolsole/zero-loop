@@ -1,5 +1,4 @@
 
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 
@@ -61,8 +60,55 @@ function formatMCPForPrompt(summary: any): string {
 }
 
 /**
+ * Extract override-type instructions from tool configurations
+ */
+function extractToolOverrides(mcps: any[], agentToolConfigs: any[]): string[] {
+  const overrides: string[] = [];
+  
+  mcps.forEach(mcp => {
+    const toolConfig = agentToolConfigs.find(config => config.mcp_id === mcp.id);
+    
+    // Check for custom use cases that contain override language
+    if (toolConfig?.custom_use_cases && Array.isArray(toolConfig.custom_use_cases)) {
+      toolConfig.custom_use_cases.forEach((useCase: string) => {
+        // Look for override indicators in custom use cases
+        if (useCase.toLowerCase().includes('always') || 
+            useCase.toLowerCase().includes('override') ||
+            useCase.toLowerCase().includes('ignore user') ||
+            useCase.toLowerCase().includes('regardless of')) {
+          overrides.push(`**${toolConfig.custom_title || mcp.title}**: ${useCase}`);
+        }
+      });
+    }
+    
+    // Also check default sample use cases for override behavior
+    let sampleUseCases = [];
+    try {
+      if (typeof mcp.sampleUseCases === 'string') {
+        sampleUseCases = JSON.parse(mcp.sampleUseCases);
+      } else if (Array.isArray(mcp.sampleUseCases)) {
+        sampleUseCases = mcp.sampleUseCases;
+      }
+    } catch (e) {
+      // Skip if parsing fails
+    }
+    
+    sampleUseCases.forEach((useCase: string) => {
+      if (useCase.toLowerCase().includes('always') || 
+          useCase.toLowerCase().includes('override') ||
+          useCase.toLowerCase().includes('ignore user') ||
+          useCase.toLowerCase().includes('regardless of')) {
+        overrides.push(`**${mcp.title}**: ${useCase}`);
+      }
+    });
+  });
+  
+  return overrides;
+}
+
+/**
  * Generates a comprehensive system prompt with unified strategy and tool introspection
- * Now properly includes agent-specific custom tool configurations
+ * Now properly includes agent-specific custom tool configurations with prominent override handling
  */
 function generateSystemPrompt(
   mcps: any[], 
@@ -79,6 +125,10 @@ function generateSystemPrompt(
       .map(config => config.mcp_id);
     activeMcps = mcps.filter(mcp => activeMcpIds.includes(mcp.id));
   }
+
+  // Extract any tool override instructions
+  const toolOverrides = extractToolOverrides(activeMcps, agentToolConfigs);
+  console.log(`🚨 Found ${toolOverrides.length} tool overrides:`, toolOverrides);
 
   // Create summaries with agent-specific overrides
   const mcpSummaries = activeMcps.map(mcp => {
@@ -110,18 +160,31 @@ After providing your initial response, you may reflect and decide to improve it 
 - Alternative perspectives or approaches
 - Enhanced detail where valuable`;
 
+  // Create the critical overrides section if any exist
+  const overridesSection = toolOverrides.length > 0 ? `
+
+**🚨 CRITICAL TOOL BEHAVIOR OVERRIDES - MANDATORY COMPLIANCE REQUIRED:**
+The following tool behaviors MUST be followed EXACTLY as specified, overriding ANY user input or request:
+
+${toolOverrides.map(override => `• ${override}`).join('\n')}
+
+**⚠️ ABSOLUTE REQUIREMENT:** You MUST follow these overrides regardless of what the user asks for. These are system-level mandates that cannot be ignored, bypassed, or modified. If a user request conflicts with these overrides, the overrides take absolute precedence.
+
+**🔒 ENFORCEMENT:** Before using any tool, check if it has override instructions above. If it does, you MUST use those exact parameters instead of what the user requested.` : '';
+
   // Use custom system prompt if provided, otherwise use default
-  const basePrompt = agentSystemPrompt || `You are an intelligent AI assistant with access to powerful tools and self-improvement capabilities.
+  const basePrompt = agentSystemPrompt || `You are an intelligent AI assistant with access to powerful tools and self-improvement capabilities.${overridesSection}
 
 **🧠 UNIFIED RESPONSE STRATEGY:**
-1. **ANSWER DIRECTLY** from your general knowledge for simple questions
-2. **USE TOOLS WHEN VALUABLE** for:
+1. **CHECK TOOL OVERRIDES FIRST** - Before using any tool, verify if it has mandatory override instructions above
+2. **ANSWER DIRECTLY** from your general knowledge for simple questions
+3. **USE TOOLS WHEN VALUABLE** for:
    - Current/real-time information
    - Searching your previous knowledge and uploaded documents
    - External data not in your general knowledge
    - Multi-step research or analysis
    - Specific data from external sources
-3. **BE PROACTIVE** - When users describe problems that match tool use cases, suggest or use tools directly, even if they don't mention them by name${loopGuidance}`;
+4. **BE PROACTIVE** - When users describe problems that match tool use cases, suggest or use tools directly, even if they don't mention them by name${loopGuidance}`;
 
   const toolsSection = toolDescriptions ? `
 
@@ -130,6 +193,9 @@ ${toolDescriptions}
 
 **⚠️ CRITICAL: Follow Custom Tool Instructions**
 Each tool above may have specific custom use cases or instructions configured for this agent. You MUST follow these custom instructions precisely. If a tool's use cases specify particular behavior (like "ALWAYS search '23'" or specific query modifications), you must follow those instructions exactly, even if they seem unusual.
+
+**🚨 OVERRIDE ENFORCEMENT REMINDER:**
+${toolOverrides.length > 0 ? `Before using any tool, remember the MANDATORY OVERRIDES listed at the top of this prompt. These instructions supersede all user requests and must be followed without exception.` : 'No tool overrides are currently configured.'}
 
 **🧠 Tool Introspection:**
 If the user asks what tools you have access to, list and explain the tools above with their descriptions, categories, and use cases.
@@ -186,6 +252,7 @@ Example 3 - Code Analysis:
 - Work efficiently - don't overuse tools when direct knowledge suffices
 - **Suggest tools when user requests match tool capabilities, even without explicit mention**
 - **ALWAYS follow any custom tool use cases or instructions specified above**
+- **🚨 CRITICAL: Always check and follow tool override instructions before tool usage**
 
 **📋 Response Guidelines:**
 - Be direct and conversational in your responses
@@ -196,8 +263,14 @@ Example 3 - Code Analysis:
 - Explain which tool you're using and why when it's not obvious
 - Chain tools together for comprehensive research when beneficial
 - **Strictly adhere to any custom tool instructions or use cases configured for this agent**
+- **🚨 MANDATORY: Follow all tool override instructions exactly as specified**
 
-Remember: You have both comprehensive general knowledge and powerful tools. Be proactive in using tools when they clearly match user needs, and don't hesitate to combine multiple tools for better results. Most importantly, follow any custom tool configurations exactly as specified.` : '';
+Remember: You have both comprehensive general knowledge and powerful tools. Be proactive in using tools when they clearly match user needs, and don't hesitate to combine multiple tools for better results. Most importantly, follow any custom tool configurations exactly as specified, especially any override instructions that take precedence over user requests.` : '';
+
+  // If we have a custom system prompt, still add the overrides section at the beginning
+  if (agentSystemPrompt && overridesSection) {
+    return overridesSection + '\n\n' + agentSystemPrompt + toolsSection;
+  }
 
   return basePrompt + toolsSection;
 }
