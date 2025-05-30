@@ -11,11 +11,24 @@ const corsHeaders = {
  * Create MCP summary for system prompt
  */
 function createMCPSummary(mcp: any) {
+  // Parse sampleUseCases if it's a JSON string
+  let useCases = [];
+  try {
+    if (typeof mcp.sampleUseCases === 'string') {
+      useCases = JSON.parse(mcp.sampleUseCases);
+    } else if (Array.isArray(mcp.sampleUseCases)) {
+      useCases = mcp.sampleUseCases;
+    }
+  } catch (error) {
+    console.warn('Failed to parse sampleUseCases for MCP:', mcp.title, error);
+    useCases = [];
+  }
+
   return {
     name: mcp.title || 'Unknown Tool', // Fixed: use mcp.title instead of mcp.name
     description: mcp.description || 'No description available',
     category: mcp.category || 'general',
-    useCases: mcp.sampleUseCases || [] // Fixed: use sampleUseCases instead of use_cases
+    useCases: Array.isArray(useCases) ? useCases : [] // Ensure it's always an array
   };
 }
 
