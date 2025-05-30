@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -77,8 +76,17 @@ export const useAIAgentChat = () => {
   };
 
   const handleAgentChange = (agent: Agent) => {
+    console.log('🔄 Agent change requested:', agent.name);
+    console.log('🔍 Agent data being set:', {
+      id: agent.id,
+      name: agent.name,
+      system_prompt: agent.system_prompt ? 'Has custom prompt' : 'No custom prompt',
+      model: agent.model,
+      loop_enabled: agent.loop_enabled
+    });
+    
     setCurrentAgent(agent);
-    console.log('🔄 Agent changed to:', agent.name);
+    console.log('✅ Agent changed to:', agent.name);
     
     if (agent.loop_enabled !== undefined) {
       setLoopEnabled(agent.loop_enabled);

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -83,21 +82,38 @@ const AgentFormModal: React.FC<AgentFormModalProps> = ({
     },
   });
 
-  // Reset form when agent changes
+  // Reset form when agent changes - with debugging
   React.useEffect(() => {
     if (isOpen) {
-      form.reset({
+      console.log('🔧 [FORM DEBUG] Modal opened, resetting form with agent data:');
+      console.log('🔧 [FORM DEBUG] Agent object:', agent);
+      console.log('🔧 [FORM DEBUG] Agent system_prompt:', agent?.system_prompt);
+      console.log('🔧 [FORM DEBUG] Mode:', mode);
+      
+      const formData = {
         name: agent?.name || '',
         description: agent?.description || '',
         model: agent?.model || currentSettings.selectedModel || 'gpt-4o',
         system_prompt: agent?.system_prompt || '',
         loop_enabled: agent?.loop_enabled || false,
         is_default: agent?.is_default || false,
-      });
+      };
+      
+      console.log('🔧 [FORM DEBUG] Form data being set:', formData);
+      
+      form.reset(formData);
+      
+      // Verify the form actually got the values
+      setTimeout(() => {
+        const currentValues = form.getValues();
+        console.log('🔧 [FORM DEBUG] Form values after reset:', currentValues);
+        console.log('🔧 [FORM DEBUG] System prompt field value:', currentValues.system_prompt);
+      }, 100);
     }
-  }, [agent, isOpen, form, currentSettings.selectedModel]);
+  }, [agent, isOpen, form, currentSettings.selectedModel, mode]);
 
   const handleSubmit = async (data: AgentFormData) => {
+    console.log('🔧 [FORM DEBUG] Form submitted with data:', data);
     try {
       await onSubmit(data);
       form.reset();
@@ -139,6 +155,11 @@ const AgentFormModal: React.FC<AgentFormModalProps> = ({
         <DialogHeader>
           <DialogTitle>
             {mode === 'create' ? 'Create New Agent' : 'Edit Agent'}
+            {mode === 'edit' && agent && (
+              <span className="text-sm font-normal text-muted-foreground block">
+                Editing: {agent.name}
+              </span>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -231,9 +252,18 @@ const AgentFormModal: React.FC<AgentFormModalProps> = ({
                       placeholder="Optional: Add a custom system prompt to define the agent's behavior..."
                       className="min-h-[100px]"
                       {...field}
+                      onChange={(e) => {
+                        console.log('🔧 [FORM DEBUG] System prompt changed:', e.target.value);
+                        field.onChange(e);
+                      }}
                     />
                   </FormControl>
                   <FormMessage />
+                  {mode === 'edit' && (
+                    <div className="text-xs text-muted-foreground">
+                      Current value: {field.value ? `"${field.value.substring(0, 100)}${field.value.length > 100 ? '...' : ''}"` : 'Empty'}
+                    </div>
+                  )}
                 </FormItem>
               )}
             />

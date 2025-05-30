@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import MainLayout from '@/components/layouts/MainLayout';
 import { useAgentManagement } from '@/hooks/useAgentManagement';
@@ -53,6 +52,20 @@ const AgentManagement: React.FC = () => {
     });
   };
 
+  const handleEditClick = (agent: Agent) => {
+    console.log('🔧 [EDIT DEBUG] Edit button clicked for agent:', agent.name);
+    console.log('🔧 [EDIT DEBUG] Full agent object:', agent);
+    console.log('🔧 [EDIT DEBUG] Agent system_prompt:', agent.system_prompt);
+    console.log('🔧 [EDIT DEBUG] Agent system_prompt length:', agent.system_prompt?.length || 0);
+    
+    setEditingAgent(agent);
+    
+    // Verify the state was set correctly
+    setTimeout(() => {
+      console.log('🔧 [EDIT DEBUG] editingAgent state after set:', editingAgent);
+    }, 100);
+  };
+
   if (isLoading) {
     return (
       <MainLayout>
@@ -96,6 +109,10 @@ const AgentManagement: React.FC = () => {
                 {agent.description && (
                   <p className="text-sm text-muted-foreground">{agent.description}</p>
                 )}
+                {/* Debug info for system prompt */}
+                <div className="text-xs text-muted-foreground">
+                  System prompt: {agent.system_prompt ? `${agent.system_prompt.length} chars` : 'None'}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-2">
@@ -109,7 +126,7 @@ const AgentManagement: React.FC = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setEditingAgent(agent)}
+                    onClick={() => handleEditClick(agent)}
                     className="flex-1"
                   >
                     <Edit className="h-4 w-4 mr-1" />
@@ -167,7 +184,10 @@ const AgentManagement: React.FC = () => {
 
       <AgentFormModal
         isOpen={!!editingAgent}
-        onClose={() => setEditingAgent(null)}
+        onClose={() => {
+          console.log('🔧 [EDIT DEBUG] Modal closed, clearing editingAgent');
+          setEditingAgent(null);
+        }}
         onSubmit={handleEditAgent}
         mode="edit"
         agent={editingAgent}
