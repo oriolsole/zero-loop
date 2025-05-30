@@ -25,7 +25,7 @@ const MCPCard: React.FC<MCPCardProps> = ({ mcp, onEdit, onDelete, onClone }) => 
   
   // Generate icon component based on mcp.icon string
   const IconComponent = () => {
-    const Icon = Icons[mcp.icon as keyof typeof Icons] || Icons.Zap;
+    const Icon = Icons[mcp.icon as keyof typeof Icons] || Icons.zap;
     return <Icon className="h-5 w-5" />;
   };
 
