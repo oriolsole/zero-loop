@@ -61,7 +61,17 @@ serve(async (req) => {
   }
 
   try {
-    const { message, conversationHistory = [], userId, sessionId, streaming = false, modelSettings, testMode = false, loopEnabled = false } = await req.json();
+    const { 
+      message, 
+      conversationHistory = [], 
+      userId, 
+      sessionId, 
+      streaming = false, 
+      modelSettings, 
+      testMode = false, 
+      loopEnabled = false,
+      customSystemPrompt // Add custom system prompt parameter
+    } = await req.json();
     
     if (!message) {
       throw new Error('Message is required');
@@ -75,7 +85,8 @@ serve(async (req) => {
       streaming,
       modelSettings,
       testMode,
-      loopEnabled
+      loopEnabled,
+      hasCustomPrompt: !!customSystemPrompt
     });
 
     // CRITICAL FIX: Do NOT store user message in database here
@@ -105,7 +116,8 @@ serve(async (req) => {
       streaming,
       supabase,
       0, // loopIteration
-      loopEnabled // Pass the loop setting
+      loopEnabled, // Pass the loop setting
+      customSystemPrompt // Pass the custom system prompt
     );
 
     // Handle streaming responses

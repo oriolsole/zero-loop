@@ -3,7 +3,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Bot, MessageSquare, Plus, Settings, Loader2, RotateCcw } from 'lucide-react';
+import { Bot, MessageSquare, Plus, Settings, Loader2, RotateCcw, Edit3 } from 'lucide-react';
 import { ModelProvider } from '@/services/modelProviderService';
 
 interface SimplifiedChatHeaderProps {
@@ -17,6 +17,8 @@ interface SimplifiedChatHeaderProps {
   isLoading: boolean;
   loopEnabled: boolean;
   onToggleLoop: (enabled: boolean) => void;
+  onOpenPromptEditor: () => void;
+  useCustomPrompt: boolean;
 }
 
 const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
@@ -26,7 +28,9 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
   onNewSession,
   isLoading,
   loopEnabled,
-  onToggleLoop
+  onToggleLoop,
+  onOpenPromptEditor,
+  useCustomPrompt
 }) => {
   return (
     <div className="border-b border-border/50 px-6 py-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -62,6 +66,21 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
                 className="h-4 w-7 data-[state=checked]:bg-primary"
               />
             </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenPromptEditor}
+              className={`h-8 px-3 ${useCustomPrompt ? 'bg-primary/10 border-primary/30 text-primary' : 'hover:bg-secondary/80'}`}
+            >
+              <Edit3 className="h-3 w-3 mr-1" />
+              <span className="text-xs font-medium">Prompt</span>
+              {useCustomPrompt && (
+                <Badge variant="secondary" className="ml-1 text-xs px-1 py-0 h-4">
+                  Custom
+                </Badge>
+              )}
+            </Button>
           </div>
         </div>
         

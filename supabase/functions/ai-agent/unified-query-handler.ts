@@ -18,7 +18,8 @@ export async function handleUnifiedQuery(
   streaming: boolean,
   supabase: any,
   loopIteration: number = 0,
-  loopEnabled: boolean = false // New parameter to control loop behavior
+  loopEnabled: boolean = false, // New parameter to control loop behavior
+  customSystemPrompt?: string // New parameter for custom system prompt
 ): Promise<any> {
   console.log(`🤖 Starting unified query handler (loop ${loopIteration}, enabled: ${loopEnabled})`);
 
@@ -190,7 +191,13 @@ export async function handleUnifiedQuery(
     }
 
     const tools = convertMCPsToTools(mcps);
-    const systemPrompt = generateUnifiedSystemPrompt(mcps, loopIteration, loopEnabled);
+    
+    // Use custom system prompt if provided, otherwise generate default
+    const systemPrompt = customSystemPrompt && customSystemPrompt.trim() 
+      ? customSystemPrompt 
+      : generateUnifiedSystemPrompt(mcps, loopIteration, loopEnabled);
+
+    console.log(`🧠 Using ${customSystemPrompt ? 'custom' : 'generated'} system prompt`);
 
     // 3. Prepare messages
     const messages = createKnowledgeAwareMessages(
@@ -400,7 +407,8 @@ export async function handleUnifiedQuery(
           streaming,
           supabase,
           loopIteration + 1,
-          loopEnabled // Pass the loop setting through recursion
+          loopEnabled, // Pass the loop setting through recursion
+          customSystemPrompt // Pass the custom system prompt through recursion
         );
       } else {
         // Store loop completion message
@@ -449,7 +457,8 @@ export async function handleUnifiedQuery(
       loopIteration,
       improvementReasoning: loopEvaluation?.reasoning,
       streamedSteps: true, // Flag to indicate steps were streamed
-      loopEnabled // Include the loop setting in response
+      loopEnabled, // Include the loop setting in response
+      usedCustomPrompt: customSystemPrompt ? true : false // Include whether custom prompt was used
     };
 
   } catch (error) {
@@ -482,7 +491,8 @@ export async function handleUnifiedQuery(
       sessionId,
       loopIteration,
       error: 'Processed with fallback response',
-      loopEnabled
+      loopEnabled,
+      usedCustomPrompt: customSystemPrompt ? true : false
     };
   }
 }

@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -7,10 +8,12 @@ import { getModelSettings } from '@/services/modelProviderService';
 import { useConversationContext } from '@/contexts/ConversationContext';
 import { useMessageManager } from '@/hooks/conversation/useMessageManager';
 import { useSessionManager } from '@/hooks/conversation/useSessionManager';
+import { useSystemPrompt } from '@/hooks/useSystemPrompt';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
 import SessionsSidebar from './SessionsSidebar';
+import SystemPromptEditor from './SystemPromptEditor';
 
 const AIAgentChat: React.FC = () => {
   const { user } = useAuth();
@@ -42,6 +45,16 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = React.useState(false);
   const [modelSettings, setModelSettings] = React.useState(getModelSettings());
   const [loopEnabled, setLoopEnabled] = React.useState(false); // Default to disabled
+  const [showPromptEditor, setShowPromptEditor] = React.useState(false);
+
+  // System prompt management
+  const {
+    customPrompt,
+    useCustomPrompt,
+    setCustomPrompt,
+    setUseCustomPrompt,
+    resetToDefault
+  } = useSystemPrompt();
 
   const activeRequests = useRef<Set<string>>(new Set());
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -169,16 +182,24 @@ const AIAgentChat: React.FC = () => {
 
       console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages, loop enabled: ${loopEnabled}`);
 
+      // Prepare the request body with custom prompt if enabled
+      const requestBody = {
+        message,
+        conversationHistory,
+        userId: user.id,
+        sessionId: currentSessionId,
+        streaming: false,
+        modelSettings: modelSettings,
+        loopEnabled: loopEnabled
+      };
+
+      // Add custom prompt if user has enabled it and provided one
+      if (useCustomPrompt && customPrompt.trim()) {
+        requestBody.customSystemPrompt = customPrompt;
+      }
+
       const { data, error } = await supabase.functions.invoke('ai-agent', {
-        body: {
-          message,
-          conversationHistory,
-          userId: user.id,
-          sessionId: currentSessionId,
-          streaming: false,
-          modelSettings: modelSettings,
-          loopEnabled: loopEnabled // Pass the loop setting to the backend
-        }
+        body: requestBody
       });
 
       if (error) {
@@ -279,6 +300,40 @@ const AIAgentChat: React.FC = () => {
     await processMessage(messageToProcess, messageId);
   };
 
+  // Generate current system prompt for preview
+  const generatedPrompt = `You are an intelligent AI assistant with access to powerful tools and self-improvement capabilities.
+
+**🧠 UNIFIED RESPONSE STRATEGY:**
+1. **ANSWER DIRECTLY** from your general knowledge for simple questions
+2. **USE TOOLS WHEN VALUABLE** for:
+   - Current/real-time information
+   - Searching your previous knowledge and uploaded documents
+   - External data not in your general knowledge
+   - Multi-step research or analysis
+   - Specific data from external sources
+3. **BE PROACTIVE** - When users describe problems that match tool use cases, suggest or use tools directly
+
+${loopEnabled ? `**🔄 SELF-IMPROVEMENT CAPABILITY:**
+After providing your initial response, you may reflect and decide to improve it further through:
+- Additional tool usage for more comprehensive information
+- Deeper analysis of the topic
+- Alternative perspectives or approaches
+- Enhanced detail where valuable` : `**🔄 SINGLE RESPONSE MODE:**
+Loops are disabled. Provide your best response in a single iteration.`}
+
+**🛠️ Available Tools:**
+[Tool descriptions would be dynamically inserted here]
+
+**💡 Decision Guidelines:**
+- Simple greetings like "hello" → respond directly
+- Basic questions you can answer → respond directly  
+- Need previous knowledge → use Knowledge Search tool
+- Need current information → use Web Search tool
+- Complex research → use multiple tools progressively
+- Don't overuse tools - your general knowledge is extensive
+
+Remember: You have comprehensive knowledge. Tools are available when needed, not required for every response.`;
+
   return (
     <div className="flex h-full">
       {showSessions && (
@@ -301,6 +356,8 @@ const AIAgentChat: React.FC = () => {
           isLoading={isLoading}
           loopEnabled={loopEnabled}
           onToggleLoop={handleToggleLoop}
+          onOpenPromptEditor={() => setShowPromptEditor(true)}
+          useCustomPrompt={useCustomPrompt}
         />
         
         <SimplifiedChatInterface
@@ -321,6 +378,19 @@ const AIAgentChat: React.FC = () => {
           modelProvider={modelSettings.provider}
         />
       </div>
+
+      <SystemPromptEditor
+        isOpen={showPromptEditor}
+        onClose={() => setShowPromptEditor(false)}
+        generatedPrompt={generatedPrompt}
+        customPrompt={customPrompt}
+        useCustomPrompt={useCustomPrompt}
+        onCustomPromptChange={setCustomPrompt}
+        onUseCustomPromptChange={setUseCustomPrompt}
+        onReset={resetToDefault}
+        toolsCount={5} // This would be dynamically calculated
+        loopEnabled={loopEnabled}
+      />
     </div>
   );
 };
