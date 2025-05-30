@@ -1,4 +1,3 @@
-
 /**
  * Agent Tool Configuration Fetcher
  * Fetches and manages agent-specific tool configurations
@@ -16,90 +15,99 @@ export async function getAgentEnabledTools(agentId: string | null, supabase: any
   }
 
   try {
-    // Fetch agent tool configurations with MCP details
-    const { data: agentToolConfigs, error } = await supabase
+    // First, check if agent has ANY tool configurations (active or inactive)
+    const { data: allAgentConfigs, error: configCheckError } = await supabase
       .from('agent_tool_configs')
-      .select(`
-        *,
-        mcps:mcp_id (
-          id,
-          title,
-          description,
-          endpoint,
-          icon,
-          parameters,
-          default_key,
-          category,
-          tags,
-          suggestedPrompt,
-          sampleUseCases,
-          requiresAuth,
-          authType,
-          authKeyName,
-          requirestoken,
-          isDefault
-        )
-      `)
-      .eq('agent_id', agentId)
-      .eq('is_active', true);
+      .select('id, is_active')
+      .eq('agent_id', agentId);
 
-    if (error) {
-      console.error('❌ Error fetching agent tool configs:', error);
-      // Don't fall back to default tools if there's an error - return empty array
+    if (configCheckError) {
+      console.error('❌ Error checking agent tool configs:', configCheckError);
       console.log('⚠️ Returning empty tools array due to query error');
       return [];
     }
 
-    if (!agentToolConfigs || agentToolConfigs.length === 0) {
-      console.log('⚠️ No tool configurations found for agent');
-      // Check if agent exists and has any configurations at all
-      const { data: anyConfigs } = await supabase
-        .from('agent_tool_configs')
-        .select('id')
-        .eq('agent_id', agentId)
-        .limit(1);
+    // If agent has explicit configurations, respect them strictly
+    if (allAgentConfigs && allAgentConfigs.length > 0) {
+      console.log(`🔧 Agent has ${allAgentConfigs.length} explicit tool configurations`);
       
-      if (anyConfigs && anyConfigs.length > 0) {
-        // Agent has configs but none are active - return empty array
-        console.log('🚫 Agent has tool configs but none are active - no tools available');
+      // Check how many are active
+      const activeCount = allAgentConfigs.filter(config => config.is_active).length;
+      console.log(`📊 Active tools: ${activeCount} / ${allAgentConfigs.length}`);
+      
+      if (activeCount === 0) {
+        console.log('🚫 Agent has explicit tool configs but NONE are active - NO TOOLS AVAILABLE');
+        console.log('🔒 Respecting user choice: agent intentionally has no tools enabled');
         return [];
-      } else {
-        // Agent has no configs at all - fall back to default tools
-        console.log('⚠️ Agent has no tool configurations, using default tools');
-        return getDefaultTools(supabase);
       }
+
+      // Fetch only the active tool configurations with MCP details
+      const { data: activeToolConfigs, error: activeError } = await supabase
+        .from('agent_tool_configs')
+        .select(`
+          *,
+          mcps:mcp_id (
+            id,
+            title,
+            description,
+            endpoint,
+            icon,
+            parameters,
+            default_key,
+            category,
+            tags,
+            suggestedPrompt,
+            sampleUseCases,
+            requiresAuth,
+            authType,
+            authKeyName,
+            requirestoken,
+            isDefault
+          )
+        `)
+        .eq('agent_id', agentId)
+        .eq('is_active', true);
+
+      if (activeError) {
+        console.error('❌ Error fetching active agent tool configs:', activeError);
+        return [];
+      }
+
+      // Transform the data to include custom configurations
+      const enabledTools = (activeToolConfigs || [])
+        .filter(config => config.mcps) // Ensure MCP data exists
+        .map(config => {
+          const mcp = config.mcps;
+          
+          // Apply custom configurations
+          return {
+            ...mcp,
+            // Override with custom configurations if provided
+            title: config.custom_title || mcp.title,
+            description: config.custom_description || mcp.description,
+            custom_use_cases: config.custom_use_cases || [],
+            // Keep reference to original config
+            agent_config: {
+              custom_title: config.custom_title,
+              custom_description: config.custom_description,
+              custom_use_cases: config.custom_use_cases
+            }
+          };
+        });
+
+      console.log(`✅ Found ${enabledTools.length} ACTIVE enabled tools for agent ${agentId}:`, 
+        enabledTools.map(t => t.title).join(', '));
+
+      return enabledTools;
+    } else {
+      // Agent has NO configurations at all - this is a completely new agent
+      console.log('🆕 Agent has no tool configurations at all - this is a new agent');
+      console.log('⚠️ Will use default tools for new agent, but configurations should be set up');
+      return getDefaultTools(supabase);
     }
-
-    // Transform the data to include custom configurations
-    const enabledTools = agentToolConfigs
-      .filter(config => config.mcps) // Ensure MCP data exists
-      .map(config => {
-        const mcp = config.mcps;
-        
-        // Apply custom configurations
-        return {
-          ...mcp,
-          // Override with custom configurations if provided
-          title: config.custom_title || mcp.title,
-          description: config.custom_description || mcp.description,
-          custom_use_cases: config.custom_use_cases || [],
-          // Keep reference to original config
-          agent_config: {
-            custom_title: config.custom_title,
-            custom_description: config.custom_description,
-            custom_use_cases: config.custom_use_cases
-          }
-        };
-      });
-
-    console.log(`✅ Found ${enabledTools.length} enabled tools for agent ${agentId}:`, 
-      enabledTools.map(t => t.title).join(', '));
-
-    return enabledTools;
 
   } catch (error) {
     console.error('❌ Exception fetching agent tools:', error);
-    // Don't fall back to default tools on exception - return empty array
     console.log('⚠️ Returning empty tools array due to exception');
     return [];
   }
@@ -134,23 +142,31 @@ async function getDefaultTools(supabase: any): Promise<any[]> {
 }
 
 /**
- * Sets up default tool configurations for an agent
+ * Sets up default tool configurations for a COMPLETELY NEW agent
  */
 export async function setupDefaultToolsForAgent(agentId: string, supabase: any): Promise<void> {
-  console.log(`🔧 Setting up default tools for agent: ${agentId}`);
+  console.log(`🔧 Checking if agent needs default tool setup: ${agentId}`);
   
   try {
-    // Check if agent already has tool configurations
-    const { data: existingConfigs } = await supabase
+    // Check if agent already has ANY tool configurations (active OR inactive)
+    const { data: existingConfigs, error: checkError } = await supabase
       .from('agent_tool_configs')
       .select('id')
       .eq('agent_id', agentId)
       .limit(1);
 
-    if (existingConfigs && existingConfigs.length > 0) {
-      console.log('⚠️ Agent already has tool configurations, skipping default setup');
+    if (checkError) {
+      console.error('❌ Error checking existing tool configs:', checkError);
       return;
     }
+
+    if (existingConfigs && existingConfigs.length > 0) {
+      console.log('🔒 Agent already has tool configurations - SKIPPING default setup');
+      console.log('📋 Respecting existing user configuration choices');
+      return;
+    }
+
+    console.log('🆕 Agent has NO configurations - setting up defaults for new agent');
 
     // Get core default tools
     const coreToolKeys = ['web-search', 'knowledge-search', 'web-scraper', 'github-tools'];
@@ -190,7 +206,7 @@ export async function setupDefaultToolsForAgent(agentId: string, supabase: any):
       return;
     }
 
-    console.log(`✅ Set up ${coreTools.length} default tools for agent:`, 
+    console.log(`✅ Set up ${coreTools.length} default tools for NEW agent:`, 
       coreTools.map(t => t.title).join(', '));
 
   } catch (error) {

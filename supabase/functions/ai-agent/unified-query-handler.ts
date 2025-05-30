@@ -1,4 +1,3 @@
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
@@ -176,24 +175,28 @@ export async function handleUnifiedQuery(
     
     let mcps: any[] = [];
     try {
-      // Setup default tools for agent if none exist (for new agents)
+      // ONLY setup default tools for completely new agents with zero configurations
+      // DO NOT auto-setup tools for existing agents with explicit configurations
       if (agentId && userId) {
+        console.log(`🔍 Checking if agent ${agentId} needs initial tool setup`);
         await setupDefaultToolsForAgent(agentId, supabase);
       }
       
-      // Fetch enabled tools for this specific agent
+      // Fetch enabled tools for this specific agent with strict enforcement
       mcps = await getAgentEnabledTools(agentId, supabase);
       
       console.log(`🛠️ Agent ${agentId} has access to ${mcps.length} tools:`, 
-        mcps.map(m => m.title).join(', ') || 'none');
+        mcps.map(m => m.title).join(', ') || 'NONE');
         
-      // Important: Don't fall back to default tools here - respect the agent configuration
+      // Strict enforcement: If agent has 0 tools, it means user explicitly disabled all tools
       if (mcps.length === 0) {
-        console.log('🚫 No tools available for this agent - proceeding without tools');
+        console.log('🚫 Agent has NO tools available - respecting user configuration');
+        console.log('🔒 This agent will operate without any tool access');
       }
     } catch (toolError) {
       console.error('❌ Failed to fetch agent tools:', toolError);
-      mcps = []; // No fallback - respect agent configuration
+      mcps = []; // No fallback - respect configuration errors as "no tools"
+      console.log('⚠️ Due to error, agent will have NO tool access');
     }
 
     const tools = convertMCPsToTools(mcps);
