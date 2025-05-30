@@ -1,6 +1,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
+import type { Json } from '@/integrations/supabase/types';
 
 export interface Agent {
   id: string;
@@ -39,6 +40,21 @@ export interface CreateAgentInput {
 
 export interface UpdateAgentInput extends Partial<CreateAgentInput> {
   id: string;
+}
+
+// Helper function to safely transform JSON to string array
+function transformCustomUseCases(useCases: Json | null): string[] | undefined {
+  if (!useCases) return undefined;
+  if (Array.isArray(useCases)) {
+    return useCases.filter((item): item is string => typeof item === 'string');
+  }
+  return undefined;
+}
+
+// Helper function to transform string array to JSON for storage
+function serializeCustomUseCases(useCases: string[] | undefined): Json | null {
+  if (!useCases || !Array.isArray(useCases)) return null;
+  return useCases as Json;
 }
 
 export const agentService = {
@@ -214,7 +230,11 @@ export const agentService = {
       return [];
     }
 
-    return data || [];
+    // Transform the data to match our interface
+    return (data || []).map(config => ({
+      ...config,
+      custom_use_cases: transformCustomUseCases(config.custom_use_cases),
+    }));
   },
 
   /**
@@ -231,6 +251,7 @@ export const agentService = {
         agent_id: agentId,
         mcp_id: mcpId,
         ...config,
+        custom_use_cases: serializeCustomUseCases(config.custom_use_cases),
       })
       .select()
       .single();
@@ -241,7 +262,11 @@ export const agentService = {
       return null;
     }
 
-    return data;
+    // Transform the response data to match our interface
+    return {
+      ...data,
+      custom_use_cases: transformCustomUseCases(data.custom_use_cases),
+    };
   },
 
   /**
