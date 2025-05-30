@@ -13,7 +13,7 @@ export const useAvailableMCPs = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const allMCPs = await mcpService.getMCPs();
+      const allMCPs = await mcpService.fetchMCPs();
       setMcps(allMCPs);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load tools';
