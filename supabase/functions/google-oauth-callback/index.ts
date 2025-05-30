@@ -16,56 +16,56 @@ serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const code = url.searchParams.get('code');
-    const state = url.searchParams.get('state');
-    const error = url.searchParams.get('error');
-
-    if (error) {
-      console.error('OAuth error:', error);
-      return new Response(
-        `<html><body><script>window.close();</script><p>Authentication failed: ${error}</p></body></html>`,
-        { headers: { 'Content-Type': 'text/html' } }
-      );
-    }
-
-    if (!code) {
-      throw new Error('No authorization code received');
-    }
-
-    const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
-    const clientSecret = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET');
     
-    if (!clientId || !clientSecret) {
-      throw new Error('Google OAuth credentials not configured');
-    }
+    // Handle GET request (OAuth redirect from Google)
+    if (req.method === 'GET') {
+      const code = url.searchParams.get('code');
+      const state = url.searchParams.get('state');
+      const error = url.searchParams.get('error');
 
-    // Exchange code for tokens
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code: code,
-        grant_type: 'authorization_code',
-        redirect_uri: `${Deno.env.get('SUPABASE_URL')}/functions/v1/google-oauth-callback`,
-      }),
-    });
+      if (error) {
+        console.error('OAuth error:', error);
+        return new Response(
+          `<html><body><script>window.close();</script><p>Authentication failed: ${error}</p></body></html>`,
+          { headers: { 'Content-Type': 'text/html' } }
+        );
+      }
 
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error('Token exchange failed:', errorText);
-      throw new Error('Failed to exchange code for tokens');
-    }
+      if (!code) {
+        throw new Error('No authorization code received');
+      }
 
-    const tokenData = await tokenResponse.json();
-    
-    // Get user info from authorization header (passed in state or separate endpoint)
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      // For now, we'll store this temporarily and let the frontend handle it
+      const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
+      const clientSecret = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET');
+      
+      if (!clientId || !clientSecret) {
+        throw new Error('Google OAuth credentials not configured');
+      }
+
+      // Exchange code for tokens
+      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code: code,
+          grant_type: 'authorization_code',
+          redirect_uri: `${Deno.env.get('SUPABASE_URL')}/functions/v1/google-oauth-callback`,
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error('Token exchange failed:', errorText);
+        throw new Error('Failed to exchange code for tokens');
+      }
+
+      const tokenData = await tokenResponse.json();
+      
+      // Return HTML that sends tokens to parent window
       const successHtml = `
         <html>
           <body>
@@ -86,45 +86,61 @@ serve(async (req) => {
       });
     }
 
-    // If we have auth header, store tokens directly
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    // Handle POST request (store tokens from authenticated frontend)
+    if (req.method === 'POST') {
+      const { tokens, user_id } = await req.json();
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+      if (!tokens || !user_id) {
+        throw new Error('Missing tokens or user_id');
+      }
 
-    if (userError || !user) {
-      throw new Error('Invalid user token');
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+
+      // Calculate expiration time
+      const expiresAt = tokens.expires_at || new Date(Date.now() + (tokens.expires_in * 1000)).toISOString();
+
+      // Store or update tokens
+      const { error: insertError } = await supabase
+        .from('google_oauth_tokens')
+        .upsert({
+          user_id: user_id,
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expires_at: expiresAt,
+          scope: tokens.scope || 'https://www.googleapis.com/auth/drive',
+          updated_at: new Date().toISOString()
+        });
+
+      if (insertError) {
+        console.error('Failed to store tokens:', insertError);
+        throw new Error('Failed to store authentication tokens');
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Google Drive connected successfully'
+        }),
+        { 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
     }
 
-    // Calculate expiration time
-    const expiresAt = new Date(Date.now() + (tokenData.expires_in * 1000));
-
-    // Store or update tokens
-    const { error: insertError } = await supabase
-      .from('google_oauth_tokens')
-      .upsert({
-        user_id: user.id,
-        access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token,
-        expires_at: expiresAt.toISOString(),
-        scope: tokenData.scope || 'https://www.googleapis.com/auth/drive',
-        updated_at: new Date().toISOString()
-      });
-
-    if (insertError) {
-      console.error('Failed to store tokens:', insertError);
-      throw new Error('Failed to store authentication tokens');
-    }
-
+    // Method not allowed
     return new Response(
       JSON.stringify({
-        success: true,
-        message: 'Google Drive connected successfully'
+        success: false,
+        error: 'Method not allowed'
       }),
       { 
+        status: 405,
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json' 
