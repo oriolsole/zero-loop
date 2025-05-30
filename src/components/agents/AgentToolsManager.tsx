@@ -1,0 +1,243 @@
+
+import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Settings, Save, RefreshCw } from 'lucide-react';
+import { Agent, AgentToolConfig } from '@/services/agentService';
+import { MCP } from '@/types/mcp';
+import { useAgentToolConfigs } from '@/hooks/useAgentToolConfigs';
+import { toast } from '@/components/ui/sonner';
+
+interface AgentToolsManagerProps {
+  agent: Agent;
+  availableTools: MCP[];
+  onToolConfigUpdate?: () => void;
+}
+
+const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
+  agent,
+  availableTools,
+  onToolConfigUpdate
+}) => {
+  const { toolConfigs, isLoading, updateToolConfig, deleteToolConfig } = useAgentToolConfigs(agent.id);
+  const [expandedTool, setExpandedTool] = useState<string | null>(null);
+  const [editingConfigs, setEditingConfigs] = useState<Record<string, Partial<AgentToolConfig>>>({});
+
+  const handleToolToggle = async (mcpId: string, enabled: boolean) => {
+    if (enabled) {
+      await updateToolConfig(mcpId, { is_active: true });
+    } else {
+      await deleteToolConfig(mcpId);
+    }
+    onToolConfigUpdate?.();
+  };
+
+  const handleConfigUpdate = async (mcpId: string) => {
+    const config = editingConfigs[mcpId];
+    if (config) {
+      await updateToolConfig(mcpId, config);
+      setEditingConfigs(prev => {
+        const { [mcpId]: _, ...rest } = prev;
+        return rest;
+      });
+      setExpandedTool(null);
+      onToolConfigUpdate?.();
+      toast.success('Tool configuration saved');
+    }
+  };
+
+  const handleConfigChange = (mcpId: string, field: keyof AgentToolConfig, value: any) => {
+    setEditingConfigs(prev => ({
+      ...prev,
+      [mcpId]: {
+        ...prev[mcpId],
+        [field]: value
+      }
+    }));
+  };
+
+  const getToolConfig = (mcpId: string): AgentToolConfig | null => {
+    return toolConfigs.find(config => config.mcp_id === mcpId) || null;
+  };
+
+  const isToolEnabled = (mcpId: string): boolean => {
+    const config = getToolConfig(mcpId);
+    return config?.is_active || false;
+  };
+
+  const getEditingConfig = (mcpId: string): Partial<AgentToolConfig> => {
+    const existingConfig = getToolConfig(mcpId);
+    return editingConfigs[mcpId] || {
+      custom_title: existingConfig?.custom_title || '',
+      custom_description: existingConfig?.custom_description || '',
+      priority_override: existingConfig?.priority_override || 0,
+      custom_use_cases: existingConfig?.custom_use_cases || []
+    };
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-8">
+          <RefreshCw className="h-6 w-6 animate-spin mr-2" />
+          Loading tool configurations...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Agent Tools Configuration</h3>
+          <p className="text-sm text-muted-foreground">
+            Configure which tools this agent can use and customize their behavior
+          </p>
+        </div>
+        <Badge variant="outline" className="text-xs">
+          {toolConfigs.filter(c => c.is_active).length} / {availableTools.length} enabled
+        </Badge>
+      </div>
+
+      <ScrollArea className="h-[600px]">
+        <div className="space-y-3">
+          {availableTools.map((tool) => {
+            const isEnabled = isToolEnabled(tool.id);
+            const isExpanded = expandedTool === tool.id;
+            const editingConfig = getEditingConfig(tool.id);
+
+            return (
+              <Card key={tool.id} className={`transition-all ${isEnabled ? 'border-primary/20' : ''}`}>
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="text-2xl">{tool.icon}</div>
+                        <div>
+                          <CardTitle className="text-base">{tool.title}</CardTitle>
+                          <p className="text-sm text-muted-foreground">{tool.description}</p>
+                        </div>
+                      </div>
+                      
+                      {tool.category && (
+                        <Badge variant="secondary" className="text-xs">
+                          {tool.category}
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={isEnabled}
+                        onCheckedChange={(checked) => handleToolToggle(tool.id, checked)}
+                      />
+                      {isEnabled && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setExpandedTool(isExpanded ? null : tool.id)}
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+
+                {isEnabled && isExpanded && (
+                  <CardContent className="pt-0">
+                    <Separator className="mb-4" />
+                    
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor={`title-${tool.id}`}>Custom Title</Label>
+                          <Input
+                            id={`title-${tool.id}`}
+                            value={editingConfig.custom_title || ''}
+                            onChange={(e) => handleConfigChange(tool.id, 'custom_title', e.target.value)}
+                            placeholder={tool.title}
+                          />
+                        </div>
+                        
+                        <div>
+                          <Label htmlFor={`priority-${tool.id}`}>Priority Override</Label>
+                          <Input
+                            id={`priority-${tool.id}`}
+                            type="number"
+                            value={editingConfig.priority_override || 0}
+                            onChange={(e) => handleConfigChange(tool.id, 'priority_override', parseInt(e.target.value) || 0)}
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`description-${tool.id}`}>Custom Description</Label>
+                        <Textarea
+                          id={`description-${tool.id}`}
+                          value={editingConfig.custom_description || ''}
+                          onChange={(e) => handleConfigChange(tool.id, 'custom_description', e.target.value)}
+                          placeholder={tool.description}
+                          className="min-h-[80px]"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`use-cases-${tool.id}`}>Custom Use Cases</Label>
+                        <Textarea
+                          id={`use-cases-${tool.id}`}
+                          value={(editingConfig.custom_use_cases || []).join('\n')}
+                          onChange={(e) => handleConfigChange(tool.id, 'custom_use_cases', e.target.value.split('\n').filter(line => line.trim()))}
+                          placeholder="Enter one use case per line..."
+                          className="min-h-[60px]"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Describe specific scenarios where this agent should use this tool
+                        </p>
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setExpandedTool(null);
+                            setEditingConfigs(prev => {
+                              const { [tool.id]: _, ...rest } = prev;
+                              return rest;
+                            });
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleConfigUpdate(tool.id)}
+                          className="gap-2"
+                        >
+                          <Save className="h-3 w-3" />
+                          Save Configuration
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+};
+
+export default AgentToolsManager;

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -30,8 +31,11 @@ import {
   SelectLabel,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Agent } from '@/services/agentService';
 import { getOpenAIModels, getNpawModels, getModelSettings } from '@/services/modelProviderService';
+import { useAvailableMCPs } from '@/hooks/useAvailableMCPs';
+import AgentToolsManager from './AgentToolsManager';
 
 const agentSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
@@ -63,6 +67,9 @@ const AgentFormModal: React.FC<AgentFormModalProps> = ({
   const openAIModels = getOpenAIModels();
   const npawModels = getNpawModels();
   const currentSettings = getModelSettings();
+  
+  // Load available MCPs for tools configuration
+  const { mcps: availableMCPs } = useAvailableMCPs();
   
   // Group models by category for better organization
   const modelsByProvider = {
@@ -151,7 +158,7 @@ const AgentFormModal: React.FC<AgentFormModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {mode === 'create' ? 'Create New Agent' : 'Edit Agent'}
@@ -163,168 +170,195 @@ const AgentFormModal: React.FC<AgentFormModalProps> = ({
           </DialogTitle>
         </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Research Assistant" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+        <Tabs defaultValue="general" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="general">General Settings</TabsTrigger>
+            <TabsTrigger value="tools" disabled={mode === 'create'}>
+              Tools Configuration
+              {mode === 'create' && (
+                <span className="ml-2 text-xs text-muted-foreground">(Save agent first)</span>
               )}
-            />
+            </TabsTrigger>
+          </TabsList>
 
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Describe what this agent is designed to do..."
-                      className="min-h-[80px]"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="model"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Model *</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a model" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {Object.entries(modelsByProvider).map(([provider, models]) => (
-                        <SelectGroup key={provider}>
-                          <SelectLabel className="flex items-center gap-2">
-                            <Badge 
-                              variant="outline" 
-                              className={`text-xs ${getProviderBadgeColor(provider)}`}
-                            >
-                              {getProviderLabel(provider)}
-                            </Badge>
-                          </SelectLabel>
-                          {models.map((model) => (
-                            <SelectItem key={model.id} value={model.id}>
-                              <div className="flex flex-col">
-                                <span>{model.name}</span>
-                                {model.description && (
-                                  <span className="text-xs text-muted-foreground">
-                                    {model.description}
-                                  </span>
-                                )}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="system_prompt"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Custom System Prompt</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Optional: Add a custom system prompt to define the agent's behavior..."
-                      className="min-h-[100px]"
-                      {...field}
-                      onChange={(e) => {
-                        console.log('🔧 [FORM DEBUG] System prompt changed:', e.target.value);
-                        field.onChange(e);
-                      }}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                  {mode === 'edit' && (
-                    <div className="text-xs text-muted-foreground">
-                      Current value: {field.value ? `"${field.value.substring(0, 100)}${field.value.length > 100 ? '...' : ''}"` : 'Empty'}
-                    </div>
+          <TabsContent value="general" className="space-y-4">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Name *</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Research Assistant" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
                   )}
-                </FormItem>
-              )}
-            />
+                />
 
-            <FormField
-              control={form.control}
-              name="loop_enabled"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel className="text-base">Self-Improvement</FormLabel>
-                    <div className="text-sm text-muted-foreground">
-                      Allow this agent to reflect and improve its responses
-                    </div>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Describe what this agent is designed to do..."
+                          className="min-h-[80px]"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            {mode === 'edit' && (
-              <FormField
-                control={form.control}
-                name="is_default"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-base">Default Agent</FormLabel>
-                      <div className="text-sm text-muted-foreground">
-                        Set as the default agent for new conversations
+                <FormField
+                  control={form.control}
+                  name="model"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Model *</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a model" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {Object.entries(modelsByProvider).map(([provider, models]) => (
+                            <SelectGroup key={provider}>
+                              <SelectLabel className="flex items-center gap-2">
+                                <Badge 
+                                  variant="outline" 
+                                  className={`text-xs ${getProviderBadgeColor(provider)}`}
+                                >
+                                  {getProviderLabel(provider)}
+                                </Badge>
+                              </SelectLabel>
+                              {models.map((model) => (
+                                <SelectItem key={model.id} value={model.id}>
+                                  <div className="flex flex-col">
+                                    <span>{model.name}</span>
+                                    {model.description && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {model.description}
+                                      </span>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="system_prompt"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Custom System Prompt</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Optional: Add a custom system prompt to define the agent's behavior..."
+                          className="min-h-[100px]"
+                          {...field}
+                          onChange={(e) => {
+                            console.log('🔧 [FORM DEBUG] System prompt changed:', e.target.value);
+                            field.onChange(e);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      {mode === 'edit' && (
+                        <div className="text-xs text-muted-foreground">
+                          Current value: {field.value ? `"${field.value.substring(0, 100)}${field.value.length > 100 ? '...' : ''}"` : 'Empty'}
+                        </div>
+                      )}
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="loop_enabled"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                      <div className="space-y-0.5">
+                        <FormLabel className="text-base">Self-Improvement</FormLabel>
+                        <div className="text-sm text-muted-foreground">
+                          Allow this agent to reflect and improve its responses
+                        </div>
                       </div>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                {mode === 'edit' && (
+                  <FormField
+                    control={form.control}
+                    name="is_default"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-base">Default Agent</FormLabel>
+                          <div className="text-sm text-muted-foreground">
+                            Set as the default agent for new conversations
+                          </div>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
                 )}
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button type="button" variant="outline" onClick={handleClose}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={form.formState.isSubmitting}>
+                    {form.formState.isSubmitting 
+                      ? (mode === 'create' ? 'Creating...' : 'Updating...')
+                      : (mode === 'create' ? 'Create Agent' : 'Update Agent')
+                    }
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </TabsContent>
+
+          <TabsContent value="tools" className="space-y-4">
+            {agent && (
+              <AgentToolsManager
+                agent={agent}
+                availableTools={availableMCPs}
+                onToolConfigUpdate={() => {
+                  // Optional: Refresh or update parent state
+                  console.log('Tool configuration updated for agent:', agent.name);
+                }}
               />
             )}
-
-            <div className="flex justify-end gap-2 pt-4">
-              <Button type="button" variant="outline" onClick={handleClose}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting 
-                  ? (mode === 'create' ? 'Creating...' : 'Updating...')
-                  : (mode === 'create' ? 'Create Agent' : 'Update Agent')
-                }
-              </Button>
-            </div>
-          </form>
-        </Form>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
