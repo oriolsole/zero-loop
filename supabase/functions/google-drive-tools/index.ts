@@ -167,9 +167,20 @@ serve(async (req) => {
         .from('google_oauth_tokens')
         .select('expires_at, scope')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
-      if (error || !tokenData) {
+      if (error) {
+        console.error('Error checking connection status:', error);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: { connected: false }
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!tokenData) {
         return new Response(
           JSON.stringify({
             success: true,
@@ -200,6 +211,9 @@ serve(async (req) => {
       if (error) {
         throw new Error('Failed to disconnect Google Drive');
       }
+
+      // Clear cache
+      tokenCache.delete(userId);
 
       return new Response(
         JSON.stringify({

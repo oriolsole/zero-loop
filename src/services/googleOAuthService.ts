@@ -38,7 +38,15 @@ class GoogleOAuthService {
       throw new Error('User not authenticated');
     }
 
-    const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000));
+    // Handle missing expires_in with default
+    const expiresInSeconds = tokens.expires_in || 3600;
+    const expiresAt = new Date(Date.now() + (expiresInSeconds * 1000));
+
+    console.log('Completing OAuth with tokens:', { 
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      expiresIn: expiresInSeconds 
+    });
 
     // Use the edge function to handle token storage
     const { error } = await supabase.functions.invoke('google-oauth-callback', {
@@ -52,8 +60,11 @@ class GoogleOAuthService {
     });
 
     if (error) {
-      throw new Error('Failed to save OAuth tokens');
+      console.error('Failed to save OAuth tokens:', error);
+      throw new Error(`Failed to save OAuth tokens: ${error.message}`);
     }
+
+    console.log('OAuth tokens saved successfully');
   }
 
   /**
@@ -67,23 +78,28 @@ class GoogleOAuthService {
     }
 
     try {
-      // Try to make a simple call to check if tokens exist and are valid
-      const response = await supabase.functions.invoke('google-drive-tools', {
-        body: {
-          action: 'get_connection_status',
-          userId: user.id
-        }
-      });
+      // Check if tokens exist in database
+      const { data: tokenData, error } = await supabase
+        .from('google_oauth_tokens')
+        .select('expires_at, scope')
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-      if (response.error) {
+      if (error) {
+        console.error('Error checking connection status:', error);
+        return { connected: false };
+      }
+
+      if (!tokenData) {
         return { connected: false };
       }
 
       return {
-        connected: response.data?.connected || false,
-        expires_at: response.data?.expires_at
+        connected: true,
+        expires_at: tokenData.expires_at
       };
     } catch (error) {
+      console.error('Error in getConnectionStatus:', error);
       return { connected: false };
     }
   }
@@ -98,15 +114,14 @@ class GoogleOAuthService {
       throw new Error('User not authenticated');
     }
 
-    const { error } = await supabase.functions.invoke('google-drive-tools', {
-      body: {
-        action: 'disconnect',
-        userId: user.id
-      }
-    });
+    const { error } = await supabase
+      .from('google_oauth_tokens')
+      .delete()
+      .eq('user_id', user.id);
 
     if (error) {
-      throw new Error('Failed to disconnect Google Drive');
+      console.error('Failed to disconnect:', error);
+      throw new Error(`Failed to disconnect Google Drive: ${error.message}`);
     }
   }
 
@@ -125,27 +140,34 @@ class GoogleOAuthService {
         );
 
         if (!popup) {
-          reject(new Error('Failed to open popup window'));
+          reject(new Error('Failed to open popup window. Please check if popups are blocked.'));
           return;
         }
 
         // Listen for OAuth completion
         const messageHandler = async (event: MessageEvent) => {
+          // Only accept messages from our origin
           if (event.origin !== window.location.origin) {
             return;
           }
 
           if (event.data.type === 'google-oauth-success') {
             try {
+              console.log('Received OAuth success message');
               await this.completeOAuth(event.data.tokens);
               window.removeEventListener('message', messageHandler);
               popup.close();
               resolve();
             } catch (error) {
+              console.error('Error completing OAuth:', error);
               window.removeEventListener('message', messageHandler);
               popup.close();
               reject(error);
             }
+          } else if (event.data.type === 'google-oauth-error') {
+            window.removeEventListener('message', messageHandler);
+            popup.close();
+            reject(new Error(`OAuth error: ${event.data.error}`));
           }
         };
 
@@ -161,6 +183,7 @@ class GoogleOAuthService {
         }, 1000);
 
       } catch (error) {
+        console.error('Error in connectWithPopup:', error);
         reject(error);
       }
     });

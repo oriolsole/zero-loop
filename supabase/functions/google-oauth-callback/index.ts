@@ -26,7 +26,7 @@ serve(async (req) => {
       if (error) {
         console.error('OAuth error:', error);
         return new Response(
-          `<html><body><script>window.close();</script><p>Authentication failed: ${error}</p></body></html>`,
+          `<html><body><script>window.opener.postMessage({type: 'google-oauth-error', error: '${error}'}, window.location.origin);window.close();</script><p>Authentication failed: ${error}</p></body></html>`,
           { headers: { 'Content-Type': 'text/html' } }
         );
       }
@@ -65,16 +65,35 @@ serve(async (req) => {
 
       const tokenData = await tokenResponse.json();
       
+      // Handle missing fields with defaults
+      const processedTokens = {
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token || null,
+        expires_in: tokenData.expires_in || 3600, // Default to 1 hour
+        scope: tokenData.scope || 'https://www.googleapis.com/auth/drive',
+        token_type: tokenData.token_type || 'Bearer'
+      };
+      
       // Return HTML that sends tokens to parent window
       const successHtml = `
         <html>
           <body>
             <script>
-              window.opener.postMessage({
-                type: 'google-oauth-success',
-                tokens: ${JSON.stringify(tokenData)}
-              }, window.location.origin);
-              window.close();
+              try {
+                if (window.opener) {
+                  window.opener.postMessage({
+                    type: 'google-oauth-success',
+                    tokens: ${JSON.stringify(processedTokens)}
+                  }, window.location.origin);
+                  setTimeout(() => window.close(), 500);
+                } else {
+                  console.error('No opener window found');
+                  document.body.innerHTML = '<p>Please close this window and try again.</p>';
+                }
+              } catch (error) {
+                console.error('Error posting message:', error);
+                document.body.innerHTML = '<p>Authentication completed. Please close this window.</p>';
+              }
             </script>
             <p>Authentication successful! This window will close automatically.</p>
           </body>
@@ -94,30 +113,41 @@ serve(async (req) => {
         throw new Error('Missing tokens or user_id');
       }
 
+      if (!tokens.access_token) {
+        throw new Error('Missing access_token in tokens');
+      }
+
       const supabase = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       );
 
-      // Calculate expiration time
-      const expiresAt = tokens.expires_at || new Date(Date.now() + (tokens.expires_in * 1000)).toISOString();
+      // Calculate expiration time - handle missing expires_in
+      const expiresInSeconds = tokens.expires_in || 3600; // Default to 1 hour
+      const expiresAt = tokens.expires_at || new Date(Date.now() + (expiresInSeconds * 1000)).toISOString();
 
-      // Store or update tokens
-      const { error: insertError } = await supabase
+      console.log('Storing tokens for user:', user_id);
+
+      // Store or update tokens using upsert
+      const { error: upsertError } = await supabase
         .from('google_oauth_tokens')
         .upsert({
           user_id: user_id,
           access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
+          refresh_token: tokens.refresh_token || null,
           expires_at: expiresAt,
           scope: tokens.scope || 'https://www.googleapis.com/auth/drive',
           updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
         });
 
-      if (insertError) {
-        console.error('Failed to store tokens:', insertError);
-        throw new Error('Failed to store authentication tokens');
+      if (upsertError) {
+        console.error('Failed to store tokens:', upsertError);
+        throw new Error(`Failed to store authentication tokens: ${upsertError.message}`);
       }
+
+      console.log('Successfully stored tokens for user:', user_id);
 
       return new Response(
         JSON.stringify({
