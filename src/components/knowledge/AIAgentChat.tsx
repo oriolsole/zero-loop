@@ -45,7 +45,7 @@ const AIAgentChat: React.FC = () => {
 
   const [showSessions, setShowSessions] = useState(false);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
-  const [showAgentModal, setShowAgentModal] = useState(false);
+  const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
 
   // System prompt management - now agent-aware
   const {
@@ -104,12 +104,17 @@ const AIAgentChat: React.FC = () => {
       toast.error('No agent selected');
       return;
     }
-    setShowAgentModal(true);
+    setModalMode('edit');
   };
 
   // Handle creating new agent
   const handleCreateAgent = () => {
-    setShowAgentModal(true);
+    setModalMode('create');
+  };
+
+  // Handle closing modal
+  const handleCloseModal = () => {
+    setModalMode(null);
   };
 
   // Handle agent creation/update
@@ -117,14 +122,14 @@ const AIAgentChat: React.FC = () => {
     try {
       let savedAgent: Agent | null = null;
       
-      if (currentAgent && showAgentModal) {
+      if (modalMode === 'edit' && currentAgent) {
         // Update existing agent
         savedAgent = await agentService.updateAgent({
           id: currentAgent.id,
           ...agentData
         });
         toast.success('Agent updated successfully');
-      } else {
+      } else if (modalMode === 'create') {
         // Create new agent
         savedAgent = await agentService.createAgent(agentData);
         toast.success('Agent created successfully');
@@ -134,7 +139,7 @@ const AIAgentChat: React.FC = () => {
         handleAgentChange(savedAgent);
       }
       
-      setShowAgentModal(false);
+      setModalMode(null);
     } catch (error) {
       console.error('Failed to save agent:', error);
       toast.error('Failed to save agent');
@@ -204,11 +209,11 @@ const AIAgentChat: React.FC = () => {
       />
 
       <AgentFormModal
-        isOpen={showAgentModal}
-        onClose={() => setShowAgentModal(false)}
+        isOpen={modalMode !== null}
+        onClose={handleCloseModal}
         onSubmit={handleAgentSubmit}
-        mode={currentAgent ? 'edit' : 'create'}
-        agent={currentAgent}
+        mode={modalMode || 'create'}
+        agent={modalMode === 'edit' ? currentAgent : null}
       />
     </div>
   );
