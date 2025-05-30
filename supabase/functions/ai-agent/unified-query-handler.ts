@@ -1,3 +1,4 @@
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
@@ -21,7 +22,7 @@ export async function handleUnifiedQuery(
   loopIteration: number = 0,
   loopEnabled: boolean = false,
   customSystemPrompt?: string,
-  agentId?: string // Updated to use agentId for tool configuration
+  agentId?: string
 ): Promise<any> {
   console.log(`🤖 Starting unified query handler (loop ${loopIteration}, enabled: ${loopEnabled}, agent: ${agentId})`);
   console.log(`🧠 Custom system prompt received: ${customSystemPrompt ? 'YES' : 'NO'}`);
@@ -170,7 +171,7 @@ export async function handleUnifiedQuery(
       );
     }
 
-    // 2. Get agent-specific enabled tools with better error handling
+    // 2. Get agent-specific enabled tools with strict enforcement
     console.log(`🔧 Fetching tools for agent: ${agentId}`);
     
     let mcps: any[] = [];
@@ -183,15 +184,16 @@ export async function handleUnifiedQuery(
       // Fetch enabled tools for this specific agent
       mcps = await getAgentEnabledTools(agentId, supabase);
       
+      console.log(`🛠️ Agent ${agentId} has access to ${mcps.length} tools:`, 
+        mcps.map(m => m.title).join(', ') || 'none');
+        
+      // Important: Don't fall back to default tools here - respect the agent configuration
       if (mcps.length === 0) {
-        console.log('⚠️ No tools available for agent, continuing without tools');
-      } else {
-        console.log(`✅ Agent ${agentId} has access to ${mcps.length} tools:`, 
-          mcps.map(m => m.title).join(', '));
+        console.log('🚫 No tools available for this agent - proceeding without tools');
       }
     } catch (toolError) {
-      console.error('❌ Failed to fetch agent tools, continuing without tools:', toolError);
-      mcps = [];
+      console.error('❌ Failed to fetch agent tools:', toolError);
+      mcps = []; // No fallback - respect agent configuration
     }
 
     const tools = convertMCPsToTools(mcps);
@@ -462,7 +464,9 @@ export async function handleUnifiedQuery(
       finalResponse = createFallbackResponse(message, allToolsUsed);
     }
 
-    console.log(`🎯 Final response: "${finalResponse.substring(0, 100)}${finalResponse.length > 100 ? '...' : ''}"`);
+    console.log(`🛠️ Tools available: ${mcps.length}`);
+    console.log(`📏 Response length: ${finalResponse.length}`);
+    console.log(`✅ Unified query completed successfully for agent: ${agentId}`);
 
     return {
       success: true,

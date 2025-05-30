@@ -16,7 +16,7 @@ export async function getAgentEnabledTools(agentId: string | null, supabase: any
   }
 
   try {
-    // Fetch agent tool configurations with MCP details - removing priority column reference
+    // Fetch agent tool configurations with MCP details
     const { data: agentToolConfigs, error } = await supabase
       .from('agent_tool_configs')
       .select(`
@@ -45,12 +45,29 @@ export async function getAgentEnabledTools(agentId: string | null, supabase: any
 
     if (error) {
       console.error('❌ Error fetching agent tool configs:', error);
-      return getDefaultTools(supabase);
+      // Don't fall back to default tools if there's an error - return empty array
+      console.log('⚠️ Returning empty tools array due to query error');
+      return [];
     }
 
     if (!agentToolConfigs || agentToolConfigs.length === 0) {
-      console.log('⚠️ No tool configurations found for agent, using default tools');
-      return getDefaultTools(supabase);
+      console.log('⚠️ No tool configurations found for agent');
+      // Check if agent exists and has any configurations at all
+      const { data: anyConfigs } = await supabase
+        .from('agent_tool_configs')
+        .select('id')
+        .eq('agent_id', agentId)
+        .limit(1);
+      
+      if (anyConfigs && anyConfigs.length > 0) {
+        // Agent has configs but none are active - return empty array
+        console.log('🚫 Agent has tool configs but none are active - no tools available');
+        return [];
+      } else {
+        // Agent has no configs at all - fall back to default tools
+        console.log('⚠️ Agent has no tool configurations, using default tools');
+        return getDefaultTools(supabase);
+      }
     }
 
     // Transform the data to include custom configurations
@@ -65,13 +82,11 @@ export async function getAgentEnabledTools(agentId: string | null, supabase: any
           // Override with custom configurations if provided
           title: config.custom_title || mcp.title,
           description: config.custom_description || mcp.description,
-          priority: config.priority_override || 5, // Default priority if not set
           custom_use_cases: config.custom_use_cases || [],
           // Keep reference to original config
           agent_config: {
             custom_title: config.custom_title,
             custom_description: config.custom_description,
-            priority_override: config.priority_override,
             custom_use_cases: config.custom_use_cases
           }
         };
@@ -84,7 +99,9 @@ export async function getAgentEnabledTools(agentId: string | null, supabase: any
 
   } catch (error) {
     console.error('❌ Exception fetching agent tools:', error);
-    return getDefaultTools(supabase);
+    // Don't fall back to default tools on exception - return empty array
+    console.log('⚠️ Returning empty tools array due to exception');
+    return [];
   }
 }
 
@@ -161,7 +178,6 @@ export async function setupDefaultToolsForAgent(agentId: string, supabase: any):
       is_active: true,
       custom_title: null,
       custom_description: null,
-      priority_override: null,
       custom_use_cases: null
     }));
 
