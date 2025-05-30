@@ -1,3 +1,4 @@
+
 // Define your default MCPs
 import { MCP } from '@/types/mcp';
 import { v4 as uuidv4 } from 'uuid';
@@ -45,7 +46,7 @@ export const defaultMCPs: MCP[] = [
     title: "Knowledge Search",
     description: "Search your personal knowledge base including uploaded documents, notes, and saved content. Use when users ask to 'search my knowledge', 'find in my documents', 'look in my notes', 'search my files', or reference previously uploaded/saved information. This searches ONLY internal content you've uploaded or saved, NOT external web content.",
     endpoint: "knowledge-proxy",
-    icon: "search",
+    icon: "book",
     default_key: "knowledge-search",
     isDefault: true,
     priority: 9, // Very high priority - personal knowledge is valuable
@@ -156,7 +157,7 @@ export const defaultMCPs: MCP[] = [
     title: "Jira Tools",
     description: "Access and manage Jira projects, issues, and workflows. Use when users ask to 'retrieve projects', 'list projects', 'get projects', 'show my projects', 'what projects do I have', 'search issues', 'create tickets', or any Jira-related tasks. This tool connects to your Jira instance to fetch project information, search issues, create/update tickets, and manage project workflows.",
     endpoint: "jira-tools",
-    icon: "kanban-square",
+    icon: "jira",
     priority: 6, // Medium-high priority - useful for project management
     parameters: [
       {
@@ -251,7 +252,7 @@ export const defaultMCPs: MCP[] = [
     title: "Web Scraper",
     description: "Extract detailed content from web pages by providing a URL. Perfect for getting full article text, news content, or any webpage content when you have a specific URL to scrape.",
     endpoint: "web-scraper",
-    icon: "file-search",
+    icon: "globe",
     priority: 5, // Medium priority - useful but more specialized
     parameters: [
       {
