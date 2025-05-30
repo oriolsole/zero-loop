@@ -70,8 +70,8 @@ serve(async (req) => {
       modelSettings, 
       testMode = false, 
       loopEnabled = false,
-      agentId, // Add agent ID parameter
-      customSystemPrompt // Add custom system prompt parameter
+      agentId, // Agent ID parameter for tool configuration
+      customSystemPrompt // Custom system prompt parameter
     } = await req.json();
     
     if (!message) {
@@ -79,7 +79,7 @@ serve(async (req) => {
     }
 
     console.log('🤖 AI Agent unified request:', { 
-      message, 
+      message: message.substring(0, 100) + (message.length > 100 ? '...' : ''), 
       historyLength: conversationHistory.length, 
       userId, 
       sessionId,
@@ -87,7 +87,7 @@ serve(async (req) => {
       modelSettings,
       testMode,
       loopEnabled,
-      agentId,
+      agentId, // Log the agent ID
       hasCustomPrompt: !!customSystemPrompt
     });
 
@@ -102,13 +102,14 @@ serve(async (req) => {
           success: true,
           message: `Test mode: Unified handler would process query "${message}" with agent ${agentId || 'default'}`,
           unifiedApproach: true,
-          testMode: true
+          testMode: true,
+          agentId
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Use unified query handler for all requests
+    // Use unified query handler for all requests with agent ID
     const result = await handleUnifiedQuery(
       message,
       conversationHistory,
@@ -120,7 +121,7 @@ serve(async (req) => {
       0, // loopIteration
       loopEnabled, // Pass the loop setting
       customSystemPrompt, // Pass the custom system prompt
-      agentId // Pass the agent ID
+      agentId // Pass the agent ID for tool configuration
     );
 
     // Handle streaming responses
@@ -133,8 +134,9 @@ serve(async (req) => {
       });
     }
 
-    console.log('✅ Unified query completed successfully');
+    console.log('✅ Unified query completed successfully for agent:', agentId);
     console.log('📏 Response length:', result.message?.length || 0);
+    console.log('🛠️ Tools available:', result.availableToolsCount || 0);
 
     return new Response(
       JSON.stringify(result),

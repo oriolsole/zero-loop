@@ -5,6 +5,7 @@ import { generateSystemPrompt, createKnowledgeAwareMessages } from './system-pro
 import { extractAssistantMessage } from './response-handler.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 import { shouldContinueLoop, MAX_LOOPS } from './loop-evaluator.ts';
+import { getAgentEnabledTools, setupDefaultToolsForAgent } from './agent-tool-fetcher.ts';
 
 /**
  * Unified query handler with user-controlled self-improvement loop capability
@@ -18,15 +19,16 @@ export async function handleUnifiedQuery(
   streaming: boolean,
   supabase: any,
   loopIteration: number = 0,
-  loopEnabled: boolean = false, // New parameter to control loop behavior
-  customSystemPrompt?: string // New parameter for custom system prompt
+  loopEnabled: boolean = false,
+  customSystemPrompt?: string,
+  agentId?: string // Updated to use agentId for tool configuration
 ): Promise<any> {
-  console.log(`🤖 Starting unified query handler (loop ${loopIteration}, enabled: ${loopEnabled})`);
+  console.log(`🤖 Starting unified query handler (loop ${loopIteration}, enabled: ${loopEnabled}, agent: ${agentId})`);
 
   let finalResponse = '';
   let allToolsUsed: any[] = [];
   let loopEvaluation = null;
-  const toolCallMessageMap = new Map<string, string>(); // Track tool call ID to message ID mapping
+  const toolCallMessageMap = new Map<string, string>();
 
   try {
     // Helper function to check if message already exists in database
@@ -42,7 +44,7 @@ export async function handleUnifiedQuery(
           .eq('content', content)
           .eq('message_type', messageType)
           .eq('loop_iteration', loopIter)
-          .gte('created_at', new Date(Date.now() - 10000).toISOString()) // Only check last 10 seconds
+          .gte('created_at', new Date(Date.now() - 10000).toISOString())
           .maybeSingle();
         
         return !error && data !== null;
@@ -63,11 +65,10 @@ export async function handleUnifiedQuery(
           .eq('session_id', sessionId)
           .eq('message_type', 'tool-executing')
           .eq('loop_iteration', loopIter)
-          .gte('created_at', new Date(Date.now() - 60000).toISOString()); // Check last 60 seconds
+          .gte('created_at', new Date(Date.now() - 60000).toISOString());
         
         if (error || !data) return null;
         
-        // Check if any message contains this toolCallId
         for (const msg of data) {
           try {
             const parsedContent = JSON.parse(msg.content);
@@ -104,6 +105,7 @@ export async function handleUnifiedQuery(
           content,
           message_type: messageType,
           loop_iteration: loopIteration,
+          agent_id: agentId,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           ...additionalData
@@ -140,8 +142,8 @@ export async function handleUnifiedQuery(
             ...additionalData
           })
           .eq('id', messageId)
-          .eq('user_id', userId) // Additional safety check
-          .eq('session_id', sessionId); // Additional safety check
+          .eq('user_id', userId)
+          .eq('session_id', sessionId);
         
         if (error) {
           console.error(`❌ Failed to update message: ${messageId}`, error);
@@ -156,21 +158,6 @@ export async function handleUnifiedQuery(
       }
     };
 
-    // Helper function to get message content
-    const getMessageContent = async (messageId: string): Promise<string | null> => {
-      try {
-        const { data, error } = await supabase
-          .from('agent_conversations')
-          .select('content')
-          .eq('id', messageId)
-          .single();
-        
-        return error ? null : data.content;
-      } catch {
-        return null;
-      }
-    };
-
     // 1. Store loop start message (only for iterations > 0 AND when loops are enabled)
     if (loopIteration > 0 && loopEnabled) {
       await insertMessage(
@@ -179,15 +166,22 @@ export async function handleUnifiedQuery(
       );
     }
 
-    // 2. Get available tools
-    const { data: mcps, error: mcpError } = await supabase
-      .from('mcps')
-      .select('*')
-      .eq('isDefault', true)
-      .in('default_key', ['web-search', 'github-tools', 'knowledge-search', 'jira-tools', 'web-scraper']);
-
-    if (mcpError) {
-      throw new Error('Failed to fetch available tools');
+    // 2. Get agent-specific enabled tools
+    console.log(`🔧 Fetching tools for agent: ${agentId}`);
+    
+    // Setup default tools for agent if none exist (for new agents)
+    if (agentId && userId) {
+      await setupDefaultToolsForAgent(agentId, supabase);
+    }
+    
+    // Fetch enabled tools for this specific agent
+    const mcps = await getAgentEnabledTools(agentId, supabase);
+    
+    if (mcps.length === 0) {
+      console.log('⚠️ No tools available for agent, continuing without tools');
+    } else {
+      console.log(`✅ Agent ${agentId} has access to ${mcps.length} tools:`, 
+        mcps.map(m => m.title).join(', '));
     }
 
     const tools = convertMCPsToTools(mcps);
@@ -197,7 +191,7 @@ export async function handleUnifiedQuery(
       ? customSystemPrompt 
       : generateUnifiedSystemPrompt(mcps, loopIteration, loopEnabled);
 
-    console.log(`🧠 Using ${customSystemPrompt ? 'custom' : 'generated'} system prompt`);
+    console.log(`🧠 Using ${customSystemPrompt ? 'custom' : 'generated'} system prompt for agent ${agentId}`);
 
     // 3. Prepare messages
     const messages = createKnowledgeAwareMessages(
@@ -206,7 +200,7 @@ export async function handleUnifiedQuery(
       message
     );
 
-    console.log(`🧠 Calling LLM (loop ${loopIteration})`);
+    console.log(`🧠 Calling LLM (loop ${loopIteration}) with ${tools.length} available tools`);
 
     // 4. LLM call with tool decision-making
     const modelRequestBody = {
@@ -321,7 +315,7 @@ export async function handleUnifiedQuery(
             result: tool.result,
             error: tool.success ? undefined : (tool.error || 'Tool execution failed'),
             success: tool.success,
-            startTime: new Date().toISOString(), // Will be preserved by update logic
+            startTime: new Date().toISOString(),
             endTime: new Date().toISOString(),
             toolCallId: toolCall.id
           };
@@ -407,8 +401,9 @@ export async function handleUnifiedQuery(
           streaming,
           supabase,
           loopIteration + 1,
-          loopEnabled, // Pass the loop setting through recursion
-          customSystemPrompt // Pass the custom system prompt through recursion
+          loopEnabled,
+          customSystemPrompt,
+          agentId // Pass agentId through recursion
         );
       } else {
         // Store loop completion message
@@ -456,9 +451,11 @@ export async function handleUnifiedQuery(
       sessionId,
       loopIteration,
       improvementReasoning: loopEvaluation?.reasoning,
-      streamedSteps: true, // Flag to indicate steps were streamed
-      loopEnabled, // Include the loop setting in response
-      usedCustomPrompt: customSystemPrompt ? true : false // Include whether custom prompt was used
+      streamedSteps: true,
+      loopEnabled,
+      usedCustomPrompt: customSystemPrompt ? true : false,
+      agentId,
+      availableToolsCount: mcps.length
     };
 
   } catch (error) {
@@ -475,6 +472,7 @@ export async function handleUnifiedQuery(
           content: finalResponse,
           tools_used: [],
           loop_iteration: loopIteration,
+          agent_id: agentId,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
@@ -492,7 +490,9 @@ export async function handleUnifiedQuery(
       loopIteration,
       error: 'Processed with fallback response',
       loopEnabled,
-      usedCustomPrompt: customSystemPrompt ? true : false
+      usedCustomPrompt: customSystemPrompt ? true : false,
+      agentId,
+      availableToolsCount: 0
     };
   }
 }

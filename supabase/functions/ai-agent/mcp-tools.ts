@@ -36,11 +36,20 @@ export function convertMCPsToTools(mcps: any[]): any[] {
       }
     });
 
-    // Enhance the function description with trigger phrases and use cases
-    let enhancedDescription = mcp.description;
+    // Use custom title and description if available from agent configuration
+    const displayTitle = mcp.title; // This already includes custom title from agent config
+    const displayDescription = mcp.description; // This already includes custom description from agent config
     
-    // Add trigger phrases if available in sample use cases
-    if (mcp.sampleUseCases && Array.isArray(mcp.sampleUseCases)) {
+    // Enhance the function description with trigger phrases and use cases
+    let enhancedDescription = displayDescription;
+    
+    // Add custom use cases if available from agent configuration
+    if (mcp.custom_use_cases && Array.isArray(mcp.custom_use_cases) && mcp.custom_use_cases.length > 0) {
+      const useCaseExamples = mcp.custom_use_cases.slice(0, 2).join('. ');
+      enhancedDescription += ` Agent-specific use cases: ${useCaseExamples}`;
+    }
+    // Fallback to original sample use cases
+    else if (mcp.sampleUseCases && Array.isArray(mcp.sampleUseCases)) {
       const triggerExamples = mcp.sampleUseCases.slice(0, 2).join('. ');
       enhancedDescription += ` Examples: ${triggerExamples}`;
     }
@@ -51,7 +60,7 @@ export function convertMCPsToTools(mcps: any[]): any[] {
     }
 
     // Add specific guidance for Knowledge Base
-    if (mcp.default_key === 'knowledge-search-v2') {
+    if (mcp.default_key === 'knowledge-search-v2' || mcp.default_key === 'knowledge-search') {
       enhancedDescription += ' ONLY searches internal/uploaded content, NOT external web content.';
     }
 
@@ -59,6 +68,8 @@ export function convertMCPsToTools(mcps: any[]): any[] {
     if (mcp.default_key === 'web-search') {
       enhancedDescription += ' ONLY searches external web content, NOT internal documents or Jira projects.';
     }
+
+    console.log(`🔧 Converting tool ${displayTitle} (${mcp.default_key}) with ${Object.keys(properties).length} parameters`);
 
     return {
       type: 'function',
