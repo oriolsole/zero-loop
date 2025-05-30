@@ -8,6 +8,67 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Simple encryption/decryption using Web Crypto API
+async function getEncryptionKey(): Promise<CryptoKey> {
+  const keyMaterial = Deno.env.get('GOOGLE_OAUTH_ENCRYPTION_KEY') || 'default-key-material-change-in-production';
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(keyMaterial.padEnd(32, '0').slice(0, 32));
+  
+  return await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptToken(token: string): Promise<string> {
+  if (!token) return '';
+  
+  const key = await getEncryptionKey();
+  const encoder = new TextEncoder();
+  const data = encoder.encode(token);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    data
+  );
+  
+  // Combine IV and encrypted data
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  
+  // Convert to base64
+  return btoa(String.fromCharCode(...combined));
+}
+
+async function decryptToken(encryptedToken: string): Promise<string> {
+  if (!encryptedToken) return '';
+  
+  const key = await getEncryptionKey();
+  
+  // Decode from base64
+  const combined = new Uint8Array(
+    atob(encryptedToken).split('').map(char => char.charCodeAt(0))
+  );
+  
+  const iv = combined.slice(0, 12);
+  const encrypted = combined.slice(12);
+  
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encrypted
+  );
+  
+  const decoder = new TextDecoder();
+  return decoder.decode(decrypted);
+}
+
 serve(async (req) => {
   console.log(`📥 ${req.method} request to google-oauth-callback`);
 
@@ -91,7 +152,7 @@ serve(async (req) => {
       const processedTokens = {
         access_token: tokenData.access_token,
         refresh_token: tokenData.refresh_token || null,
-        expires_in: tokenData.expires_in || 3600, // Default to 1 hour
+        expires_in: tokenData.expires_in || 3600,
         scope: tokenData.scope || 'https://www.googleapis.com/auth/drive',
         token_type: tokenData.token_type || 'Bearer'
       };
@@ -189,7 +250,7 @@ serve(async (req) => {
       );
 
       // Calculate expiration time - handle missing expires_in
-      const expiresInSeconds = tokens.expires_in || 3600; // Default to 1 hour
+      const expiresInSeconds = tokens.expires_in || 3600;
       const expiresAt = tokens.expires_at || new Date(Date.now() + (expiresInSeconds * 1000)).toISOString();
 
       console.log('📅 Token expiration details:', {
@@ -198,15 +259,21 @@ serve(async (req) => {
         hasExistingExpiresAt: !!tokens.expires_at
       });
 
-      console.log('💾 Storing tokens for user:', user_id);
+      console.log('🔐 Encrypting tokens...');
+      
+      // Encrypt tokens before storage
+      const encryptedAccessToken = await encryptToken(tokens.access_token);
+      const encryptedRefreshToken = tokens.refresh_token ? await encryptToken(tokens.refresh_token) : null;
 
-      // Store or update tokens using upsert
+      console.log('💾 Storing encrypted tokens for user:', user_id);
+
+      // Store encrypted tokens using upsert
       const { data, error: upsertError } = await supabase
         .from('google_oauth_tokens')
         .upsert({
           user_id: user_id,
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token || null,
+          access_token: encryptedAccessToken,
+          refresh_token: encryptedRefreshToken,
           expires_at: expiresAt,
           scope: tokens.scope || 'https://www.googleapis.com/auth/drive',
           updated_at: new Date().toISOString()
@@ -251,7 +318,7 @@ serve(async (req) => {
         throw new Error('Token was not properly stored');
       }
 
-      console.log('✅ Successfully stored and verified tokens for user:', user_id);
+      console.log('✅ Successfully stored and verified encrypted tokens for user:', user_id);
 
       return new Response(
         JSON.stringify({
@@ -303,3 +370,6 @@ serve(async (req) => {
     );
   }
 });
+
+// Export decryptToken function for use in other edge functions
+export { decryptToken };

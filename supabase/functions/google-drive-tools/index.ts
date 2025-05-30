@@ -28,6 +28,67 @@ interface DriveResponse {
   nextPageToken?: string;
 }
 
+// Simple encryption/decryption using Web Crypto API (duplicated from google-oauth-callback)
+async function getEncryptionKey(): Promise<CryptoKey> {
+  const keyMaterial = Deno.env.get('GOOGLE_OAUTH_ENCRYPTION_KEY') || 'default-key-material-change-in-production';
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(keyMaterial.padEnd(32, '0').slice(0, 32));
+  
+  return await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function decryptToken(encryptedToken: string): Promise<string> {
+  if (!encryptedToken) return '';
+  
+  const key = await getEncryptionKey();
+  
+  // Decode from base64
+  const combined = new Uint8Array(
+    atob(encryptedToken).split('').map(char => char.charCodeAt(0))
+  );
+  
+  const iv = combined.slice(0, 12);
+  const encrypted = combined.slice(12);
+  
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encrypted
+  );
+  
+  const decoder = new TextDecoder();
+  return decoder.decode(decrypted);
+}
+
+async function encryptToken(token: string): Promise<string> {
+  if (!token) return '';
+  
+  const key = await getEncryptionKey();
+  const encoder = new TextEncoder();
+  const data = encoder.encode(token);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    data
+  );
+  
+  // Combine IV and encrypted data
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  
+  // Convert to base64
+  return btoa(String.fromCharCode(...combined));
+}
+
 // Cache for access tokens per user
 const tokenCache = new Map<string, { token: string; expires: number }>();
 
@@ -51,6 +112,11 @@ async function getValidAccessToken(userId: string, supabase: any): Promise<strin
     throw new Error('Google Drive not connected. Please connect your Google Drive account first.');
   }
 
+  // Decrypt the stored tokens
+  console.log('🔐 Decrypting stored tokens...');
+  const decryptedAccessToken = await decryptToken(tokenData.access_token);
+  const decryptedRefreshToken = tokenData.refresh_token ? await decryptToken(tokenData.refresh_token) : null;
+
   // Check if token is still valid
   const expiresAt = new Date(tokenData.expires_at);
   const now = new Date();
@@ -58,14 +124,14 @@ async function getValidAccessToken(userId: string, supabase: any): Promise<strin
   if (expiresAt > now) {
     // Token is still valid, cache and return
     tokenCache.set(userId, {
-      token: tokenData.access_token,
+      token: decryptedAccessToken,
       expires: expiresAt.getTime()
     });
-    return tokenData.access_token;
+    return decryptedAccessToken;
   }
 
   // Token expired, refresh it
-  if (!tokenData.refresh_token) {
+  if (!decryptedRefreshToken) {
     throw new Error('Google Drive connection expired. Please reconnect your account.');
   }
 
@@ -87,7 +153,7 @@ async function getValidAccessToken(userId: string, supabase: any): Promise<strin
     body: new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
-      refresh_token: tokenData.refresh_token,
+      refresh_token: decryptedRefreshToken,
       grant_type: 'refresh_token',
     }),
   });
@@ -101,11 +167,14 @@ async function getValidAccessToken(userId: string, supabase: any): Promise<strin
   const refreshData = await refreshResponse.json();
   const newExpiresAt = new Date(Date.now() + (refreshData.expires_in * 1000));
 
+  // Encrypt the new access token
+  const encryptedNewAccessToken = await encryptToken(refreshData.access_token);
+
   // Update stored tokens
   const { error: updateError } = await supabase
     .from('google_oauth_tokens')
     .update({
-      access_token: refreshData.access_token,
+      access_token: encryptedNewAccessToken,
       expires_at: newExpiresAt.toISOString(),
       updated_at: new Date().toISOString()
     })
@@ -224,7 +293,7 @@ serve(async (req) => {
       );
     }
 
-    // Get valid access token (handles refresh if needed)
+    // Get valid access token (handles refresh and decryption if needed)
     const accessToken = await getValidAccessToken(userId, supabase);
 
     const headers = {

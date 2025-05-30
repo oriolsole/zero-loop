@@ -83,7 +83,7 @@ class GoogleOAuthService {
         tokenKeys: Object.keys(tokenPayload.tokens)
       });
 
-      // Use the edge function to handle token storage
+      // Use the edge function to handle token storage with encryption
       const { data, error } = await supabase.functions.invoke('google-oauth-callback', {
         body: tokenPayload
       });
@@ -227,7 +227,7 @@ class GoogleOAuthService {
         }
 
         let isCompleted = false;
-        let closureCheckInterval: number;
+        let closureCheckInterval: number | undefined;
 
         // Listen for OAuth completion
         const messageHandler = async (event: MessageEvent) => {
@@ -248,8 +248,9 @@ class GoogleOAuthService {
               console.log('✅ Received OAuth success message');
               
               // Clear the closure check interval since we received a valid message
-              if (closureCheckInterval) {
+              if (closureCheckInterval !== undefined) {
                 clearInterval(closureCheckInterval);
+                closureCheckInterval = undefined;
               }
               
               isCompleted = true;
@@ -277,8 +278,9 @@ class GoogleOAuthService {
               isCompleted = true;
               
               // Clear interval and clean up
-              if (closureCheckInterval) {
+              if (closureCheckInterval !== undefined) {
                 clearInterval(closureCheckInterval);
+                closureCheckInterval = undefined;
               }
               window.removeEventListener('message', messageHandler);
               
@@ -292,8 +294,9 @@ class GoogleOAuthService {
             console.error('❌ OAuth error from popup:', event.data.error);
             isCompleted = true;
             
-            if (closureCheckInterval) {
+            if (closureCheckInterval !== undefined) {
               clearInterval(closureCheckInterval);
+              closureCheckInterval = undefined;
             }
             window.removeEventListener('message', messageHandler);
             
@@ -308,10 +311,13 @@ class GoogleOAuthService {
         window.addEventListener('message', messageHandler);
 
         // Check if popup was closed manually (only if flow hasn't completed)
-        closureCheckInterval = setInterval(() => {
+        closureCheckInterval = window.setInterval(() => {
           if (popup.closed && !isCompleted) {
             console.log('⚠️ Popup was closed manually before completion');
-            clearInterval(closureCheckInterval);
+            if (closureCheckInterval !== undefined) {
+              clearInterval(closureCheckInterval);
+              closureCheckInterval = undefined;
+            }
             window.removeEventListener('message', messageHandler);
             reject(new Error('OAuth flow was cancelled'));
           }
