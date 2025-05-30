@@ -8,8 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { RefreshCw, Eye, Edit3, Info, Loader2 } from 'lucide-react';
+import { RefreshCw, Eye, Edit3, Info, Loader2, Copy, Check } from 'lucide-react';
 import { useGeneratedSystemPrompt } from '@/hooks/useGeneratedSystemPrompt';
+import { toast } from '@/components/ui/sonner';
 
 interface SystemPromptEditorProps {
   isOpen: boolean;
@@ -37,6 +38,7 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
   loopEnabled
 }) => {
   const [localCustomPrompt, setLocalCustomPrompt] = useState(customPrompt);
+  const [copied, setCopied] = useState(false);
 
   // Fetch the real generated system prompt
   const { 
@@ -68,6 +70,17 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
     refetchPrompt();
   };
 
+  const handleCopyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(currentPrompt);
+      setCopied(true);
+      toast.success('System prompt copied to clipboard');
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      toast.error('Failed to copy to clipboard');
+    }
+  };
+
   // Use the real generated prompt if available, otherwise fall back to the passed one
   const displayPrompt = realGeneratedPrompt || fallbackPrompt;
   const currentPrompt = useCustomPrompt && customPrompt ? customPrompt : displayPrompt;
@@ -75,7 +88,7 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Edit3 className="h-5 w-5" />
@@ -106,7 +119,7 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
           </div>
         </div>
 
-        <Tabs defaultValue="editor" className="flex-1 flex flex-col">
+        <Tabs defaultValue="editor" className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="editor" className="flex items-center gap-2">
               <Edit3 className="h-4 w-4" />
@@ -118,7 +131,7 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="editor" className="flex-1 flex flex-col space-y-4">
+          <TabsContent value="editor" className="flex-1 flex flex-col space-y-4 min-h-0">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">Custom System Prompt</h3>
               <Button
@@ -152,7 +165,7 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
             )}
           </TabsContent>
 
-          <TabsContent value="preview" className="flex-1 flex flex-col">
+          <TabsContent value="preview" className="flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium">
                 {useCustomPrompt && customPrompt ? 'Custom Prompt (Active)' : 'Generated Prompt (Active)'}
@@ -161,6 +174,19 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
                 <Badge variant={useCustomPrompt && customPrompt ? "default" : "secondary"} className="text-xs">
                   {useCustomPrompt && customPrompt ? 'Custom' : 'Generated'}
                 </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCopyPrompt}
+                  className="h-7 px-2"
+                  title="Copy to clipboard"
+                >
+                  {copied ? (
+                    <Check className="h-3 w-3 text-green-600" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -183,18 +209,26 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
               </div>
             )}
             
-            <ScrollArea className="flex-1 border rounded-md">
-              <div className="p-4 text-sm font-mono whitespace-pre-wrap bg-muted/20">
-                {isLoadingPrompt ? (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading real system prompt...
-                  </div>
-                ) : (
-                  currentPrompt
-                )}
+            <div className="flex-1 min-h-0 border rounded-md overflow-hidden">
+              <ScrollArea className="h-[450px] w-full">
+                <div className="p-4 text-sm font-mono whitespace-pre-wrap bg-muted/20">
+                  {isLoadingPrompt ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading real system prompt...
+                    </div>
+                  ) : (
+                    currentPrompt
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+
+            {currentPrompt && !isLoadingPrompt && (
+              <div className="text-xs text-muted-foreground text-center py-1">
+                Scroll to see full content • {currentPrompt.split('\n').length} lines
               </div>
-            </ScrollArea>
+            )}
           </TabsContent>
         </Tabs>
 
