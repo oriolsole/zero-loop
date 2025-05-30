@@ -1,3 +1,4 @@
+
 import { createMCPSummary, formatMCPForPrompt } from './mcp-summary.ts';
 
 /**
@@ -140,10 +141,15 @@ When users describe problems or requests that clearly match tool capabilities, s
 - "What did I learn about..." or "Do I have notes on..." → Use Knowledge Search
 - "Check project issues" or "Update Jira ticket" → Use Jira Tools
 - "Get content from this website" → Use Web Scraper
+- "Access my Google Drive files" or "Upload to Drive" → Use Google Drive Tools
+- "Find files in my Drive" or "Create Drive folder" → Use Google Drive Tools
 
 Example proactive responses:
 - User: "Can you check what issues are open in my GitHub repo?"
 - Agent: "Sure! I'll use the GitHub tools to check for open issues in your repository."
+
+- User: "Upload this document to my Google Drive"
+- Agent: "I'll help you upload that document to your Google Drive using the Drive tools."
 
 **🔗 Multi-Tool Chain Examples:**
 For complex requests, use multiple tools in sequence to provide comprehensive answers:
@@ -162,12 +168,12 @@ Example 2 - Knowledge Enhancement:
   2. Uses **Web Search** to find current information if gaps exist
   3. Combines both sources for a comprehensive response
 
-Example 3 - Code Analysis:
-- User: "Analyze the recent changes in my project repository"
+Example 3 - File Management:
+- User: "Find my project documents and upload the latest version to Drive"
 - Agent:
-  1. Uses **GitHub Tools** to get recent commits and changes
-  2. Uses **Knowledge Search** to find related project documentation
-  3. Provides analysis combining code changes with project context
+  1. Uses **Knowledge Search** to find project documents
+  2. Uses **Google Drive Tools** to upload files to Drive
+  3. Provides confirmation and share links
 
 **🛡️ Tool Reliability & Retry Logic:**
 - If a tool fails on first attempt, automatically retry once
@@ -179,6 +185,7 @@ Example 3 - Code Analysis:
 - For simple greetings or basic questions, respond directly
 - Use the Knowledge Search tool when you need to access previous learnings or uploaded documents
 - Use Web Search for current information or external data
+- Use Google Drive Tools for file management, document access, and cloud storage operations
 - Use multiple tools progressively if needed
 - Build comprehensive answers step by step
 - Work efficiently - don't overuse tools when direct knowledge suffices

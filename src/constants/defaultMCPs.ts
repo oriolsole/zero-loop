@@ -91,12 +91,87 @@ export const defaultMCPs: MCP[] = [
     ]
   },
   {
+    id: uuidv4(),
+    title: "Google Drive Tools",
+    description: "Access and manage Google Drive files, folders, and documents. Upload, download, search, and organize your Google Drive content. Use when users ask to 'access my Drive', 'upload to Google Drive', 'find files in Drive', 'create folders', or manage Google Drive content.",
+    endpoint: "google-drive-tools",
+    icon: "hard-drive",
+    priority: 8, // High priority - important productivity tool
+    parameters: [
+      {
+        name: "action",
+        type: "string",
+        description: "The Google Drive action to perform",
+        required: true,
+        enum: ["list_files", "get_file_content", "upload_file", "search_files", "create_folder", "share_file", "get_file_metadata"]
+      },
+      {
+        name: "file_id",
+        type: "string",
+        description: "Specific Google Drive file ID",
+        required: false
+      },
+      {
+        name: "folder_id",
+        type: "string",
+        description: "Folder ID to operate within (default: root)",
+        required: false
+      },
+      {
+        name: "query",
+        type: "string",
+        description: "Search query for finding files",
+        required: false
+      },
+      {
+        name: "file_name",
+        type: "string",
+        description: "Name for new files or folders",
+        required: false
+      },
+      {
+        name: "content",
+        type: "string",
+        description: "Content for file upload",
+        required: false
+      },
+      {
+        name: "mime_type",
+        type: "string",
+        description: "MIME type for uploaded files",
+        required: false
+      },
+      {
+        name: "limit",
+        type: "number",
+        description: "Maximum number of results to return (default: 10)",
+        required: false,
+        default: 10
+      }
+    ],
+    isDefault: true,
+    default_key: "google-drive-tools",
+    category: "Productivity",
+    tags: ["google", "drive", "files", "documents", "storage", "cloud", "upload", "download"],
+    sampleUseCases: [
+      "List files: 'show me my Google Drive files', 'list recent documents'",
+      "Search content: 'find all PDFs about project planning', 'search for budget spreadsheets'",
+      "Upload files: 'upload this document to my Drive', 'save this content as a file'",
+      "Create folders: 'create a new folder for my project', 'organize files into folders'",
+      "Share files: 'make this document shareable', 'get a share link for this file'"
+    ],
+    suggestedPrompt: "List my recent Google Drive files",
+    requiresAuth: true,
+    authType: "oauth",
+    requirestoken: "google_drive"
+  },
+  {
     id: "github-tools-mcp-id",
     title: "GitHub Tools",
     description: "Interact with GitHub repositories, issues, pull requests, and code. Use when users ask about 'GitHub repos', 'repository information', 'repo details', 'GitHub files', or need to access code repositories. This connects to GitHub's API to fetch repository data, file contents, and project information.",
     endpoint: "github-tools",
     icon: "github",
-    priority: 8, // High priority - developers frequently need GitHub access
+    priority: 7, // High priority - developers frequently need GitHub access
     parameters: [
       {
         name: "action",

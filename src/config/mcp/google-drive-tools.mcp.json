@@ -1,0 +1,107 @@
+
+{
+  "protocol": "ModelContextProtocol",
+  "version": "1.0.0",
+  "tool": {
+    "id": "google-drive-tools",
+    "name": "google-drive-tools",
+    "title": "Google Drive Tools",
+    "description": "Access and manage Google Drive files, folders, and documents. Upload, download, search, and organize your Google Drive content.",
+    "endpoint": "google-drive-tools",
+    "icon": "hard-drive",
+    "category": "Productivity",
+    "tags": ["google", "drive", "files", "documents", "storage", "cloud"],
+    "schema": {
+      "input": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "name": "action",
+            "type": "string",
+            "description": "The Google Drive action to perform",
+            "required": true,
+            "enum": ["list_files", "get_file_content", "upload_file", "search_files", "create_folder", "share_file", "get_file_metadata"]
+          },
+          "file_id": {
+            "name": "file_id",
+            "type": "string",
+            "description": "Specific Google Drive file ID",
+            "required": false
+          },
+          "folder_id": {
+            "name": "folder_id",
+            "type": "string",
+            "description": "Folder ID to operate within (default: root)",
+            "required": false
+          },
+          "query": {
+            "name": "query",
+            "type": "string",
+            "description": "Search query for finding files",
+            "required": false
+          },
+          "file_name": {
+            "name": "file_name",
+            "type": "string",
+            "description": "Name for new files or folders",
+            "required": false
+          },
+          "content": {
+            "name": "content",
+            "type": "string",
+            "description": "Content for file upload",
+            "required": false
+          },
+          "mime_type": {
+            "name": "mime_type",
+            "type": "string",
+            "description": "MIME type for uploaded files",
+            "required": false
+          },
+          "limit": {
+            "name": "limit",
+            "type": "number",
+            "description": "Maximum number of results to return (default: 10)",
+            "required": false,
+            "default": 10
+          }
+        },
+        "required": ["action"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": { "type": "object" },
+          "error": { "type": "string" }
+        }
+      }
+    },
+    "security": {
+      "authentication": {
+        "type": "oauth",
+        "provider": "google",
+        "required": true
+      },
+      "permissions": ["https://www.googleapis.com/auth/drive"]
+    },
+    "metadata": {
+      "version": "1.0.0",
+      "author": "ZeroLoop",
+      "license": "MIT",
+      "sampleUseCases": [
+        "List all files in Drive: 'list my Google Drive files'",
+        "Search for documents: 'find all PDFs in my Drive containing budget'",
+        "Upload a file: 'upload this document to my Google Drive'",
+        "Get file content: 'read the content of my project notes document'",
+        "Create folders: 'create a new folder called Project Files'",
+        "Share files: 'make this document shareable with view permissions'"
+      ],
+      "suggestedPrompt": "List my recent Google Drive files"
+    }
+  },
+  "compatibility": {
+    "frameworks": ["ZeroLoop", "MCP"],
+    "versions": ["1.0.0"]
+  }
+}

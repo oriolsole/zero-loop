@@ -1,0 +1,314 @@
+
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// Google Drive API base URL
+const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
+
+interface DriveFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: string;
+  createdTime: string;
+  modifiedTime: string;
+  parents?: string[];
+  webViewLink?: string;
+  webContentLink?: string;
+}
+
+interface DriveResponse {
+  files?: DriveFile[];
+  nextPageToken?: string;
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const {
+      action,
+      file_id,
+      folder_id,
+      query,
+      file_name,
+      content,
+      mime_type,
+      limit = 10,
+      userId
+    } = await req.json();
+
+    console.log('Google Drive action:', action, 'for user:', userId);
+
+    if (!action) {
+      throw new Error('Action parameter is required');
+    }
+
+    // Get Google access token from user secrets or environment
+    const googleToken = Deno.env.get('GOOGLE_DRIVE_TOKEN');
+    if (!googleToken) {
+      throw new Error('Google Drive access token not configured. Please set up Google OAuth.');
+    }
+
+    const headers = {
+      'Authorization': `Bearer ${googleToken}`,
+      'Content-Type': 'application/json',
+    };
+
+    let result;
+
+    switch (action) {
+      case 'list_files':
+        result = await listFiles(headers, folder_id, limit);
+        break;
+
+      case 'search_files':
+        if (!query) {
+          throw new Error('Query parameter is required for search');
+        }
+        result = await searchFiles(headers, query, limit);
+        break;
+
+      case 'get_file_metadata':
+        if (!file_id) {
+          throw new Error('File ID is required for getting metadata');
+        }
+        result = await getFileMetadata(headers, file_id);
+        break;
+
+      case 'get_file_content':
+        if (!file_id) {
+          throw new Error('File ID is required for getting content');
+        }
+        result = await getFileContent(headers, file_id);
+        break;
+
+      case 'create_folder':
+        if (!file_name) {
+          throw new Error('Folder name is required');
+        }
+        result = await createFolder(headers, file_name, folder_id);
+        break;
+
+      case 'upload_file':
+        if (!file_name || !content) {
+          throw new Error('File name and content are required for upload');
+        }
+        result = await uploadFile(headers, file_name, content, mime_type || 'text/plain', folder_id);
+        break;
+
+      case 'share_file':
+        if (!file_id) {
+          throw new Error('File ID is required for sharing');
+        }
+        result = await shareFile(headers, file_id);
+        break;
+
+      default:
+        throw new Error(`Unknown action: ${action}`);
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: result,
+        action: action
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('Google Drive API error:', error);
+    
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error.message,
+        details: 'Make sure Google Drive API is enabled and access token is valid'
+      }),
+      { 
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+});
+
+async function listFiles(headers: Record<string, string>, folderId?: string, limit: number = 10): Promise<DriveResponse> {
+  let url = `${DRIVE_API_BASE}/files?pageSize=${limit}&fields=files(id,name,mimeType,size,createdTime,modifiedTime,parents,webViewLink)`;
+  
+  if (folderId) {
+    url += `&q='${folderId}' in parents`;
+  }
+
+  const response = await fetch(url, { headers });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to list files: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json();
+}
+
+async function searchFiles(headers: Record<string, string>, query: string, limit: number = 10): Promise<DriveResponse> {
+  const searchQuery = encodeURIComponent(`name contains '${query}' or fullText contains '${query}'`);
+  const url = `${DRIVE_API_BASE}/files?q=${searchQuery}&pageSize=${limit}&fields=files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink)`;
+
+  const response = await fetch(url, { headers });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to search files: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json();
+}
+
+async function getFileMetadata(headers: Record<string, string>, fileId: string): Promise<DriveFile> {
+  const url = `${DRIVE_API_BASE}/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime,parents,webViewLink,webContentLink`;
+
+  const response = await fetch(url, { headers });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to get file metadata: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json();
+}
+
+async function getFileContent(headers: Record<string, string>, fileId: string): Promise<{ content: string; metadata: DriveFile }> {
+  // First get file metadata
+  const metadata = await getFileMetadata(headers, fileId);
+  
+  // For Google Docs, Sheets, Slides, we need to export them
+  let contentUrl;
+  let exportHeaders = { ...headers };
+  
+  if (metadata.mimeType.includes('google-apps')) {
+    // Export Google Workspace files
+    if (metadata.mimeType.includes('document')) {
+      contentUrl = `${DRIVE_API_BASE}/files/${fileId}/export?mimeType=text/plain`;
+    } else if (metadata.mimeType.includes('spreadsheet')) {
+      contentUrl = `${DRIVE_API_BASE}/files/${fileId}/export?mimeType=text/csv`;
+    } else if (metadata.mimeType.includes('presentation')) {
+      contentUrl = `${DRIVE_API_BASE}/files/${fileId}/export?mimeType=text/plain`;
+    } else {
+      throw new Error(`Cannot export file type: ${metadata.mimeType}`);
+    }
+  } else {
+    // Download regular files
+    contentUrl = `${DRIVE_API_BASE}/files/${fileId}?alt=media`;
+  }
+
+  const response = await fetch(contentUrl, { headers: exportHeaders });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to get file content: ${response.status} - ${errorText}`);
+  }
+
+  const content = await response.text();
+  
+  return { content, metadata };
+}
+
+async function createFolder(headers: Record<string, string>, name: string, parentId?: string): Promise<DriveFile> {
+  const metadata: any = {
+    name: name,
+    mimeType: 'application/vnd.google-apps.folder'
+  };
+
+  if (parentId) {
+    metadata.parents = [parentId];
+  }
+
+  const response = await fetch(`${DRIVE_API_BASE}/files`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(metadata)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to create folder: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json();
+}
+
+async function uploadFile(headers: Record<string, string>, name: string, content: string, mimeType: string, parentId?: string): Promise<DriveFile> {
+  const metadata: any = {
+    name: name
+  };
+
+  if (parentId) {
+    metadata.parents = [parentId];
+  }
+
+  // Simple upload for text content
+  const boundary = '-------314159265358979323846';
+  const delimiter = `\r\n--${boundary}\r\n`;
+  const close_delim = `\r\n--${boundary}--`;
+
+  const multipartRequestBody = 
+    delimiter +
+    'Content-Type: application/json\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    `Content-Type: ${mimeType}\r\n\r\n` +
+    content +
+    close_delim;
+
+  const response = await fetch(`${DRIVE_API_BASE}/files?uploadType=multipart`, {
+    method: 'POST',
+    headers: {
+      ...headers,
+      'Content-Type': `multipart/related; boundary="${boundary}"`
+    },
+    body: multipartRequestBody
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to upload file: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json();
+}
+
+async function shareFile(headers: Record<string, string>, fileId: string): Promise<{ message: string; shareLink: string }> {
+  // Make file publicly readable
+  const permission = {
+    role: 'reader',
+    type: 'anyone'
+  };
+
+  const response = await fetch(`${DRIVE_API_BASE}/files/${fileId}/permissions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(permission)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to share file: ${response.status} - ${errorText}`);
+  }
+
+  // Get the shareable link
+  const metadata = await getFileMetadata(headers, fileId);
+  
+  return {
+    message: 'File shared successfully',
+    shareLink: metadata.webViewLink || `https://drive.google.com/file/d/${fileId}/view`
+  };
+}
