@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { GOOGLE_SCOPES } from '@/types/googleScopes';
 
@@ -17,7 +16,7 @@ export interface EnhancedUserProfile {
 
 class EnhancedProfileService {
   /**
-   * Get current user's enhanced profile
+   * Get current user's enhanced profile, creating one if it doesn't exist
    */
   async getProfile(): Promise<EnhancedUserProfile | null> {
     const { data: { user } } = await supabase.auth.getUser();
@@ -26,13 +25,40 @@ class EnhancedProfileService {
       return null;
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single();
 
-    if (error) {
+    // If profile doesn't exist, create it
+    if (error && error.code === 'PGRST116') {
+      console.log('Profile not found, creating new profile for user:', user.id);
+      
+      const newProfile = {
+        id: user.id,
+        email: user.email,
+        full_name: user.user_metadata?.full_name || null,
+        avatar_url: user.user_metadata?.avatar_url || null,
+        google_id: user.user_metadata?.provider_id || null,
+        google_services_connected: [],
+        google_scopes_granted: [],
+        google_drive_connected: false
+      };
+
+      const { data: createdProfile, error: createError } = await supabase
+        .from('profiles')
+        .insert(newProfile)
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('Error creating profile:', createError);
+        return null;
+      }
+
+      data = createdProfile;
+    } else if (error) {
       console.error('Error fetching profile:', error);
       return null;
     }
