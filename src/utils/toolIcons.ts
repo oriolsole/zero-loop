@@ -1,5 +1,5 @@
 
-import { Search, Github, Database, Code, Wrench, Globe, FileText, Bot, Terminal, FileSearch } from 'lucide-react';
+import { Search, Github, Code, Wrench, Globe, FileText, Terminal, FileSearch, Book, Brain } from 'lucide-react';
 import JiraIcon from '@/components/icons/JiraIcon';
 
 export const getToolIcon = (toolName: string) => {
@@ -12,7 +12,7 @@ export const getToolIcon = (toolName: string) => {
     return Github;
   }
   if (toolLower.includes('knowledge') || toolLower.includes('database')) {
-    return Database;
+    return Book;
   }
   if (toolLower.includes('code') || toolLower.includes('analysis')) {
     return Code;
@@ -23,8 +23,8 @@ export const getToolIcon = (toolName: string) => {
   if (toolLower.includes('jira')) {
     return JiraIcon;
   }
-  if (toolLower.includes('ai') || toolLower.includes('reasoning') || toolLower.includes('agent')) {
-    return Bot;
+  if (toolLower.includes('ai') || toolLower.includes('reasoning') || toolLower.includes('agent') || toolLower.includes('learning')) {
+    return Brain;
   }
   if (toolLower.includes('command') || toolLower.includes('terminal')) {
     return Terminal;
