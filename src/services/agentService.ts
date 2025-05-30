@@ -321,28 +321,46 @@ export const agentService = {
 
     console.log('📤 Data being sent to database:', upsertData);
 
-    const { data, error } = await supabase
-      .from('agent_tool_configs')
-      .upsert(upsertData)
-      .select()
-      .single();
+    try {
+      // Use upsert with onConflict to handle the unique constraint properly
+      const { data, error } = await supabase
+        .from('agent_tool_configs')
+        .upsert(upsertData, { 
+          onConflict: 'agent_id,mcp_id',
+          ignoreDuplicates: false 
+        })
+        .select()
+        .single();
 
-    if (error) {
-      console.error('❌ Error updating agent tool config:', error);
-      toast.error(`Failed to update tool configuration: ${error.message}`);
+      if (error) {
+        console.error('❌ Error updating agent tool config:', error);
+        
+        // Provide more specific error messages
+        if (error.code === '23505') {
+          toast.error('Failed to update tool configuration: Duplicate entry detected');
+        } else if (error.message?.includes('row-level security')) {
+          toast.error('Failed to update tool configuration: Permission denied');
+        } else {
+          toast.error(`Failed to update tool configuration: ${error.message}`);
+        }
+        return null;
+      }
+
+      console.log('✅ Successfully saved tool config:', data);
+
+      // Transform the response data to match our interface
+      const transformedResult = {
+        ...data,
+        custom_use_cases: transformCustomUseCases(data.custom_use_cases),
+      };
+
+      console.log('🔄 Transformed result:', transformedResult);
+      return transformedResult;
+    } catch (error) {
+      console.error('❌ Exception during tool config update:', error);
+      toast.error(`Failed to update tool configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return null;
     }
-
-    console.log('✅ Successfully saved tool config:', data);
-
-    // Transform the response data to match our interface
-    const transformedResult = {
-      ...data,
-      custom_use_cases: transformCustomUseCases(data.custom_use_cases),
-    };
-
-    console.log('🔄 Transformed result:', transformedResult);
-    return transformedResult;
   },
 
   /**
