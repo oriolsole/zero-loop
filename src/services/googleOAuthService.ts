@@ -205,12 +205,13 @@ class GoogleOAuthService {
   }
 
   /**
-   * Open OAuth popup window
+   * Open OAuth popup window with improved message handling
    */
   async connectWithPopup(): Promise<void> {
     return new Promise(async (resolve, reject) => {
       try {
         console.log('🔄 Starting popup OAuth flow...');
+        console.log('🌐 Current origin:', window.location.origin);
         
         const { authUrl } = await this.initiateOAuth();
         
@@ -228,20 +229,28 @@ class GoogleOAuthService {
 
         let isCompleted = false;
         let closureCheckInterval: number | undefined;
+        let messageReceived = false;
 
-        // Listen for OAuth completion
+        // Enhanced message handler with better logging
         const messageHandler = async (event: MessageEvent) => {
-          console.log('📨 Received message:', {
+          console.log('📨 Received message in parent:', {
             origin: event.origin,
             expectedOrigin: window.location.origin,
-            type: event.data?.type
+            data: event.data,
+            type: event.data?.type,
+            messageReceived: messageReceived
           });
 
           // Only accept messages from our origin
           if (event.origin !== window.location.origin) {
-            console.log('⚠️ Ignoring message from different origin');
+            console.log('⚠️ Ignoring message from different origin:', {
+              received: event.origin,
+              expected: window.location.origin
+            });
             return;
           }
+
+          messageReceived = true;
 
           if (event.data.type === 'google-oauth-success') {
             try {
@@ -256,6 +265,7 @@ class GoogleOAuthService {
               isCompleted = true;
               
               // Complete the OAuth flow
+              console.log('🔄 Completing OAuth flow with tokens...');
               await this.completeOAuth(event.data.tokens);
               
               // Send confirmation to popup to close it
@@ -268,6 +278,7 @@ class GoogleOAuthService {
               // Ensure popup is closed
               setTimeout(() => {
                 if (!popup.closed) {
+                  console.log('🔒 Force closing popup');
                   popup.close();
                 }
               }, 1000);
@@ -305,23 +316,50 @@ class GoogleOAuthService {
             }
             
             reject(new Error(`OAuth error: ${event.data.error}`));
+          } else {
+            console.log('🤷 Unknown message type:', event.data.type);
           }
         };
 
+        // Set up message listener BEFORE opening popup
+        console.log('👂 Setting up message listener...');
         window.addEventListener('message', messageHandler);
 
-        // Check if popup was closed manually (only if flow hasn't completed)
-        closureCheckInterval = window.setInterval(() => {
-          if (popup.closed && !isCompleted) {
-            console.log('⚠️ Popup was closed manually before completion');
+        // Add a fallback polling mechanism
+        let pollAttempts = 0;
+        const maxPollAttempts = 30; // 30 seconds
+
+        const pollForCompletion = () => {
+          pollAttempts++;
+          console.log(`🔄 Polling attempt ${pollAttempts}/${maxPollAttempts}, messageReceived: ${messageReceived}`);
+          
+          if (popup.closed && !isCompleted && !messageReceived) {
+            console.log('⚠️ Popup closed without receiving message - possible communication failure');
+            window.removeEventListener('message', messageHandler);
             if (closureCheckInterval !== undefined) {
               clearInterval(closureCheckInterval);
-              closureCheckInterval = undefined;
             }
-            window.removeEventListener('message', messageHandler);
-            reject(new Error('OAuth flow was cancelled'));
+            reject(new Error('OAuth popup was closed before completion. This might be due to a communication error.'));
+            return;
           }
-        }, 1000);
+          
+          if (pollAttempts >= maxPollAttempts && !messageReceived) {
+            console.log('⏰ Polling timeout - no message received');
+            window.removeEventListener('message', messageHandler);
+            if (closureCheckInterval !== undefined) {
+              clearInterval(closureCheckInterval);
+            }
+            if (!popup.closed) {
+              popup.close();
+            }
+            reject(new Error('OAuth flow timed out. No response received from popup.'));
+          }
+        };
+
+        // Check if popup was closed manually (only if flow hasn't completed)
+        closureCheckInterval = window.setInterval(pollForCompletion, 1000);
+
+        console.log('✅ Popup OAuth setup complete, waiting for response...');
 
       } catch (error) {
         console.error('❌ Error in connectWithPopup:', error);

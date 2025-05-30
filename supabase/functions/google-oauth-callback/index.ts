@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -157,60 +156,93 @@ serve(async (req) => {
         token_type: tokenData.token_type || 'Bearer'
       };
       
-      // Return HTML that sends tokens to parent window and waits for confirmation
+      // Enhanced HTML with better debugging and error handling
       const successHtml = `
         <html>
           <body>
             <script>
-              console.log('🔄 Sending tokens to parent window...');
+              console.log('🔄 Popup: Starting token transmission...');
+              console.log('🌐 Popup: Current origin:', window.location.origin);
+              console.log('🪟 Popup: Opener exists:', !!window.opener);
+              console.log('🪟 Popup: Opener closed:', window.opener ? window.opener.closed : 'N/A');
+              
               let tokensSent = false;
               let windowClosed = false;
+              let messageAttempts = 0;
+              const maxAttempts = 5;
               
-              try {
-                if (window.opener && !window.opener.closed) {
-                  window.opener.postMessage({
-                    type: 'google-oauth-success',
-                    tokens: ${JSON.stringify(processedTokens)}
-                  }, window.location.origin);
-                  console.log('✅ Tokens sent successfully');
-                  tokensSent = true;
-                  
-                  // Listen for confirmation from parent
-                  const messageHandler = (event) => {
-                    if (event.origin !== window.location.origin) return;
+              function attemptSendMessage() {
+                messageAttempts++;
+                console.log(\`📤 Popup: Attempt \${messageAttempts}/\${maxAttempts} to send tokens...\`);
+                
+                try {
+                  if (window.opener && !window.opener.closed) {
+                    console.log('📨 Popup: Sending message to parent...');
+                    window.opener.postMessage({
+                      type: 'google-oauth-success',
+                      tokens: ${JSON.stringify(processedTokens)}
+                    }, window.location.origin);
+                    console.log('✅ Popup: Message sent successfully');
+                    tokensSent = true;
                     
-                    if (event.data.type === 'oauth-close-popup') {
-                      console.log('✅ Received close confirmation from parent');
-                      window.removeEventListener('message', messageHandler);
+                    // Listen for confirmation from parent
+                    const messageHandler = (event) => {
+                      console.log('📨 Popup: Received message from parent:', event.data);
+                      
+                      if (event.origin !== window.location.origin) {
+                        console.log('⚠️ Popup: Ignoring message from different origin');
+                        return;
+                      }
+                      
+                      if (event.data.type === 'oauth-close-popup') {
+                        console.log('✅ Popup: Received close confirmation from parent');
+                        window.removeEventListener('message', messageHandler);
+                        if (!windowClosed) {
+                          windowClosed = true;
+                          window.close();
+                        }
+                      }
+                    };
+                    
+                    window.addEventListener('message', messageHandler);
+                    
+                    // Fallback: close after 15 seconds if no confirmation received
+                    setTimeout(() => {
                       if (!windowClosed) {
+                        console.log('⚠️ Popup: No confirmation received, closing anyway');
+                        window.removeEventListener('message', messageHandler);
                         windowClosed = true;
                         window.close();
                       }
+                    }, 15000);
+                    
+                  } else {
+                    console.error('❌ Popup: No opener window found or opener was closed');
+                    if (messageAttempts < maxAttempts) {
+                      console.log(\`🔄 Popup: Retrying in 1 second... (\${messageAttempts}/\${maxAttempts})\`);
+                      setTimeout(attemptSendMessage, 1000);
+                    } else {
+                      console.error('❌ Popup: Max attempts reached, giving up');
+                      document.body.innerHTML = '<p>Authentication completed, but failed to communicate with parent window. Please close this window and try again.</p>';
                     }
-                  };
-                  
-                  window.addEventListener('message', messageHandler);
-                  
-                  // Fallback: close after 10 seconds if no confirmation received
-                  setTimeout(() => {
-                    if (!windowClosed) {
-                      console.log('⚠️ No confirmation received, closing anyway');
-                      window.removeEventListener('message', messageHandler);
-                      windowClosed = true;
-                      window.close();
-                    }
-                  }, 10000);
-                  
-                } else {
-                  console.error('❌ No opener window found or opener was closed');
-                  document.body.innerHTML = '<p>Please close this window and try again.</p>';
+                  }
+                } catch (error) {
+                  console.error('❌ Popup: Error posting message:', error);
+                  if (messageAttempts < maxAttempts) {
+                    console.log(\`🔄 Popup: Retrying due to error... (\${messageAttempts}/\${maxAttempts})\`);
+                    setTimeout(attemptSendMessage, 1000);
+                  } else {
+                    console.error('❌ Popup: Max attempts reached after errors');
+                    document.body.innerHTML = '<p>Authentication completed. Please close this window.</p>';
+                  }
                 }
-              } catch (error) {
-                console.error('❌ Error posting message:', error);
-                document.body.innerHTML = '<p>Authentication completed. Please close this window.</p>';
               }
+              
+              // Start the message sending process
+              attemptSendMessage();
             </script>
             <p>Authentication successful! Completing setup...</p>
+            <p><small>Debug: Processing tokens and communicating with parent window...</small></p>
           </body>
         </html>
       `;
