@@ -12,10 +12,10 @@ const corsHeaders = {
  */
 function createMCPSummary(mcp: any) {
   return {
-    name: mcp.name || 'Unknown Tool',
+    name: mcp.title || 'Unknown Tool', // Fixed: use mcp.title instead of mcp.name
     description: mcp.description || 'No description available',
     category: mcp.category || 'general',
-    useCases: mcp.use_cases || []
+    useCases: mcp.sampleUseCases || [] // Fixed: use sampleUseCases instead of use_cases
   };
 }
 
