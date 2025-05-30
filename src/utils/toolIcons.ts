@@ -1,5 +1,6 @@
 
 import { Search, Github, Database, Code, Wrench, Globe, FileText, Bot, Terminal } from 'lucide-react';
+import JiraIcon from '@/components/icons/JiraIcon';
 
 export const getToolIcon = (toolName: string) => {
   const toolLower = toolName.toLowerCase();
@@ -20,7 +21,7 @@ export const getToolIcon = (toolName: string) => {
     return Globe;
   }
   if (toolLower.includes('jira')) {
-    return FileText;
+    return JiraIcon;
   }
   if (toolLower.includes('ai') || toolLower.includes('reasoning')) {
     return Bot;
