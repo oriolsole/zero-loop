@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -35,12 +34,25 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
   const [hasInitializedDefaults, setHasInitializedDefaults] = useState(false);
   const [savingConfigs, setSavingConfigs] = useState<Record<string, boolean>>({});
 
-  // Auto-enable core tools for default agents
+  // Auto-enable core tools for default agents (only if NO configurations exist at all)
   useEffect(() => {
     const initializeDefaultTools = async () => {
+      // Only initialize if:
+      // 1. Agent is default
+      // 2. Haven't already initialized
+      // 3. Not currently loading
+      // 4. NO tool configurations exist (including inactive ones)
       if (!agent.is_default || hasInitializedDefaults || isLoading || toolConfigs.length > 0) {
+        console.log('🔒 Skipping auto-initialization:', {
+          isDefault: agent.is_default,
+          hasInitialized: hasInitializedDefaults,
+          isLoading,
+          existingConfigsCount: toolConfigs.length
+        });
         return;
       }
+
+      console.log('🆕 Initializing default tools for completely new agent');
 
       const defaultToolKeys = [
         'web_search',
@@ -71,7 +83,7 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
       onToolConfigUpdate?.();
       
       if (coreTools.length > 0) {
-        toast.success(`Enabled ${coreTools.length} core tools for General Assistant`);
+        toast.success(`Enabled ${coreTools.length} core tools for new agent`);
       }
     };
 
@@ -93,15 +105,24 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
   };
 
   const handleToolToggle = async (mcpId: string, enabled: boolean) => {
+    console.log(`🔄 Toggling tool ${mcpId} to ${enabled ? 'enabled' : 'disabled'}`);
+    
     try {
-      if (enabled) {
-        await updateToolConfig(mcpId, { is_active: true });
-      } else {
-        await deleteToolConfig(mcpId);
-      }
+      // Always use updateToolConfig to persist the state (enabled or disabled)
+      // Never delete configurations - this preserves user preferences
+      await updateToolConfig(mcpId, { 
+        is_active: enabled,
+        // Preserve existing custom configurations
+        custom_title: getToolConfig(mcpId)?.custom_title || null,
+        custom_description: getToolConfig(mcpId)?.custom_description || null,
+        custom_use_cases: getToolConfig(mcpId)?.custom_use_cases || [],
+        priority_override: getToolConfig(mcpId)?.priority_override || 0
+      });
+      
+      console.log(`✅ Tool ${mcpId} successfully ${enabled ? 'enabled' : 'disabled'}`);
       onToolConfigUpdate?.();
     } catch (error) {
-      console.error('Error toggling tool:', error);
+      console.error('❌ Error toggling tool:', error);
       toast.error('Failed to update tool configuration');
     }
   };
@@ -177,7 +198,8 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
 
   const isToolEnabled = (mcpId: string): boolean => {
     const config = getToolConfig(mcpId);
-    return config?.is_active || false;
+    // Tool is enabled only if configuration exists AND is_active is true
+    return config?.is_active === true;
   };
 
   const getEditingConfig = (mcpId: string): Partial<AgentToolConfig> => {
