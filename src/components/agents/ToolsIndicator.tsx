@@ -41,8 +41,8 @@ const ToolsIndicator: React.FC<ToolsIndicatorProps> = ({
 
   return (
     <TooltipProvider>
-      <div className="flex items-center gap-1">
-        {enabledTools.slice(0, 5).map((tool) => {
+      <div className="flex items-center gap-1 flex-wrap">
+        {enabledTools.map((tool) => {
           const IconComponent = getToolIcon(tool.title);
           const customConfig = toolConfigs.find(config => config.mcp_id === tool.id);
           const displayName = customConfig?.custom_title || tool.title;
@@ -60,18 +60,6 @@ const ToolsIndicator: React.FC<ToolsIndicatorProps> = ({
             </Tooltip>
           );
         })}
-        {enabledTools.length > 5 && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="px-1.5 py-0.5 rounded text-xs text-muted-foreground/70 hover:text-muted-foreground hover:bg-muted/50 transition-colors">
-                +{enabledTools.length - 5}
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="text-xs">{enabledTools.length - 5} more tools</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
       </div>
     </TooltipProvider>
   );
