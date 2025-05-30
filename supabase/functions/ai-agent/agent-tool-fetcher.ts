@@ -73,30 +73,49 @@ export async function getAgentEnabledTools(agentId: string | null, supabase: any
         return [];
       }
 
-      // Transform the data to include custom configurations
+      // Transform the data to include custom configurations that override defaults
       const enabledTools = (activeToolConfigs || [])
         .filter(config => config.mcps) // Ensure MCP data exists
         .map(config => {
           const mcp = config.mcps;
           
-          // Apply custom configurations
+          // Apply custom configurations that override defaults
           return {
             ...mcp,
-            // Override with custom configurations if provided
+            // Override with custom configurations if provided, otherwise use defaults
             title: config.custom_title || mcp.title,
             description: config.custom_description || mcp.description,
-            custom_use_cases: config.custom_use_cases || [],
-            // Keep reference to original config
+            // Use custom use cases if provided, otherwise fall back to default sample use cases
+            sampleUseCases: (config.custom_use_cases && config.custom_use_cases.length > 0) 
+              ? config.custom_use_cases 
+              : mcp.sampleUseCases,
+            // Add priority from custom configuration
+            priority: config.priority_override || mcp.priority || 1,
+            // Keep reference to all configuration data for debugging
             agent_config: {
               custom_title: config.custom_title,
               custom_description: config.custom_description,
-              custom_use_cases: config.custom_use_cases
+              custom_use_cases: config.custom_use_cases,
+              priority_override: config.priority_override,
+              is_active: config.is_active
             }
           };
         });
 
       console.log(`✅ Found ${enabledTools.length} ACTIVE enabled tools for agent ${agentId}:`, 
         enabledTools.map(t => t.title).join(', '));
+
+      // Log custom configurations being applied
+      enabledTools.forEach(tool => {
+        if (tool.agent_config.custom_title || tool.agent_config.custom_description || 
+            (tool.agent_config.custom_use_cases && tool.agent_config.custom_use_cases.length > 0)) {
+          console.log(`🎨 Tool "${tool.title}" has custom configurations:`, {
+            customTitle: tool.agent_config.custom_title,
+            customDescription: !!tool.agent_config.custom_description,
+            customUseCases: tool.agent_config.custom_use_cases?.length || 0
+          });
+        }
+      });
 
       return enabledTools;
     } else {

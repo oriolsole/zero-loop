@@ -1,4 +1,5 @@
 
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 
@@ -27,11 +28,14 @@ function createMCPSummary(mcp: any, toolConfig?: any) {
   // Apply agent-specific overrides if available
   const title = toolConfig?.custom_title || mcp.title || 'Unknown Tool';
   const description = toolConfig?.custom_description || mcp.description || 'No description available';
-  const customUseCases = toolConfig?.custom_use_cases;
   
+  // CRITICAL: Use custom use cases if provided, otherwise fall back to default
   let finalUseCases = useCases;
-  if (customUseCases && Array.isArray(customUseCases)) {
-    finalUseCases = customUseCases;
+  if (toolConfig?.custom_use_cases && Array.isArray(toolConfig.custom_use_cases) && toolConfig.custom_use_cases.length > 0) {
+    finalUseCases = toolConfig.custom_use_cases;
+    console.log(`🎯 Using CUSTOM use cases for tool "${title}":`, finalUseCases);
+  } else {
+    console.log(`📋 Using default use cases for tool "${title}":`, finalUseCases);
   }
 
   return {
@@ -44,18 +48,21 @@ function createMCPSummary(mcp: any, toolConfig?: any) {
 }
 
 /**
- * Format MCP for prompt inclusion
+ * Format MCP for prompt inclusion with enhanced custom configuration support
  */
 function formatMCPForPrompt(summary: any): string {
-  const useCases = summary.useCases && summary.useCases.length > 0 
-    ? `\n  Use cases: ${summary.useCases.join(', ')}`
-    : '';
+  let result = `**${summary.name}** (${summary.category}): ${summary.description}`;
   
-  return `**${summary.name}** (${summary.category}): ${summary.description}${useCases}`;
+  if (summary.useCases && summary.useCases.length > 0) {
+    result += `\n  Use cases: ${summary.useCases.join(', ')}`;
+  }
+  
+  return result;
 }
 
 /**
  * Generates a comprehensive system prompt with unified strategy and tool introspection
+ * Now properly includes agent-specific custom tool configurations
  */
 function generateSystemPrompt(
   mcps: any[], 
@@ -121,6 +128,9 @@ After providing your initial response, you may reflect and decide to improve it 
 **🛠️ Available Tools:**
 ${toolDescriptions}
 
+**⚠️ CRITICAL: Follow Custom Tool Instructions**
+Each tool above may have specific custom use cases or instructions configured for this agent. You MUST follow these custom instructions precisely. If a tool's use cases specify particular behavior (like "ALWAYS search '23'" or specific query modifications), you must follow those instructions exactly, even if they seem unusual.
+
 **🧠 Tool Introspection:**
 If the user asks what tools you have access to, list and explain the tools above with their descriptions, categories, and use cases.
 
@@ -175,6 +185,7 @@ Example 3 - Code Analysis:
 - Build comprehensive answers step by step
 - Work efficiently - don't overuse tools when direct knowledge suffices
 - **Suggest tools when user requests match tool capabilities, even without explicit mention**
+- **ALWAYS follow any custom tool use cases or instructions specified above**
 
 **📋 Response Guidelines:**
 - Be direct and conversational in your responses
@@ -184,8 +195,9 @@ Example 3 - Code Analysis:
 - Cite sources when using external data
 - Explain which tool you're using and why when it's not obvious
 - Chain tools together for comprehensive research when beneficial
+- **Strictly adhere to any custom tool instructions or use cases configured for this agent**
 
-Remember: You have both comprehensive general knowledge and powerful tools. Be proactive in using tools when they clearly match user needs, and don't hesitate to combine multiple tools for better results.` : '';
+Remember: You have both comprehensive general knowledge and powerful tools. Be proactive in using tools when they clearly match user needs, and don't hesitate to combine multiple tools for better results. Most importantly, follow any custom tool configurations exactly as specified.` : '';
 
   return basePrompt + toolsSection;
 }
@@ -221,7 +233,7 @@ serve(async (req) => {
 
       agentSystemPrompt = agent?.system_prompt;
 
-      // Get agent tool configurations
+      // Get agent tool configurations with detailed logging
       const { data: toolConfigs, error: toolConfigError } = await supabaseClient
         .from('agent_tool_configs')
         .select('*')
@@ -232,6 +244,18 @@ serve(async (req) => {
       }
 
       agentToolConfigs = toolConfigs || [];
+      console.log(`🔧 Found ${agentToolConfigs.length} tool configurations for agent ${agentId}`);
+      
+      // Log custom configurations for debugging
+      agentToolConfigs.forEach(config => {
+        if (config.custom_use_cases && config.custom_use_cases.length > 0) {
+          console.log(`🎯 Agent tool config with custom use cases:`, {
+            mcpId: config.mcp_id,
+            isActive: config.is_active,
+            customUseCases: config.custom_use_cases
+          });
+        }
+      });
 
       // Get only the MCPs that are configured for this agent
       if (agentToolConfigs.length > 0) {
@@ -268,7 +292,7 @@ serve(async (req) => {
       // Use custom prompt if provided and not empty
       systemPrompt = customPrompt;
     } else {
-      // Generate agent-aware system prompt
+      // Generate agent-aware system prompt with custom configurations
       systemPrompt = generateSystemPrompt(
         mcps, 
         agentToolConfigs, 
@@ -283,7 +307,8 @@ serve(async (req) => {
         systemPrompt,
         toolsCount: mcps?.length || 0,
         usedCustomPrompt: !!(customPrompt && customPrompt.trim()),
-        agentId: agentId || null
+        agentId: agentId || null,
+        customConfigsCount: agentToolConfigs.filter(c => c.custom_use_cases && c.custom_use_cases.length > 0).length
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -300,3 +325,4 @@ serve(async (req) => {
     );
   }
 });
+

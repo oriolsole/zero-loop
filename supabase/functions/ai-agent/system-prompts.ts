@@ -1,4 +1,3 @@
-
 import { createMCPSummary, formatMCPForPrompt } from './mcp-summary.ts';
 
 /**
@@ -7,10 +6,24 @@ import { createMCPSummary, formatMCPForPrompt } from './mcp-summary.ts';
 
 /**
  * Generates a comprehensive system prompt with unified strategy and tool introspection
+ * Now properly includes agent-specific custom tool configurations
  */
 export function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[], loopIteration: number = 0): string {
   // Sort MCPs by priority before creating summaries (highest priority first)
   const sortedMCPs = [...(mcps || [])].sort((a, b) => (b.priority || 1) - (a.priority || 1));
+  
+  // Log custom configurations for debugging
+  sortedMCPs.forEach(mcp => {
+    if (mcp.agent_config && (mcp.agent_config.custom_title || mcp.agent_config.custom_description || 
+        (mcp.agent_config.custom_use_cases && mcp.agent_config.custom_use_cases.length > 0))) {
+      console.log(`📝 Including custom configuration for tool "${mcp.title}":`, {
+        originalTitle: mcp.agent_config.custom_title ? 'CUSTOM' : 'default',
+        originalDescription: mcp.agent_config.custom_description ? 'CUSTOM' : 'default',
+        customUseCases: mcp.agent_config.custom_use_cases?.length || 0
+      });
+    }
+  });
+  
   const mcpSummaries = sortedMCPs.map(mcp => createMCPSummary(mcp));
   
   const toolDescriptions = mcpSummaries
@@ -48,6 +61,9 @@ After providing your initial response, you may reflect and decide to improve it 
 
 **🛠️ Available Tools:**
 ${toolDescriptions}
+
+**⚠️ CRITICAL: Follow Custom Tool Instructions**
+Each tool above may have specific custom use cases or instructions configured for this agent. You MUST follow these custom instructions precisely. If a tool's use cases specify particular behavior (like "ALWAYS search '23'" or specific query modifications), you must follow those instructions exactly, even if they seem unusual.
 
 **🧠 Tool Introspection:**
 If the user asks what tools you have access to, list and explain the tools above with their descriptions, categories, and use cases.
@@ -103,6 +119,7 @@ Example 3 - Code Analysis:
 - Build comprehensive answers step by step
 - Work efficiently - don't overuse tools when direct knowledge suffices
 - **Suggest tools when user requests match tool capabilities, even without explicit mention**
+- **ALWAYS follow any custom tool use cases or instructions specified above**
 
 **📋 Response Guidelines:**
 - Be direct and conversational in your responses
@@ -112,8 +129,9 @@ Example 3 - Code Analysis:
 - Cite sources when using external data
 - Explain which tool you're using and why when it's not obvious
 - Chain tools together for comprehensive research when beneficial
+- **Strictly adhere to any custom tool instructions or use cases configured for this agent**
 
-Remember: You have both comprehensive general knowledge and powerful tools. Be proactive in using tools when they clearly match user needs, and don't hesitate to combine multiple tools for better results.`;
+Remember: You have both comprehensive general knowledge and powerful tools. Be proactive in using tools when they clearly match user needs, and don't hesitate to combine multiple tools for better results. Most importantly, follow any custom tool configurations exactly as specified.`;
 }
 
 /**

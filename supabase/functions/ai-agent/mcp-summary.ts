@@ -1,4 +1,5 @@
 
+
 /**
  * MCP summary utilities for enhanced system prompts
  */
@@ -17,7 +18,7 @@ export interface MCPSummary {
   sampleUseCases: string[];
   endpoint: string;
   default_key: string;
-  priority?: number; // Add priority to summary interface
+  priority?: number;
 }
 
 /**
@@ -35,6 +36,7 @@ function normalizeTags(tags: any): string[] {
 
 /**
  * Creates a condensed summary of MCP metadata for system prompts
+ * Now supports agent-specific custom configurations
  */
 export function createMCPSummary(mcp: any): MCPSummary {
   let parameters;
@@ -57,27 +59,29 @@ export function createMCPSummary(mcp: any): MCPSummary {
       description: param.description
     }));
 
-  // Extract sample use cases (first 2 for conciseness)
+  // Use custom use cases if available (from agent configuration), otherwise default sample use cases
   let sampleUseCases: string[] = [];
+  
+  // Check if this MCP has custom use cases (set by agent configuration)
   if (mcp.sampleUseCases && Array.isArray(mcp.sampleUseCases)) {
-    sampleUseCases = mcp.sampleUseCases.slice(0, 2);
+    sampleUseCases = mcp.sampleUseCases.slice(0, 3); // Limit to 3 for token efficiency
   }
 
   return {
-    title: mcp.title,
-    description: mcp.description,
+    title: mcp.title, // This now includes custom title if set
+    description: mcp.description, // This now includes custom description if set
     category: mcp.category,
     tags: normalizeTags(mcp.tags),
     keyParameters,
     sampleUseCases,
     endpoint: mcp.endpoint,
     default_key: mcp.default_key || mcp.id,
-    priority: mcp.priority || 1 // Extract priority field with default value
+    priority: mcp.priority || 1 // This now includes custom priority if set
   };
 }
 
 /**
- * Formats MCP summary for inclusion in system prompt with compact inline format
+ * Formats MCP summary for inclusion in system prompt with enhanced custom configuration support
  */
 export function formatMCPForPrompt(summary: MCPSummary): string {
   // Compact inline format: **ToolName** (category) — description
@@ -93,10 +97,11 @@ export function formatMCPForPrompt(summary: MCPSummary): string {
     result += `\n• Parameters: ${paramsList}`;
   }
   
-  // Add use cases separated by semicolons for efficiency
+  // Add use cases with emphasis on custom configurations
   if (summary.sampleUseCases.length > 0) {
     result += `\n• Use cases: ${summary.sampleUseCases.join('; ')}`;
   }
   
   return result;
 }
+
