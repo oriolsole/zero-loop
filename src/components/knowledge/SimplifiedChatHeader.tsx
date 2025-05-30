@@ -141,12 +141,23 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
             />
           </div>
           
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            {useCustomPrompt && (
-              <Badge variant="secondary" className="text-xs">
-                Custom Prompt
-              </Badge>
-            )}
+          <div className="flex items-center gap-2">
+            {/* Prompt type badge with edit pencil */}
+            <Badge 
+              variant={useCustomPrompt ? "default" : "secondary"} 
+              className="text-xs"
+            >
+              {useCustomPrompt ? 'Custom Prompt' : 'Default Prompt'}
+            </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onOpenPromptEditor}
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+              title="Edit System Prompt"
+            >
+              <Edit3 className="h-3 w-3" />
+            </Button>
           </div>
         </div>
 
@@ -167,16 +178,6 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
           </div>
 
           <Separator orientation="vertical" className="h-5" />
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onOpenPromptEditor}
-            className="text-muted-foreground hover:text-foreground"
-            title="Edit System Prompt"
-          >
-            <Edit3 className="h-4 w-4" />
-          </Button>
 
           <Button
             variant="ghost"
