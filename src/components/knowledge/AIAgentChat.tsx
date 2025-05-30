@@ -183,7 +183,16 @@ const AIAgentChat: React.FC = () => {
       console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages, loop enabled: ${loopEnabled}`);
 
       // Prepare the request body with custom prompt if enabled
-      const requestBody = {
+      const requestBody: {
+        message: string;
+        conversationHistory: { role: "user" | "assistant"; content: string; }[];
+        userId: string;
+        sessionId: string;
+        streaming: boolean;
+        modelSettings: typeof modelSettings;
+        loopEnabled: boolean;
+        customSystemPrompt?: string;
+      } = {
         message,
         conversationHistory,
         userId: user.id,
