@@ -1,31 +1,72 @@
 
-import { Search, Github, Code, Wrench, Globe, FileText, Terminal, FileSearch, Book, Brain } from 'lucide-react';
+import { Search, Github, Code, Wrench, Globe, FileText, Terminal, FileSearch, Book, Brain, Database, HardDrive, FolderOpen, Library } from 'lucide-react';
 import JiraIcon from '@/components/icons/JiraIcon';
 
 export const getToolIcon = (toolName: string) => {
   const toolLower = toolName.toLowerCase();
   
+  // Google Drive specific tools
+  if (toolLower.includes('google-drive') || toolLower.includes('drive')) {
+    return HardDrive;
+  }
+  
+  // Search tools
   if (toolLower.includes('search') || toolLower.includes('google') || toolLower.includes('web search')) {
     return Search;
-  } else if (toolLower.includes('github')) {
-    return Github;
-  } else if (toolLower.includes('knowledge') || toolLower.includes('database')) {
-    return Book;
-  } else if (toolLower.includes('code') || toolLower.includes('analysis')) {
-    return Code;
-  } else if (toolLower.includes('web') || toolLower.includes('scraper') || toolLower.includes('scraping')) {
-    return Globe;
-  } else if (toolLower.includes('jira')) {
-    return JiraIcon;
-  } else if (toolLower.includes('ai') || toolLower.includes('reasoning') || toolLower.includes('agent') || toolLower.includes('learning')) {
-    return Brain;
-  } else if (toolLower.includes('command') || toolLower.includes('terminal')) {
-    return Terminal;
-  } else if (toolLower.includes('file') || toolLower.includes('document')) {
-    return FileSearch;
-  } else {
-    return Wrench;
   }
+  
+  // GitHub tools
+  if (toolLower.includes('github')) {
+    return Github;
+  }
+  
+  // Knowledge and database tools - use Database for better distinction
+  if (toolLower.includes('knowledge') || toolLower.includes('database') || toolLower.includes('knowledge-search')) {
+    return Database;
+  }
+  
+  // Library and document storage
+  if (toolLower.includes('library') || toolLower.includes('upload') || toolLower.includes('storage')) {
+    return Library;
+  }
+  
+  // Code analysis tools
+  if (toolLower.includes('code') || toolLower.includes('analysis')) {
+    return Code;
+  }
+  
+  // Web scraping tools
+  if (toolLower.includes('web') || toolLower.includes('scraper') || toolLower.includes('scraping')) {
+    return Globe;
+  }
+  
+  // Jira tools
+  if (toolLower.includes('jira')) {
+    return JiraIcon;
+  }
+  
+  // AI and reasoning tools
+  if (toolLower.includes('ai') || toolLower.includes('reasoning') || toolLower.includes('agent') || toolLower.includes('learning')) {
+    return Brain;
+  }
+  
+  // Terminal and command tools
+  if (toolLower.includes('command') || toolLower.includes('terminal')) {
+    return Terminal;
+  }
+  
+  // File and document tools
+  if (toolLower.includes('file') || toolLower.includes('document')) {
+    return FileSearch;
+  }
+  
+  // Folder operations
+  if (toolLower.includes('folder') || toolLower.includes('directory')) {
+    return FolderOpen;
+  }
+  
+  // Default fallback
+  return Wrench;
 };
 
 export const getToolDisplayName = (toolName: string): string => {
@@ -35,10 +76,13 @@ export const getToolDisplayName = (toolName: string): string => {
     'github_search': 'GitHub Search',
     'github_analysis': 'GitHub Analysis',
     'github_tools': 'GitHub Tools',
+    'google-drive-tools': 'Google Drive',
     'knowledge_search': 'Knowledge Search',
+    'knowledge-search-v2': 'Knowledge Search',
     'knowledge_retrieval': 'Knowledge Retrieval',
     'web_scraper': 'Web Scraping',
     'jira_search': 'Jira Search',
+    'jira-tools': 'Jira Tools',
     'ai_reasoning': 'AI Reasoning',
     'code_analysis': 'Code Analysis',
     'unified_agent': 'Unified Agent'
@@ -49,6 +93,11 @@ export const getToolDisplayName = (toolName: string): string => {
 
 export const getToolColor = (toolName: string): string => {
   const toolLower = toolName.toLowerCase();
+  
+  // Google Drive specific styling
+  if (toolLower.includes('google-drive') || toolLower.includes('drive')) {
+    return 'text-yellow-600 bg-yellow-50 border-yellow-200 dark:text-yellow-400 dark:bg-yellow-950/20 dark:border-yellow-800/30';
+  }
   
   if (toolLower.includes('search') || toolLower.includes('google') || toolLower.includes('web search')) {
     return 'text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/20 dark:border-blue-800/30';
