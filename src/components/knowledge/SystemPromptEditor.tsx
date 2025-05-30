@@ -117,7 +117,7 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
               value={localCustomPrompt}
               onChange={(e) => setLocalCustomPrompt(e.target.value)}
               placeholder="Enter your custom system prompt here, or leave empty to use the generated prompt..."
-              className="flex-1 min-h-[180px] max-h-[300px] overflow-y-auto font-mono text-sm resize-none"
+              className="flex-1 min-h-[300px] font-mono text-sm"
               disabled={!useCustomPrompt}
             />
 
