@@ -1,77 +1,31 @@
+
 import { Search, Github, Code, Wrench, Globe, FileText, Terminal, FileSearch, Book, Brain } from 'lucide-react';
 import JiraIcon from '@/components/icons/JiraIcon';
 
 export const getToolIcon = (toolName: string) => {
   const toolLower = toolName.toLowerCase();
   
-  console.log('🔍 getToolIcon called:', {
-    originalToolName: toolName,
-    toolLower,
-    availableIconChecks: {
-      search: toolLower.includes('search'),
-      google: toolLower.includes('google'),
-      webSearch: toolLower.includes('web search'),
-      github: toolLower.includes('github'),
-      knowledge: toolLower.includes('knowledge'),
-      database: toolLower.includes('database'),
-      code: toolLower.includes('code'),
-      analysis: toolLower.includes('analysis'),
-      web: toolLower.includes('web'),
-      scraper: toolLower.includes('scraper'),
-      scraping: toolLower.includes('scraping'),
-      jira: toolLower.includes('jira'),
-      ai: toolLower.includes('ai'),
-      reasoning: toolLower.includes('reasoning'),
-      agent: toolLower.includes('agent'),
-      learning: toolLower.includes('learning'),
-      command: toolLower.includes('command'),
-      terminal: toolLower.includes('terminal'),
-      file: toolLower.includes('file'),
-      document: toolLower.includes('document')
-    }
-  });
-  
-  let selectedIcon;
-  
   if (toolLower.includes('search') || toolLower.includes('google') || toolLower.includes('web search')) {
-    selectedIcon = Search;
-    console.log('🎯 Selected Search icon');
+    return Search;
   } else if (toolLower.includes('github')) {
-    selectedIcon = Github;
-    console.log('🎯 Selected Github icon');
+    return Github;
   } else if (toolLower.includes('knowledge') || toolLower.includes('database')) {
-    selectedIcon = Book;
-    console.log('🎯 Selected Book icon');
+    return Book;
   } else if (toolLower.includes('code') || toolLower.includes('analysis')) {
-    selectedIcon = Code;
-    console.log('🎯 Selected Code icon');
+    return Code;
   } else if (toolLower.includes('web') || toolLower.includes('scraper') || toolLower.includes('scraping')) {
-    selectedIcon = Globe;
-    console.log('🎯 Selected Globe icon');
+    return Globe;
   } else if (toolLower.includes('jira')) {
-    selectedIcon = JiraIcon;
-    console.log('🎯 Selected JiraIcon');
+    return JiraIcon;
   } else if (toolLower.includes('ai') || toolLower.includes('reasoning') || toolLower.includes('agent') || toolLower.includes('learning')) {
-    selectedIcon = Brain;
-    console.log('🎯 Selected Brain icon');
+    return Brain;
   } else if (toolLower.includes('command') || toolLower.includes('terminal')) {
-    selectedIcon = Terminal;
-    console.log('🎯 Selected Terminal icon');
+    return Terminal;
   } else if (toolLower.includes('file') || toolLower.includes('document')) {
-    selectedIcon = FileSearch;
-    console.log('🎯 Selected FileSearch icon');
+    return FileSearch;
   } else {
-    selectedIcon = Wrench;
-    console.log('🎯 Selected fallback Wrench icon');
+    return Wrench;
   }
-  
-  console.log('🔧 Final icon selection:', {
-    toolName,
-    selectedIconName: selectedIcon?.name || selectedIcon?.displayName || 'Unknown',
-    isCustomComponent: selectedIcon === JiraIcon ? 'JiraIcon' : 'Lucide'
-  });
-  
-  return selectedIcon;
 };
 
 export const getToolDisplayName = (toolName: string): string => {
