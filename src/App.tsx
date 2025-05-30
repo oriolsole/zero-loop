@@ -13,6 +13,7 @@ import KnowledgeManagement from "./pages/KnowledgeManagement";
 import DomainCustomization from "./pages/DomainCustomization";
 import CreateWebSearchMCP from "./pages/CreateWebSearchMCP";
 import AIAgent from "./pages/AIAgent";
+import AgentManagement from "./pages/AgentManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -72,6 +73,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <AIAgent />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/agents"
+                  element={
+                    <ProtectedRoute>
+                      <AgentManagement />
                     </ProtectedRoute>
                   }
                 />

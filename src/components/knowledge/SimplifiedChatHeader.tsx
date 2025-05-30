@@ -12,11 +12,12 @@ import {
   Plus,
   Loader2,
   RefreshCw,
-  Bot,
   Edit3
 } from 'lucide-react';
 import { ModelProvider } from '@/services/modelProviderService';
 import { Agent } from '@/services/agentService';
+import AgentSelector from '@/components/agents/AgentSelector';
+import { useNavigate } from 'react-router-dom';
 
 interface SimplifiedChatHeaderProps {
   modelSettings: {
@@ -32,6 +33,7 @@ interface SimplifiedChatHeaderProps {
   onOpenPromptEditor: () => void;
   useCustomPrompt: boolean;
   currentAgent?: Agent | null;
+  onAgentChange?: (agent: Agent) => void;
 }
 
 const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
@@ -44,8 +46,21 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
   onToggleLoop,
   onOpenPromptEditor,
   useCustomPrompt,
-  currentAgent
+  currentAgent,
+  onAgentChange
 }) => {
+  const navigate = useNavigate();
+
+  const handleAgentChange = (agent: Agent) => {
+    if (onAgentChange) {
+      onAgentChange(agent);
+    }
+  };
+
+  const handleManageAgents = () => {
+    navigate('/agents');
+  };
+
   return (
     <div className="border-b border-border bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/50">
       <div className="flex items-center justify-between px-6 py-3">
@@ -61,23 +76,13 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
           
           <Separator orientation="vertical" className="h-5" />
           
-          {currentAgent && (
-            <div className="flex items-center gap-2">
-              <Bot className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium">{currentAgent.name}</span>
-              {currentAgent.description && (
-                <span className="text-xs text-muted-foreground hidden sm:inline">
-                  - {currentAgent.description}
-                </span>
-              )}
-            </div>
-          )}
+          <AgentSelector
+            currentAgent={currentAgent}
+            onAgentChange={handleAgentChange}
+            onManageAgents={handleManageAgents}
+          />
           
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Badge variant="outline" className="text-xs">
-              {modelSettings.selectedModel || currentAgent?.model || 'gpt-4o'}
-            </Badge>
-            
             {useCustomPrompt && (
               <Badge variant="secondary" className="text-xs">
                 Custom Prompt
@@ -93,11 +98,11 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
             </Label>
             <Switch
               id="loop-toggle"
-              checked={loopEnabled}
+              checked={currentAgent?.loop_enabled || loopEnabled}
               onCheckedChange={onToggleLoop}
               disabled={isLoading}
             />
-            {loopEnabled && (
+            {(currentAgent?.loop_enabled || loopEnabled) && (
               <RefreshCw className="h-3 w-3 text-primary" />
             )}
           </div>

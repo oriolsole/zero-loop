@@ -10,6 +10,7 @@ import { useSessionManager } from '@/hooks/conversation/useSessionManager';
 import { useSystemPrompt } from '@/hooks/useSystemPrompt';
 import { useAgentManagement } from '@/hooks/useAgentManagement';
 import { useGeneratedSystemPrompt } from '@/hooks/useGeneratedSystemPrompt';
+import { Agent } from '@/services/agentService';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
@@ -96,6 +97,18 @@ const AIAgentChat: React.FC = () => {
   const handleToggleLoop = (enabled: boolean) => {
     setLoopEnabled(enabled);
     localStorage.setItem('aiAgentLoopEnabled', JSON.stringify(enabled));
+  };
+
+  // Handle agent change
+  const handleAgentChange = (agent: Agent) => {
+    setCurrentAgent(agent);
+    console.log('🔄 Agent changed to:', agent.name);
+    
+    // Update loop preference based on agent's setting
+    if (agent.loop_enabled !== undefined) {
+      setLoopEnabled(agent.loop_enabled);
+      localStorage.setItem('aiAgentLoopEnabled', JSON.stringify(agent.loop_enabled));
+    }
   };
 
   // Auto-scroll to bottom when new messages arrive
@@ -372,6 +385,7 @@ const AIAgentChat: React.FC = () => {
           onOpenPromptEditor={() => setShowPromptEditor(true)}
           useCustomPrompt={useCustomPrompt}
           currentAgent={currentAgent}
+          onAgentChange={handleAgentChange}
         />
         
         <SimplifiedChatInterface
