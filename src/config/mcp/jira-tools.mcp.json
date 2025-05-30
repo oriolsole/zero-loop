@@ -5,12 +5,12 @@
   "tool": {
     "id": "jira-tools",
     "name": "execute_jira_tools",
-    "title": "Jira Tools",
-    "description": "Access and manage Jira projects, issues, and workflows. Use when users ask to 'retrieve projects', 'list projects', 'get projects', 'show my projects', 'what projects do I have', 'search issues', 'create tickets', or any Jira-related tasks. This tool connects to your Jira instance to fetch project information, search issues, create/update tickets, and manage project workflows.",
+    "title": "Jira Tools - Enhanced",
+    "description": "Comprehensive Jira project management tool. Access and manage Jira projects, issues, workflows, attachments, and advanced operations. Use for project retrieval ('list projects', 'show my projects'), issue management ('search issues', 'create tickets', 'assign issues', 'transition tickets'), workflow operations ('move to Done', 'change status'), time tracking ('log work', 'add worklog'), bulk operations ('update multiple issues'), and advanced searches with JQL. Supports all major Jira workflows including Scrum and Kanban boards.",
     "endpoint": "jira-tools",
     "icon": "ticket",
     "category": "project-management",
-    "tags": ["jira", "tickets", "issues", "project-management", "atlassian", "projects", "workflows"],
+    "tags": ["jira", "tickets", "issues", "project-management", "atlassian", "projects", "workflows", "scrum", "kanban", "agile", "bulk-operations", "time-tracking"],
     "schema": {
       "input": {
         "type": "object",
@@ -20,18 +20,32 @@
             "type": "string",
             "description": "The Jira action to perform",
             "required": true,
-            "enum": ["get_project", "create_issue", "update_issue", "search_issues", "get_issue", "list_projects", "get_issue_types", "add_comment"]
+            "enum": [
+              "list_projects", "get_project", "get_issue_types", "create_issue", "get_issue", 
+              "update_issue", "delete_issue", "search_issues", "add_comment", "get_comments",
+              "get_transitions", "transition_issue", "assign_issue", "get_watchers", 
+              "add_watcher", "remove_watcher", "get_attachments", "upload_attachment",
+              "get_worklog", "add_worklog", "delete_worklog", "get_issue_history",
+              "bulk_update_issues", "get_sprints", "get_board", "get_board_issues",
+              "create_version", "get_versions", "get_components", "create_component"
+            ]
           },
           "project_key": {
             "name": "project_key",
             "type": "string",
-            "description": "Jira project key (e.g., 'PROJ', 'DEV')",
+            "description": "Jira project key (e.g., 'PROJ', 'DEV', 'TEST')",
             "required": false
           },
           "issue_key": {
             "name": "issue_key",
             "type": "string",
-            "description": "Jira issue key (e.g., 'PROJ-123')",
+            "description": "Jira issue key (e.g., 'PROJ-123', 'DEV-456')",
+            "required": false
+          },
+          "issue_keys": {
+            "name": "issue_keys",
+            "type": "array",
+            "description": "Array of issue keys for bulk operations",
             "required": false
           },
           "summary": {
@@ -43,7 +57,7 @@
           "description": {
             "name": "description",
             "type": "string",
-            "description": "Issue description",
+            "description": "Issue description in Jira format",
             "required": false
           },
           "issue_type": {
@@ -51,12 +65,109 @@
             "type": "string",
             "description": "Type of issue",
             "required": false,
-            "enum": ["Bug", "Task", "Story", "Epic", "Subtask"]
+            "enum": ["Bug", "Task", "Story", "Epic", "Subtask", "Improvement", "New Feature"]
+          },
+          "priority": {
+            "name": "priority",
+            "type": "string",
+            "description": "Issue priority level",
+            "required": false,
+            "enum": ["Highest", "High", "Medium", "Low", "Lowest"]
+          },
+          "assignee": {
+            "name": "assignee",
+            "type": "string",
+            "description": "Assignee username, email, or account ID",
+            "required": false
+          },
+          "status": {
+            "name": "status",
+            "type": "string",
+            "description": "Issue status for filtering or transitions",
+            "required": false
+          },
+          "transition": {
+            "name": "transition",
+            "type": "string",
+            "description": "Transition name or ID to move issue through workflow",
+            "required": false
           },
           "jql": {
             "name": "jql",
             "type": "string",
-            "description": "Jira Query Language (JQL) for advanced searches",
+            "description": "Jira Query Language for advanced searches. Examples: 'project = PROJ AND status = Open', 'assignee = currentUser() AND priority = High'",
+            "required": false
+          },
+          "comment": {
+            "name": "comment",
+            "type": "string",
+            "description": "Comment text to add to issue",
+            "required": false
+          },
+          "time_spent": {
+            "name": "time_spent",
+            "type": "string",
+            "description": "Time spent in Jira format (e.g., '2h 30m', '1d 4h')",
+            "required": false
+          },
+          "work_description": {
+            "name": "work_description",
+            "type": "string",
+            "description": "Description of work performed for worklog",
+            "required": false
+          },
+          "labels": {
+            "name": "labels",
+            "type": "array",
+            "description": "Array of labels to add to issue",
+            "required": false
+          },
+          "components": {
+            "name": "components",
+            "type": "array",
+            "description": "Array of component names or IDs",
+            "required": false
+          },
+          "fix_versions": {
+            "name": "fix_versions",
+            "type": "array",
+            "description": "Array of version names for fix versions",
+            "required": false
+          },
+          "custom_fields": {
+            "name": "custom_fields",
+            "type": "object",
+            "description": "Custom field values as key-value pairs",
+            "required": false
+          },
+          "watcher": {
+            "name": "watcher",
+            "type": "string",
+            "description": "Username or account ID to add/remove as watcher",
+            "required": false
+          },
+          "limit": {
+            "name": "limit",
+            "type": "number",
+            "description": "Maximum number of results to return (default: 50, max: 1000)",
+            "required": false
+          },
+          "start_at": {
+            "name": "start_at",
+            "type": "number",
+            "description": "Starting index for pagination (default: 0)",
+            "required": false
+          },
+          "board_id": {
+            "name": "board_id",
+            "type": "string",
+            "description": "Agile board ID for board-related operations",
+            "required": false
+          },
+          "sprint_id": {
+            "name": "sprint_id",
+            "type": "string",
+            "description": "Sprint ID for sprint-related operations",
             "required": false
           }
         },
@@ -67,7 +178,7 @@
         "properties": {
           "data": {
             "type": "object",
-            "description": "Jira API response data"
+            "description": "Jira API response data with enhanced formatting"
           }
         }
       }
@@ -78,34 +189,61 @@
         "provider": "jira",
         "required": true
       },
-      "permissions": ["issue_read", "project_read"]
+      "permissions": ["issue_read", "project_read", "issue_write", "project_admin"]
     },
     "metadata": {
-      "version": "1.0.0",
+      "version": "2.0.0",
       "author": "ZeroLoop",
       "sampleUseCases": [
-        "List all projects: 'retrieve projects', 'show my projects', 'what projects do I have'",
-        "Search for issues: 'find bugs in project ABC', 'show open issues assigned to me'",
-        "Get project details: 'tell me about project XYZ', 'what's in the DEV project'",
-        "Create new issues: 'create a bug report for login issues'",
-        "Update existing tickets: 'update ticket ABC-123 with progress notes'"
+        "Project Management: 'list all projects', 'show project DEV details', 'get project components'",
+        "Issue Search: 'find all bugs assigned to me', 'search high priority issues in PROJ', 'show issues in current sprint'",
+        "Issue Creation: 'create a critical bug for login failure', 'create story for user dashboard', 'create subtask under PROJ-123'",
+        "Issue Updates: 'assign PROJ-123 to john.doe', 'change priority of DEV-456 to High', 'add component Backend to issue'",
+        "Workflow Operations: 'move PROJ-123 to In Progress', 'transition issue to Done', 'get available transitions for ticket'",
+        "Time Tracking: 'log 2 hours work on PROJ-123', 'add worklog for bug fixing', 'show work logged on issue'",
+        "Comments & Collaboration: 'add comment to PROJ-123', 'add john as watcher to issue', 'get all comments on ticket'",
+        "Bulk Operations: 'update multiple issues with same assignee', 'bulk change priority of issues', 'mass assign issues to sprint'",
+        "Advanced JQL: 'search using: project = PROJ AND created >= -7d', 'find: assignee = currentUser() AND status changed to Done'",
+        "Agile/Scrum: 'get board issues for sprint', 'show active sprints', 'list backlog items'"
       ],
       "triggerPhrases": [
-        "retrieve projects", "list projects", "get projects", "show projects",
-        "what projects", "my projects", "project information",
-        "search issues", "find tickets", "jira issues", "bug reports",
-        "create ticket", "create issue", "new task", "file a bug"
+        "list projects", "show projects", "get projects", "project information", "project details",
+        "search issues", "find tickets", "jira issues", "bug reports", "show issues",
+        "create ticket", "create issue", "new task", "file a bug", "create story", "add epic",
+        "assign to", "change assignee", "reassign ticket", "assign issue",
+        "move to", "transition to", "change status", "workflow", "move ticket",
+        "add comment", "comment on", "add note", "update ticket",
+        "log work", "add worklog", "time tracking", "log time", "work logged",
+        "add watcher", "notify", "subscribe to", "watch issue",
+        "bulk update", "mass change", "update multiple", "batch operation",
+        "high priority", "critical bug", "urgent issue", "priority change",
+        "current sprint", "active sprint", "backlog", "board issues", "scrum board"
       ],
-      "negativeExamples": [
-        "Don't use for web searches or external information",
-        "Don't use for knowledge base searches or internal documents",
-        "Don't use for GitHub repository information"
+      "advancedJQLExamples": [
+        "project = PROJ AND status = 'In Progress' AND assignee = currentUser()",
+        "priority = High AND created >= -7d AND project in (PROJ, DEV)",
+        "status changed to 'Done' DURING (-1w, now()) AND assignee = 'john.doe'",
+        "labels = 'backend' AND component = 'API' AND fixVersion = '2.1.0'",
+        "sprint in openSprints() AND project = PROJ",
+        "assignee was 'old.user' AND assignee = 'new.user'"
       ],
-      "suggestedPrompt": "List all projects in my Jira instance"
+      "workflowGuidance": [
+        "Use 'get_transitions' to see available workflow transitions before moving issues",
+        "Common transitions: 'To Do → In Progress → Code Review → Done'",
+        "Always check issue status before attempting transitions",
+        "Use 'transition_issue' with transition name or ID to move through workflow"
+      ],
+      "bulkOperationTips": [
+        "Use JQL to identify issues for bulk operations",
+        "Limit bulk operations to reasonable batch sizes (50-100 issues)",
+        "Always verify results after bulk operations",
+        "Consider using 'search_issues' first to preview what will be affected"
+      ],
+      "suggestedPrompt": "List all high priority bugs assigned to me in the last week"
     }
   },
   "compatibility": {
     "frameworks": ["openai-functions", "supabase-edge"],
-    "versions": ["1.0.x"]
+    "versions": ["2.0.x"]
   }
 }

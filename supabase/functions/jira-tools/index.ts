@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 
@@ -17,14 +16,27 @@ interface JiraToolsRequest {
   action: string;
   project_key?: string;
   issue_key?: string;
+  issue_keys?: string[];
   summary?: string;
   description?: string;
   issue_type?: string;
   priority?: string;
   assignee?: string;
+  status?: string;
+  transition?: string;
   jql?: string;
   comment?: string;
+  time_spent?: string;
+  work_description?: string;
+  labels?: string[];
+  components?: string[];
+  fix_versions?: string[];
+  custom_fields?: Record<string, any>;
+  watcher?: string;
   limit?: number;
+  start_at?: number;
+  board_id?: string;
+  sprint_id?: string;
   userId?: string;
 }
 
@@ -38,7 +50,7 @@ serve(async (req) => {
 
   try {
     const body: JiraToolsRequest = await req.json();
-    console.log('Jira Tools request:', body);
+    console.log('Enhanced Jira Tools request:', body);
 
     const { action, userId } = body;
 
@@ -63,38 +75,25 @@ serve(async (req) => {
       throw new Error('Jira API credentials not found. Please configure your Jira API token in the settings.');
     }
 
-    // Parse Jira configuration from the secret key with improved handling
+    // Parse Jira configuration
     let jiraConfig: JiraConfig;
     try {
       const secretKey = secrets[0].key;
+      jiraConfig = JSON.parse(secretKey);
       
-      // Try to parse as JSON first (new format)
-      try {
-        jiraConfig = JSON.parse(secretKey);
-        
-        // Validate required fields
-        if (!jiraConfig.baseUrl || !jiraConfig.email || !jiraConfig.apiToken) {
-          throw new Error('Missing required fields in Jira configuration');
-        }
-      } catch (jsonError) {
-        // If JSON parsing fails, assume it's just an API token (legacy format)
-        throw new Error(
-          'Invalid Jira configuration format. Please update your Jira settings with the following JSON format:\n\n' +
-          '{\n' +
-          '  "baseUrl": "https://your-domain.atlassian.net",\n' +
-          '  "email": "your-email@example.com",\n' +
-          '  "apiToken": "your-api-token"\n' +
-          '}\n\n' +
-          'You can get your API token from: https://id.atlassian.com/manage-profile/security/api-tokens'
-        );
+      if (!jiraConfig.baseUrl || !jiraConfig.email || !jiraConfig.apiToken) {
+        throw new Error('Missing required fields in Jira configuration');
       }
     } catch (e) {
-      throw new Error(`Configuration error: ${e.message}`);
-    }
-
-    // Validate baseUrl format
-    if (!jiraConfig.baseUrl.startsWith('http')) {
-      throw new Error('Base URL must start with http:// or https://');
+      throw new Error(
+        'Invalid Jira configuration format. Please update your Jira settings with the following JSON format:\n\n' +
+        '{\n' +
+        '  "baseUrl": "https://your-domain.atlassian.net",\n' +
+        '  "email": "your-email@example.com",\n' +
+        '  "apiToken": "your-api-token"\n' +
+        '}\n\n' +
+        'You can get your API token from: https://id.atlassian.com/manage-profile/security/api-tokens'
+      );
     }
 
     // Remove trailing slash from baseUrl if present
@@ -146,6 +145,13 @@ serve(async (req) => {
         result = await updateIssue(jiraConfig.baseUrl, baseHeaders, body);
         break;
 
+      case 'delete_issue':
+        if (!body.issue_key) {
+          throw new Error('issue_key is required for delete_issue action');
+        }
+        result = await deleteIssue(jiraConfig.baseUrl, baseHeaders, body.issue_key);
+        break;
+
       case 'add_comment':
         if (!body.issue_key || !body.comment) {
           throw new Error('issue_key and comment are required for add_comment action');
@@ -153,8 +159,71 @@ serve(async (req) => {
         result = await addComment(jiraConfig.baseUrl, baseHeaders, body.issue_key, body.comment);
         break;
 
+      case 'get_comments':
+        if (!body.issue_key) {
+          throw new Error('issue_key is required for get_comments action');
+        }
+        result = await getComments(jiraConfig.baseUrl, baseHeaders, body.issue_key);
+        break;
+
       case 'search_issues':
         result = await searchIssues(jiraConfig.baseUrl, baseHeaders, body);
+        break;
+
+      case 'get_transitions':
+        if (!body.issue_key) {
+          throw new Error('issue_key is required for get_transitions action');
+        }
+        result = await getTransitions(jiraConfig.baseUrl, baseHeaders, body.issue_key);
+        break;
+
+      case 'transition_issue':
+        if (!body.issue_key || !body.transition) {
+          throw new Error('issue_key and transition are required for transition_issue action');
+        }
+        result = await transitionIssue(jiraConfig.baseUrl, baseHeaders, body);
+        break;
+
+      case 'assign_issue':
+        if (!body.issue_key || !body.assignee) {
+          throw new Error('issue_key and assignee are required for assign_issue action');
+        }
+        result = await assignIssue(jiraConfig.baseUrl, baseHeaders, body.issue_key, body.assignee);
+        break;
+
+      case 'get_watchers':
+        if (!body.issue_key) {
+          throw new Error('issue_key is required for get_watchers action');
+        }
+        result = await getWatchers(jiraConfig.baseUrl, baseHeaders, body.issue_key);
+        break;
+
+      case 'add_watcher':
+        if (!body.issue_key || !body.watcher) {
+          throw new Error('issue_key and watcher are required for add_watcher action');
+        }
+        result = await addWatcher(jiraConfig.baseUrl, baseHeaders, body.issue_key, body.watcher);
+        break;
+
+      case 'add_worklog':
+        if (!body.issue_key || !body.time_spent) {
+          throw new Error('issue_key and time_spent are required for add_worklog action');
+        }
+        result = await addWorklog(jiraConfig.baseUrl, baseHeaders, body);
+        break;
+
+      case 'get_worklog':
+        if (!body.issue_key) {
+          throw new Error('issue_key is required for get_worklog action');
+        }
+        result = await getWorklog(jiraConfig.baseUrl, baseHeaders, body.issue_key);
+        break;
+
+      case 'bulk_update_issues':
+        if (!body.issue_keys || body.issue_keys.length === 0) {
+          throw new Error('issue_keys array is required for bulk_update_issues action');
+        }
+        result = await bulkUpdateIssues(jiraConfig.baseUrl, baseHeaders, body);
         break;
 
       default:
@@ -170,7 +239,7 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Jira Tools error:', error);
+    console.error('Enhanced Jira Tools error:', error);
     return new Response(JSON.stringify({ 
       success: false, 
       error: error.message 
@@ -247,7 +316,7 @@ async function getIssueTypes(baseUrl: string, headers: Record<string, string>, p
 }
 
 async function createIssue(baseUrl: string, headers: Record<string, string>, body: JiraToolsRequest) {
-  const issueData = {
+  const issueData: any = {
     fields: {
       project: { key: body.project_key },
       summary: body.summary,
@@ -270,12 +339,25 @@ async function createIssue(baseUrl: string, headers: Record<string, string>, bod
     }
   };
 
+  // Add optional fields
   if (body.priority) {
-    (issueData.fields as any).priority = { name: body.priority };
+    issueData.fields.priority = { name: body.priority };
   }
 
   if (body.assignee) {
-    (issueData.fields as any).assignee = { emailAddress: body.assignee };
+    issueData.fields.assignee = { emailAddress: body.assignee };
+  }
+
+  if (body.labels && body.labels.length > 0) {
+    issueData.fields.labels = body.labels;
+  }
+
+  if (body.components && body.components.length > 0) {
+    issueData.fields.components = body.components.map(c => ({ name: c }));
+  }
+
+  if (body.custom_fields) {
+    Object.assign(issueData.fields, body.custom_fields);
   }
 
   const response = await fetch(`${baseUrl}/rest/api/3/issue`, {
@@ -318,7 +400,9 @@ async function getIssue(baseUrl: string, headers: Record<string, string>, issueK
     reporter: issue.fields.reporter?.displayName,
     created: issue.fields.created,
     updated: issue.fields.updated,
-    issueType: issue.fields.issuetype?.name
+    issueType: issue.fields.issuetype?.name,
+    labels: issue.fields.labels || [],
+    components: issue.fields.components?.map((c: any) => c.name) || []
   };
 }
 
@@ -355,6 +439,18 @@ async function updateIssue(baseUrl: string, headers: Record<string, string>, bod
     updateData.fields.assignee = { emailAddress: body.assignee };
   }
 
+  if (body.labels) {
+    updateData.fields.labels = body.labels;
+  }
+
+  if (body.components) {
+    updateData.fields.components = body.components.map(c => ({ name: c }));
+  }
+
+  if (body.custom_fields) {
+    Object.assign(updateData.fields, body.custom_fields);
+  }
+
   const response = await fetch(`${baseUrl}/rest/api/3/issue/${body.issue_key}`, {
     method: 'PUT',
     headers,
@@ -367,6 +463,19 @@ async function updateIssue(baseUrl: string, headers: Record<string, string>, bod
   }
 
   return { success: true, message: `Issue ${body.issue_key} updated successfully` };
+}
+
+async function deleteIssue(baseUrl: string, headers: Record<string, string>, issueKey: string) {
+  const response = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}`, {
+    method: 'DELETE',
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete issue: ${response.status} ${response.statusText}`);
+  }
+
+  return { success: true, message: `Issue ${issueKey} deleted successfully` };
 }
 
 async function addComment(baseUrl: string, headers: Record<string, string>, issueKey: string, comment: string) {
@@ -408,6 +517,29 @@ async function addComment(baseUrl: string, headers: Record<string, string>, issu
   };
 }
 
+async function getComments(baseUrl: string, headers: Record<string, string>, issueKey: string) {
+  const response = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}/comment`, {
+    method: 'GET',
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to get comments: ${response.status} ${response.statusText}`);
+  }
+
+  const result = await response.json();
+  return {
+    total: result.total,
+    comments: result.comments.map((comment: any) => ({
+      id: comment.id,
+      author: comment.author?.displayName,
+      body: comment.body,
+      created: comment.created,
+      updated: comment.updated
+    }))
+  };
+}
+
 async function searchIssues(baseUrl: string, headers: Record<string, string>, body: JiraToolsRequest) {
   let jql = body.jql;
   
@@ -430,6 +562,10 @@ async function searchIssues(baseUrl: string, headers: Record<string, string>, bo
     if (body.priority) {
       conditions.push(`priority = "${body.priority}"`);
     }
+
+    if (body.status) {
+      conditions.push(`status = "${body.status}"`);
+    }
     
     jql = conditions.length > 0 ? conditions.join(' AND ') : 'order by created DESC';
   }
@@ -437,7 +573,8 @@ async function searchIssues(baseUrl: string, headers: Record<string, string>, bo
   const searchParams = new URLSearchParams({
     jql: jql,
     maxResults: (body.limit || 50).toString(),
-    fields: 'key,summary,status,priority,assignee,reporter,created,updated,issuetype'
+    startAt: (body.start_at || 0).toString(),
+    fields: 'key,summary,status,priority,assignee,reporter,created,updated,issuetype,labels,components'
   });
 
   const response = await fetch(`${baseUrl}/rest/api/3/search?${searchParams}`, {
@@ -452,6 +589,8 @@ async function searchIssues(baseUrl: string, headers: Record<string, string>, bo
   const searchResult = await response.json();
   return {
     total: searchResult.total,
+    startAt: searchResult.startAt,
+    maxResults: searchResult.maxResults,
     issues: searchResult.issues.map((issue: any) => ({
       key: issue.key,
       summary: issue.fields.summary,
@@ -461,7 +600,229 @@ async function searchIssues(baseUrl: string, headers: Record<string, string>, bo
       reporter: issue.fields.reporter?.displayName,
       created: issue.fields.created,
       updated: issue.fields.updated,
-      issueType: issue.fields.issuetype?.name
+      issueType: issue.fields.issuetype?.name,
+      labels: issue.fields.labels || [],
+      components: issue.fields.components?.map((c: any) => c.name) || []
     }))
+  };
+}
+
+async function getTransitions(baseUrl: string, headers: Record<string, string>, issueKey: string) {
+  const response = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}/transitions`, {
+    method: 'GET',
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to get transitions: ${response.status} ${response.statusText}`);
+  }
+
+  const result = await response.json();
+  return {
+    transitions: result.transitions.map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      to: {
+        id: t.to.id,
+        name: t.to.name,
+        statusCategory: t.to.statusCategory?.name
+      }
+    }))
+  };
+}
+
+async function transitionIssue(baseUrl: string, headers: Record<string, string>, body: JiraToolsRequest) {
+  // First get available transitions to find the correct transition ID
+  const transitionsResponse = await fetch(`${baseUrl}/rest/api/3/issue/${body.issue_key}/transitions`, {
+    method: 'GET',
+    headers
+  });
+
+  if (!transitionsResponse.ok) {
+    throw new Error(`Failed to get available transitions: ${transitionsResponse.status}`);
+  }
+
+  const transitionsData = await transitionsResponse.json();
+  const transition = transitionsData.transitions.find((t: any) => 
+    t.name.toLowerCase() === body.transition!.toLowerCase() || t.id === body.transition
+  );
+
+  if (!transition) {
+    throw new Error(`Transition "${body.transition}" not found. Available transitions: ${transitionsData.transitions.map((t: any) => t.name).join(', ')}`);
+  }
+
+  const transitionData = {
+    transition: {
+      id: transition.id
+    }
+  };
+
+  const response = await fetch(`${baseUrl}/rest/api/3/issue/${body.issue_key}/transitions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(transitionData)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(`Failed to transition issue: ${response.status} ${JSON.stringify(errorData)}`);
+  }
+
+  return { 
+    success: true, 
+    message: `Issue ${body.issue_key} transitioned to ${transition.to.name}`,
+    transition: {
+      from: transition.from?.name,
+      to: transition.to.name
+    }
+  };
+}
+
+async function assignIssue(baseUrl: string, headers: Record<string, string>, issueKey: string, assignee: string) {
+  const assignData = {
+    fields: {
+      assignee: { emailAddress: assignee }
+    }
+  };
+
+  const response = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(assignData)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(`Failed to assign issue: ${response.status} ${JSON.stringify(errorData)}`);
+  }
+
+  return { success: true, message: `Issue ${issueKey} assigned to ${assignee}` };
+}
+
+async function getWatchers(baseUrl: string, headers: Record<string, string>, issueKey: string) {
+  const response = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}/watchers`, {
+    method: 'GET',
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to get watchers: ${response.status} ${response.statusText}`);
+  }
+
+  const result = await response.json();
+  return {
+    watchCount: result.watchCount,
+    isWatching: result.isWatching,
+    watchers: result.watchers?.map((w: any) => ({
+      accountId: w.accountId,
+      displayName: w.displayName,
+      emailAddress: w.emailAddress
+    })) || []
+  };
+}
+
+async function addWatcher(baseUrl: string, headers: Record<string, string>, issueKey: string, watcher: string) {
+  const response = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}/watchers`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(watcher)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(`Failed to add watcher: ${response.status} ${JSON.stringify(errorData)}`);
+  }
+
+  return { success: true, message: `Added ${watcher} as watcher to ${issueKey}` };
+}
+
+async function addWorklog(baseUrl: string, headers: Record<string, string>, body: JiraToolsRequest) {
+  const worklogData = {
+    timeSpent: body.time_spent,
+    comment: {
+      type: "doc",
+      version: 1,
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: body.work_description || "Work logged"
+            }
+          ]
+        }
+      ]
+    }
+  };
+
+  const response = await fetch(`${baseUrl}/rest/api/3/issue/${body.issue_key}/worklog`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(worklogData)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(`Failed to add worklog: ${response.status} ${JSON.stringify(errorData)}`);
+  }
+
+  const result = await response.json();
+  return {
+    id: result.id,
+    timeSpent: result.timeSpent,
+    timeSpentSeconds: result.timeSpentSeconds,
+    author: result.author?.displayName,
+    created: result.created
+  };
+}
+
+async function getWorklog(baseUrl: string, headers: Record<string, string>, issueKey: string) {
+  const response = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}/worklog`, {
+    method: 'GET',
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to get worklog: ${response.status} ${response.statusText}`);
+  }
+
+  const result = await response.json();
+  return {
+    total: result.total,
+    worklogs: result.worklogs.map((w: any) => ({
+      id: w.id,
+      author: w.author?.displayName,
+      timeSpent: w.timeSpent,
+      timeSpentSeconds: w.timeSpentSeconds,
+      comment: w.comment,
+      created: w.created,
+      updated: w.updated
+    }))
+  };
+}
+
+async function bulkUpdateIssues(baseUrl: string, headers: Record<string, string>, body: JiraToolsRequest) {
+  const results = [];
+  
+  for (const issueKey of body.issue_keys!) {
+    try {
+      const updateResult = await updateIssue(baseUrl, headers, { ...body, issue_key: issueKey });
+      results.push({ issueKey, success: true, result: updateResult });
+    } catch (error) {
+      results.push({ issueKey, success: false, error: error.message });
+    }
+  }
+
+  const successCount = results.filter(r => r.success).length;
+  const failureCount = results.filter(r => !r.success).length;
+
+  return {
+    summary: {
+      total: body.issue_keys!.length,
+      successful: successCount,
+      failed: failureCount
+    },
+    details: results
   };
 }
