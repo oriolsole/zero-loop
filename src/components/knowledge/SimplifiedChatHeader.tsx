@@ -36,6 +36,8 @@ interface SimplifiedChatHeaderProps {
   useCustomPrompt: boolean;
   currentAgent?: Agent | null;
   onAgentChange?: (agent: Agent) => void;
+  onOpenAgentConfig?: () => void;
+  onCreateAgent?: () => void;
 }
 
 const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
@@ -49,7 +51,9 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
   onOpenPromptEditor,
   useCustomPrompt,
   currentAgent,
-  onAgentChange
+  onAgentChange,
+  onOpenAgentConfig,
+  onCreateAgent
 }) => {
   const navigate = useNavigate();
   const { mcps: availableTools } = useAvailableMCPs();
@@ -62,6 +66,21 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
 
   const handleManageAgents = () => {
     navigate('/agents');
+  };
+
+  const handleConfigClick = () => {
+    if (onOpenAgentConfig) {
+      onOpenAgentConfig();
+    } else {
+      // Fallback to navigate to agents page
+      navigate('/agents');
+    }
+  };
+
+  const handleCreateAgent = () => {
+    if (onCreateAgent) {
+      onCreateAgent();
+    }
   };
 
   // Helper function to format model display name
@@ -182,9 +201,21 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
           <Button
             variant="ghost"
             size="sm"
-            onClick={onNewSession}
+            onClick={handleConfigClick}
             disabled={isLoading}
             className="text-muted-foreground hover:text-foreground"
+            title="Configure Agent"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCreateAgent}
+            disabled={isLoading}
+            className="text-muted-foreground hover:text-foreground"
+            title="Create New Agent"
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

@@ -6,13 +6,14 @@ import { useConversationContext } from '@/contexts/ConversationContext';
 import { useAIAgentChat } from '@/hooks/conversation/useAIAgentChat';
 import { useChatActions } from '@/hooks/conversation/useChatActions';
 import { useChatInitialization } from '@/hooks/conversation/useChatInitialization';
-import { agentService } from '@/services/agentService';
+import { agentService, Agent } from '@/services/agentService';
 import { toast } from '@/components/ui/sonner';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
 import SessionsSidebar from './SessionsSidebar';
 import SystemPromptEditor from './SystemPromptEditor';
+import AgentFormModal from '@/components/agents/AgentFormModal';
 
 const AIAgentChat: React.FC = () => {
   const {
@@ -44,6 +45,7 @@ const AIAgentChat: React.FC = () => {
 
   const [showSessions, setShowSessions] = useState(false);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
+  const [showAgentModal, setShowAgentModal] = useState(false);
 
   // System prompt management - now agent-aware
   const {
@@ -96,6 +98,49 @@ const AIAgentChat: React.FC = () => {
     }
   };
 
+  // Handle agent configuration - open edit modal for current agent
+  const handleOpenAgentConfig = () => {
+    if (!currentAgent) {
+      toast.error('No agent selected');
+      return;
+    }
+    setShowAgentModal(true);
+  };
+
+  // Handle creating new agent
+  const handleCreateAgent = () => {
+    setShowAgentModal(true);
+  };
+
+  // Handle agent creation/update
+  const handleAgentSubmit = async (agentData: any) => {
+    try {
+      let savedAgent: Agent | null = null;
+      
+      if (currentAgent && showAgentModal) {
+        // Update existing agent
+        savedAgent = await agentService.updateAgent({
+          id: currentAgent.id,
+          ...agentData
+        });
+        toast.success('Agent updated successfully');
+      } else {
+        // Create new agent
+        savedAgent = await agentService.createAgent(agentData);
+        toast.success('Agent created successfully');
+      }
+
+      if (savedAgent) {
+        handleAgentChange(savedAgent);
+      }
+      
+      setShowAgentModal(false);
+    } catch (error) {
+      console.error('Failed to save agent:', error);
+      toast.error('Failed to save agent');
+    }
+  };
+
   return (
     <div className="flex h-full">
       {showSessions && (
@@ -122,6 +167,8 @@ const AIAgentChat: React.FC = () => {
           useCustomPrompt={useCustomPrompt}
           currentAgent={currentAgent}
           onAgentChange={handleAgentChange}
+          onOpenAgentConfig={handleOpenAgentConfig}
+          onCreateAgent={handleCreateAgent}
         />
         
         <SimplifiedChatInterface
@@ -154,6 +201,14 @@ const AIAgentChat: React.FC = () => {
         onReset={resetToDefault}
         toolsCount={5}
         loopEnabled={currentAgent?.loop_enabled || loopEnabled}
+      />
+
+      <AgentFormModal
+        isOpen={showAgentModal}
+        onClose={() => setShowAgentModal(false)}
+        onSubmit={handleAgentSubmit}
+        mode={currentAgent ? 'edit' : 'create'}
+        agent={currentAgent}
       />
     </div>
   );
