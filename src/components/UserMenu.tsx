@@ -1,68 +1,90 @@
 
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { LogOut, Settings, User } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { LogOut, Settings, User, CheckCircle, XCircle } from 'lucide-react';
 
 const UserMenu: React.FC = () => {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
-  
+  const { user, profile, signOut } = useAuth();
+
   if (!user) return null;
-  
-  const email = user.email || '';
-  const initials = email
-    .split('@')[0]
-    .slice(0, 2)
-    .toUpperCase();
-  
+
+  const getInitials = (name?: string) => {
+    if (!name) return user.email?.charAt(0).toUpperCase() || 'U';
+    return name.split(' ').map(n => n.charAt(0)).join('').toUpperCase();
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="p-0 h-10 w-10 rounded-full">
-          <Avatar className="h-9 w-9">
-            <AvatarFallback className="bg-primary/10 text-primary">
-              {initials}
-            </AvatarFallback>
+        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+          <Avatar className="h-10 w-10">
+            <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || 'User'} />
+            <AvatarFallback>{getInitials(profile?.full_name)}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">{email}</p>
-            <p className="text-xs leading-none text-muted-foreground">
-              {user.id.substring(0, 8)}
+      
+      <DropdownMenuContent className="w-56" align="end">
+        <DropdownMenuLabel className="font-normal">
+          <div className="flex flex-col space-y-2">
+            <p className="text-sm font-medium leading-none">
+              {profile?.full_name || 'User'}
             </p>
+            <p className="text-xs leading-none text-muted-foreground">
+              {profile?.email || user.email}
+            </p>
+            
+            {/* Google Drive Status */}
+            <div className="flex items-center gap-2 pt-1">
+              {profile?.google_drive_connected ? (
+                <Badge variant="secondary" className="text-xs">
+                  <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
+                  Google Drive Connected
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs">
+                  <XCircle className="h-3 w-3 mr-1 text-gray-400" />
+                  Google Drive Not Connected
+                </Badge>
+              )}
+            </div>
           </div>
         </DropdownMenuLabel>
+        
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="cursor-pointer">
+        
+        <DropdownMenuItem>
           <User className="mr-2 h-4 w-4" />
           <span>Profile</span>
         </DropdownMenuItem>
-        <DropdownMenuItem 
-          className="cursor-pointer"
-          onClick={() => navigate('/settings')}
-        >
+        
+        <DropdownMenuItem>
           <Settings className="mr-2 h-4 w-4" />
           <span>Settings</span>
         </DropdownMenuItem>
+        
         <DropdownMenuSeparator />
-        <DropdownMenuItem 
-          className="cursor-pointer text-red-600 focus:text-red-600" 
-          onClick={() => signOut()}
-        >
+        
+        <DropdownMenuItem onClick={handleSignOut}>
           <LogOut className="mr-2 h-4 w-4" />
           <span>Log out</span>
         </DropdownMenuItem>
