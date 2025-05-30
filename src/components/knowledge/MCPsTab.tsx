@@ -8,7 +8,6 @@ import { mcpService } from '@/services/mcpService';
 import { mcpConfigService } from '@/services/mcpConfigService';
 import MCPGrid from './MCPGrid';
 import MCPForm from './MCPForm';
-import MCPChatInterface from './MCPChatInterface';
 import MCPToolsSearch from './MCPToolsSearch';
 import TokenManager from './TokenManager';
 import { MCP } from '@/types/mcp';
@@ -18,7 +17,7 @@ import UnifiedConfigPanel from './UnifiedConfigPanel';
 import { unifiedMcpService } from '@/services/unifiedMcpService';
 
 const MCPsTab: React.FC = () => {
-  const [view, setView] = useState<'grid' | 'chat' | 'unified'>('grid');
+  const [view, setView] = useState<'grid' | 'unified'>('grid');
   const [isCreating, setIsCreating] = useState(false);
   const [editingMCP, setEditingMCP] = useState<MCP | null>(null);
   const [filter, setFilter] = useState<'all' | 'default' | 'custom'>('all');
@@ -241,11 +240,10 @@ const MCPsTab: React.FC = () => {
         </CardHeader>
         
         <CardContent>
-          <Tabs defaultValue="grid" value={view} onValueChange={(v) => setView(v as 'grid' | 'chat' | 'unified')}>
+          <Tabs defaultValue="grid" value={view} onValueChange={(v) => setView(v as 'grid' | 'unified')}>
             <TabsList className="mb-4">
               <TabsTrigger value="grid">Tools Gallery</TabsTrigger>
               <TabsTrigger value="unified">Unified Config</TabsTrigger>
-              <TabsTrigger value="chat">Chat with Tools</TabsTrigger>
             </TabsList>
             
             <TabsContent value="grid">
@@ -300,10 +298,6 @@ const MCPsTab: React.FC = () => {
             
             <TabsContent value="unified">
               <UnifiedConfigPanel />
-            </TabsContent>
-            
-            <TabsContent value="chat">
-              <MCPChatInterface mcps={mcps || []} />
             </TabsContent>
           </Tabs>
         </CardContent>
