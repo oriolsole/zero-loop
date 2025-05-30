@@ -31,6 +31,7 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
   const [editingConfigs, setEditingConfigs] = useState<Record<string, Partial<AgentToolConfig>>>({});
   const [hasInitializedDefaults, setHasInitializedDefaults] = useState(false);
+  const [savingConfigs, setSavingConfigs] = useState<Record<string, boolean>>({});
 
   // Auto-enable core tools for default agents
   useEffect(() => {
@@ -55,8 +56,8 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
         try {
           await updateToolConfig(tool.id, { 
             is_active: true,
-            custom_title: '',
-            custom_description: '',
+            custom_title: null,
+            custom_description: null,
             priority_override: 0,
             custom_use_cases: []
           });
@@ -77,29 +78,68 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
   }, [agent.is_default, availableTools, toolConfigs.length, isLoading, hasInitializedDefaults, updateToolConfig, onToolConfigUpdate]);
 
   const handleToolToggle = async (mcpId: string, enabled: boolean) => {
-    if (enabled) {
-      await updateToolConfig(mcpId, { is_active: true });
-    } else {
-      await deleteToolConfig(mcpId);
+    try {
+      if (enabled) {
+        await updateToolConfig(mcpId, { is_active: true });
+      } else {
+        await deleteToolConfig(mcpId);
+      }
+      onToolConfigUpdate?.();
+    } catch (error) {
+      console.error('Error toggling tool:', error);
+      toast.error('Failed to update tool configuration');
     }
-    onToolConfigUpdate?.();
   };
 
   const handleConfigUpdate = async (mcpId: string) => {
     const config = editingConfigs[mcpId];
-    if (config) {
-      await updateToolConfig(mcpId, config);
-      setEditingConfigs(prev => {
-        const { [mcpId]: _, ...rest } = prev;
-        return rest;
-      });
-      setExpandedTool(null);
-      onToolConfigUpdate?.();
-      toast.success('Tool configuration saved');
+    if (!config) {
+      console.warn('No config to save for tool:', mcpId);
+      return;
+    }
+
+    console.log('💾 Saving tool config for agent:', agent.id, 'tool:', mcpId, 'config:', config);
+    
+    setSavingConfigs(prev => ({ ...prev, [mcpId]: true }));
+    
+    try {
+      // Ensure custom_use_cases is properly formatted as an array
+      const processedConfig = {
+        ...config,
+        is_active: true, // Ensure tool remains active when saving custom config
+        custom_use_cases: Array.isArray(config.custom_use_cases) 
+          ? config.custom_use_cases.filter(uc => uc && uc.trim()) 
+          : []
+      };
+
+      console.log('📤 Processed config being sent:', processedConfig);
+
+      const result = await updateToolConfig(mcpId, processedConfig);
+      
+      if (result) {
+        console.log('✅ Tool config saved successfully:', result);
+        setEditingConfigs(prev => {
+          const { [mcpId]: _, ...rest } = prev;
+          return rest;
+        });
+        setExpandedTool(null);
+        onToolConfigUpdate?.();
+        toast.success('Tool configuration saved successfully');
+      } else {
+        console.error('❌ Tool config save returned null');
+        toast.error('Failed to save tool configuration - no result returned');
+      }
+    } catch (error) {
+      console.error('❌ Error saving tool config:', error);
+      toast.error(`Failed to save tool configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSavingConfigs(prev => ({ ...prev, [mcpId]: false }));
     }
   };
 
   const handleConfigChange = (mcpId: string, field: keyof AgentToolConfig, value: any) => {
+    console.log('🔄 Config change:', { mcpId, field, value });
+    
     setEditingConfigs(prev => ({
       ...prev,
       [mcpId]: {
@@ -161,6 +201,7 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
             const editingConfig = getEditingConfig(tool.id);
             const IconComponent = getToolIcon(tool.title);
             const colorClasses = getToolColor(tool.title);
+            const isSaving = savingConfigs[tool.id];
 
             return (
               <Card key={tool.id} className={`transition-all ${isEnabled ? 'border-primary/20 bg-primary/5' : ''}`}>
@@ -213,7 +254,7 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
                           <Input
                             id={`title-${tool.id}`}
                             value={editingConfig.custom_title || ''}
-                            onChange={(e) => handleConfigChange(tool.id, 'custom_title', e.target.value)}
+                            onChange={(e) => handleConfigChange(tool.id, 'custom_title', e.target.value || null)}
                             placeholder={tool.title}
                           />
                         </div>
@@ -235,7 +276,7 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
                         <Textarea
                           id={`description-${tool.id}`}
                           value={editingConfig.custom_description || ''}
-                          onChange={(e) => handleConfigChange(tool.id, 'custom_description', e.target.value)}
+                          onChange={(e) => handleConfigChange(tool.id, 'custom_description', e.target.value || null)}
                           placeholder={tool.description}
                           className="min-h-[80px]"
                         />
@@ -246,7 +287,10 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
                         <Textarea
                           id={`use-cases-${tool.id}`}
                           value={(editingConfig.custom_use_cases || []).join('\n')}
-                          onChange={(e) => handleConfigChange(tool.id, 'custom_use_cases', e.target.value.split('\n').filter(line => line.trim()))}
+                          onChange={(e) => {
+                            const useCases = e.target.value.split('\n').filter(line => line.trim());
+                            handleConfigChange(tool.id, 'custom_use_cases', useCases);
+                          }}
                           placeholder="Enter one use case per line..."
                           className="min-h-[60px]"
                         />
@@ -266,6 +310,7 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
                               return rest;
                             });
                           }}
+                          disabled={isSaving}
                         >
                           Cancel
                         </Button>
@@ -273,9 +318,14 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
                           size="sm"
                           onClick={() => handleConfigUpdate(tool.id)}
                           className="gap-2"
+                          disabled={isSaving}
                         >
-                          <Save className="h-3 w-3" />
-                          Save Configuration
+                          {isSaving ? (
+                            <RefreshCw className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Save className="h-3 w-3" />
+                          )}
+                          {isSaving ? 'Saving...' : 'Save Configuration'}
                         </Button>
                       </div>
                     </div>

@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 import type { Json } from '@/integrations/supabase/types';
@@ -267,6 +268,8 @@ export const agentService = {
    * Get tool configurations for an agent
    */
   async getAgentToolConfigs(agentId: string): Promise<AgentToolConfig[]> {
+    console.log('🔍 Fetching tool configs for agent:', agentId);
+    
     const { data, error } = await supabase
       .from('agent_tool_configs')
       .select('*')
@@ -274,16 +277,21 @@ export const agentService = {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching agent tool configs:', error);
+      console.error('❌ Error fetching agent tool configs:', error);
       toast.error('Failed to load tool configurations');
       return [];
     }
 
+    console.log('📄 Raw tool configs from DB:', data);
+
     // Transform the data to match our interface
-    return (data || []).map(config => ({
+    const transformedConfigs = (data || []).map(config => ({
       ...config,
       custom_use_cases: transformCustomUseCases(config.custom_use_cases),
     }));
+
+    console.log('✅ Transformed tool configs:', transformedConfigs);
+    return transformedConfigs;
   },
 
   /**
@@ -294,34 +302,55 @@ export const agentService = {
     mcpId: string,
     config: Partial<Omit<AgentToolConfig, 'id' | 'agent_id' | 'mcp_id' | 'created_at' | 'updated_at'>>
   ): Promise<AgentToolConfig | null> {
+    console.log('💾 Updating agent tool config:', {
+      agentId,
+      mcpId,
+      config
+    });
+
+    // Prepare the data for upsert
+    const upsertData = {
+      agent_id: agentId,
+      mcp_id: mcpId,
+      is_active: config.is_active ?? true,
+      custom_title: config.custom_title || null,
+      custom_description: config.custom_description || null,
+      custom_use_cases: serializeCustomUseCases(config.custom_use_cases),
+      priority_override: config.priority_override ?? null,
+    };
+
+    console.log('📤 Data being sent to database:', upsertData);
+
     const { data, error } = await supabase
       .from('agent_tool_configs')
-      .upsert({
-        agent_id: agentId,
-        mcp_id: mcpId,
-        ...config,
-        custom_use_cases: serializeCustomUseCases(config.custom_use_cases),
-      })
+      .upsert(upsertData)
       .select()
       .single();
 
     if (error) {
-      console.error('Error updating agent tool config:', error);
-      toast.error('Failed to update tool configuration');
+      console.error('❌ Error updating agent tool config:', error);
+      toast.error(`Failed to update tool configuration: ${error.message}`);
       return null;
     }
 
+    console.log('✅ Successfully saved tool config:', data);
+
     // Transform the response data to match our interface
-    return {
+    const transformedResult = {
       ...data,
       custom_use_cases: transformCustomUseCases(data.custom_use_cases),
     };
+
+    console.log('🔄 Transformed result:', transformedResult);
+    return transformedResult;
   },
 
   /**
    * Delete a tool configuration for an agent
    */
   async deleteAgentToolConfig(agentId: string, mcpId: string): Promise<boolean> {
+    console.log('🗑️ Deleting agent tool config:', { agentId, mcpId });
+    
     const { error } = await supabase
       .from('agent_tool_configs')
       .delete()
@@ -329,11 +358,12 @@ export const agentService = {
       .eq('mcp_id', mcpId);
 
     if (error) {
-      console.error('Error deleting agent tool config:', error);
+      console.error('❌ Error deleting agent tool config:', error);
       toast.error('Failed to delete tool configuration');
       return false;
     }
 
+    console.log('✅ Successfully deleted tool config');
     return true;
   },
 };
