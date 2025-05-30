@@ -6,12 +6,14 @@ interface UseGeneratedSystemPromptProps {
   customPrompt?: string;
   useCustomPrompt?: boolean;
   loopEnabled?: boolean;
+  agentId?: string | null;
 }
 
 export const useGeneratedSystemPrompt = ({ 
   customPrompt, 
   useCustomPrompt, 
-  loopEnabled 
+  loopEnabled,
+  agentId 
 }: UseGeneratedSystemPromptProps) => {
   const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -29,7 +31,8 @@ export const useGeneratedSystemPrompt = ({
         body: {
           customPrompt: useCustomPrompt ? customPrompt : undefined,
           loopEnabled: loopEnabled || false,
-          loopIteration: 0
+          loopIteration: 0,
+          agentId: agentId || null
         }
       });
 
@@ -54,7 +57,7 @@ export const useGeneratedSystemPrompt = ({
 
   useEffect(() => {
     fetchGeneratedPrompt();
-  }, [customPrompt, useCustomPrompt, loopEnabled]);
+  }, [customPrompt, useCustomPrompt, loopEnabled, agentId]);
 
   return {
     generatedPrompt,

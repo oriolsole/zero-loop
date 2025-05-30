@@ -8,9 +8,9 @@ const corsHeaders = {
 };
 
 /**
- * Create MCP summary for system prompt
+ * Create MCP summary for system prompt with agent-specific overrides
  */
-function createMCPSummary(mcp: any) {
+function createMCPSummary(mcp: any, toolConfig?: any) {
   // Parse sampleUseCases if it's a JSON string
   let useCases = [];
   try {
@@ -24,11 +24,22 @@ function createMCPSummary(mcp: any) {
     useCases = [];
   }
 
+  // Apply agent-specific overrides if available
+  const title = toolConfig?.custom_title || mcp.title || 'Unknown Tool';
+  const description = toolConfig?.custom_description || mcp.description || 'No description available';
+  const customUseCases = toolConfig?.custom_use_cases;
+  
+  let finalUseCases = useCases;
+  if (customUseCases && Array.isArray(customUseCases)) {
+    finalUseCases = customUseCases;
+  }
+
   return {
-    name: mcp.title || 'Unknown Tool', // Fixed: use mcp.title instead of mcp.name
-    description: mcp.description || 'No description available',
+    name: title,
+    description: description,
     category: mcp.category || 'general',
-    useCases: Array.isArray(useCases) ? useCases : [] // Ensure it's always an array
+    useCases: Array.isArray(finalUseCases) ? finalUseCases : [],
+    priority: toolConfig?.priority_override || mcp.priority || 1
   };
 }
 
@@ -46,10 +57,30 @@ function formatMCPForPrompt(summary: any): string {
 /**
  * Generates a comprehensive system prompt with unified strategy and tool introspection
  */
-function generateSystemPrompt(mcps: any[], relevantKnowledge?: any[], loopIteration: number = 0): string {
-  // Sort MCPs by priority before creating summaries (highest priority first)
-  const sortedMCPs = [...(mcps || [])].sort((a, b) => (b.priority || 1) - (a.priority || 1));
-  const mcpSummaries = sortedMCPs.map(mcp => createMCPSummary(mcp));
+function generateSystemPrompt(
+  mcps: any[], 
+  agentToolConfigs: any[] = [],
+  relevantKnowledge?: any[], 
+  loopIteration: number = 0,
+  agentSystemPrompt?: string
+): string {
+  // Filter MCPs based on agent tool configurations
+  let activeMcps = mcps || [];
+  if (agentToolConfigs.length > 0) {
+    const activeMcpIds = agentToolConfigs
+      .filter(config => config.is_active)
+      .map(config => config.mcp_id);
+    activeMcps = mcps.filter(mcp => activeMcpIds.includes(mcp.id));
+  }
+
+  // Create summaries with agent-specific overrides
+  const mcpSummaries = activeMcps.map(mcp => {
+    const toolConfig = agentToolConfigs.find(config => config.mcp_id === mcp.id);
+    return createMCPSummary(mcp, toolConfig);
+  });
+
+  // Sort by priority (highest first)
+  mcpSummaries.sort((a, b) => (b.priority || 1) - (a.priority || 1));
   
   const toolDescriptions = mcpSummaries
     .map(summary => formatMCPForPrompt(summary))
@@ -72,7 +103,8 @@ After providing your initial response, you may reflect and decide to improve it 
 - Alternative perspectives or approaches
 - Enhanced detail where valuable`;
 
-  return `You are an intelligent AI assistant with access to powerful tools and self-improvement capabilities.
+  // Use custom system prompt if provided, otherwise use default
+  const basePrompt = agentSystemPrompt || `You are an intelligent AI assistant with access to powerful tools and self-improvement capabilities.
 
 **🧠 UNIFIED RESPONSE STRATEGY:**
 1. **ANSWER DIRECTLY** from your general knowledge for simple questions
@@ -82,7 +114,9 @@ After providing your initial response, you may reflect and decide to improve it 
    - External data not in your general knowledge
    - Multi-step research or analysis
    - Specific data from external sources
-3. **BE PROACTIVE** - When users describe problems that match tool use cases, suggest or use tools directly, even if they don't mention them by name${loopGuidance}
+3. **BE PROACTIVE** - When users describe problems that match tool use cases, suggest or use tools directly, even if they don't mention them by name${loopGuidance}`;
+
+  const toolsSection = toolDescriptions ? `
 
 **🛠️ Available Tools:**
 ${toolDescriptions}
@@ -151,7 +185,9 @@ Example 3 - Code Analysis:
 - Explain which tool you're using and why when it's not obvious
 - Chain tools together for comprehensive research when beneficial
 
-Remember: You have both comprehensive general knowledge and powerful tools. Be proactive in using tools when they clearly match user needs, and don't hesitate to combine multiple tools for better results.`;
+Remember: You have both comprehensive general knowledge and powerful tools. Be proactive in using tools when they clearly match user needs, and don't hesitate to combine multiple tools for better results.` : '';
+
+  return basePrompt + toolsSection;
 }
 
 serve(async (req) => {
@@ -165,17 +201,65 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { customPrompt, loopEnabled, loopIteration } = await req.json();
+    const { customPrompt, loopEnabled, loopIteration, agentId } = await req.json();
 
-    // Get available tools (MCPs)
-    const { data: mcps, error: mcpError } = await supabaseClient
-      .from('mcps')
-      .select('*')
-      .eq('isDefault', true)
-      .in('default_key', ['web-search', 'github-tools', 'knowledge-search', 'jira-tools', 'web-scraper']);
+    let mcps = [];
+    let agentToolConfigs = [];
+    let agentSystemPrompt = null;
 
-    if (mcpError) {
-      throw new Error('Failed to fetch available tools');
+    if (agentId) {
+      // Get agent details
+      const { data: agent, error: agentError } = await supabaseClient
+        .from('agents')
+        .select('system_prompt')
+        .eq('id', agentId)
+        .single();
+
+      if (agentError) {
+        throw new Error('Failed to fetch agent details');
+      }
+
+      agentSystemPrompt = agent?.system_prompt;
+
+      // Get agent tool configurations
+      const { data: toolConfigs, error: toolConfigError } = await supabaseClient
+        .from('agent_tool_configs')
+        .select('*')
+        .eq('agent_id', agentId);
+
+      if (toolConfigError) {
+        throw new Error('Failed to fetch agent tool configurations');
+      }
+
+      agentToolConfigs = toolConfigs || [];
+
+      // Get only the MCPs that are configured for this agent
+      if (agentToolConfigs.length > 0) {
+        const mcpIds = agentToolConfigs.map(config => config.mcp_id);
+        const { data: agentMcps, error: mcpError } = await supabaseClient
+          .from('mcps')
+          .select('*')
+          .in('id', mcpIds);
+
+        if (mcpError) {
+          throw new Error('Failed to fetch agent-specific tools');
+        }
+
+        mcps = agentMcps || [];
+      }
+    } else {
+      // Get default tools when no agent is specified
+      const { data: defaultMcps, error: mcpError } = await supabaseClient
+        .from('mcps')
+        .select('*')
+        .eq('isDefault', true)
+        .in('default_key', ['web-search', 'github-tools', 'knowledge-search', 'jira-tools', 'web-scraper']);
+
+      if (mcpError) {
+        throw new Error('Failed to fetch available tools');
+      }
+
+      mcps = defaultMcps || [];
     }
 
     let systemPrompt;
@@ -184,15 +268,22 @@ serve(async (req) => {
       // Use custom prompt if provided and not empty
       systemPrompt = customPrompt;
     } else {
-      // Generate default system prompt
-      systemPrompt = generateSystemPrompt(mcps || [], [], loopIteration || 0);
+      // Generate agent-aware system prompt
+      systemPrompt = generateSystemPrompt(
+        mcps, 
+        agentToolConfigs, 
+        [], 
+        loopIteration || 0,
+        agentSystemPrompt
+      );
     }
 
     return new Response(
       JSON.stringify({ 
         systemPrompt,
         toolsCount: mcps?.length || 0,
-        usedCustomPrompt: !!(customPrompt && customPrompt.trim())
+        usedCustomPrompt: !!(customPrompt && customPrompt.trim()),
+        agentId: agentId || null
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

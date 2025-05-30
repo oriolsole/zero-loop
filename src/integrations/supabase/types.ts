@@ -11,6 +11,7 @@ export type Database = {
     Tables: {
       agent_conversations: {
         Row: {
+          agent_id: string | null
           ai_reasoning: string | null
           content: string
           created_at: string
@@ -30,6 +31,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          agent_id?: string | null
           ai_reasoning?: string | null
           content: string
           created_at?: string
@@ -49,6 +51,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          agent_id?: string | null
           ai_reasoning?: string | null
           content?: string
           created_at?: string
@@ -66,6 +69,107 @@ export type Database = {
           tools_used?: Json | null
           updated_at?: string | null
           user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_conversations_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_tool_configs: {
+        Row: {
+          agent_id: string
+          created_at: string
+          custom_description: string | null
+          custom_title: string | null
+          custom_use_cases: Json | null
+          id: string
+          is_active: boolean
+          mcp_id: string
+          priority_override: number | null
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          custom_description?: string | null
+          custom_title?: string | null
+          custom_use_cases?: Json | null
+          id?: string
+          is_active?: boolean
+          mcp_id: string
+          priority_override?: number | null
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          custom_description?: string | null
+          custom_title?: string | null
+          custom_use_cases?: Json | null
+          id?: string
+          is_active?: boolean
+          mcp_id?: string
+          priority_override?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_tool_configs_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_tool_configs_mcp_id_fkey"
+            columns: ["mcp_id"]
+            isOneToOne: false
+            referencedRelation: "mcps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agents: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_default: boolean
+          loop_enabled: boolean
+          model: string
+          name: string
+          system_prompt: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          loop_enabled?: boolean
+          model?: string
+          name: string
+          system_prompt?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          loop_enabled?: boolean
+          model?: string
+          name?: string
+          system_prompt?: string | null
+          updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
