@@ -35,6 +35,22 @@ const ToolsIndicator: React.FC<ToolsIndicatorProps> = ({
     enabledToolIds.includes(tool.id)
   );
 
+  // Debug logging
+  console.log('🔧 ToolsIndicator Debug:', {
+    agent: agent.name,
+    enabledToolIds,
+    enabledTools: enabledTools.map(tool => ({
+      id: tool.id,
+      title: tool.title,
+      icon: tool.icon
+    })),
+    availableTools: availableTools.map(tool => ({
+      id: tool.id,
+      title: tool.title,
+      icon: tool.icon
+    }))
+  });
+
   if (enabledTools.length === 0) {
     return null;
   }
@@ -46,6 +62,14 @@ const ToolsIndicator: React.FC<ToolsIndicatorProps> = ({
           const IconComponent = getToolIcon(tool.title);
           const customConfig = toolConfigs.find(config => config.mcp_id === tool.id);
           const displayName = customConfig?.custom_title || tool.title;
+          
+          // Debug each icon resolution
+          console.log('🎯 Icon Resolution:', {
+            toolTitle: tool.title,
+            toolIcon: tool.icon,
+            resolvedIconComponent: IconComponent?.name || 'Unknown',
+            displayName
+          });
           
           return (
             <Tooltip key={tool.id}>
