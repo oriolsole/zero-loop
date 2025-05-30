@@ -74,23 +74,35 @@ serve(async (req) => {
 
       if (error) {
         console.error('❌ OAuth error:', error);
-        return new Response(
-          `<html><body><script>
-            console.log('🚨 OAuth error detected:', '${error}');
-            try {
-              if (window.opener && !window.opener.closed) {
-                window.opener.postMessage({
-                  type: 'google-oauth-error',
-                  error: '${error}'
-                }, window.location.origin);
-              }
-            } catch (e) {
-              console.error('Failed to send error message:', e);
-            }
-            window.close();
-          </script><p>Authentication failed: ${error}</p></body></html>`,
-          { headers: { 'Content-Type': 'text/html' } }
-        );
+        const errorHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authentication Error</title>
+</head>
+<body>
+  <h1>Authentication Failed</h1>
+  <p>Error: ${error}</p>
+  <script>
+    console.log('🚨 OAuth error detected:', '${error}');
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({
+        type: 'google-oauth-error',
+        error: '${error}'
+      }, window.location.origin);
+    }
+    setTimeout(() => window.close(), 2000);
+  </script>
+</body>
+</html>`;
+        
+        return new Response(errorHtml, {
+          headers: { 
+            'Content-Type': 'text/html; charset=utf-8',
+            ...corsHeaders 
+          }
+        });
       }
 
       if (!code) {
@@ -147,81 +159,166 @@ serve(async (req) => {
         token_type: tokenData.token_type || 'Bearer'
       };
       
-      // Simplified and more reliable HTML with immediate message sending
-      const successHtml = `
-        <html>
-          <head>
-            <title>Authentication Success</title>
-          </head>
-          <body>
-            <script>
-              console.log('🔄 Popup: Starting token transmission...');
-              console.log('🌐 Popup: Window origin:', window.location.origin);
-              console.log('🪟 Popup: Opener exists:', !!window.opener);
-              
-              // The message object with exact structure expected by parent
-              const messageData = {
-                type: 'google-oauth-success',
-                tokens: ${JSON.stringify(processedTokens)}
-              };
-              
-              console.log('📦 Popup: Message data prepared:', messageData);
-              
-              function sendMessage() {
-                try {
-                  if (window.opener && !window.opener.closed) {
-                    console.log('📤 Popup: Sending message to parent...');
-                    window.opener.postMessage(messageData, window.location.origin);
-                    console.log('✅ Popup: Message sent successfully');
-                    return true;
-                  } else {
-                    console.error('❌ Popup: No valid opener window');
-                    return false;
-                  }
-                } catch (error) {
-                  console.error('❌ Popup: Error sending message:', error);
-                  return false;
-                }
-              }
-              
-              // Try to send message immediately
-              if (sendMessage()) {
-                // Set up listener for close confirmation
-                const messageHandler = (event) => {
-                  console.log('📨 Popup: Received message from parent:', event.data);
-                  
-                  if (event.origin !== window.location.origin) {
-                    console.log('⚠️ Popup: Ignoring message from different origin');
-                    return;
-                  }
-                  
-                  if (event.data && event.data.type === 'oauth-close-popup') {
-                    console.log('✅ Popup: Received close confirmation, closing window');
-                    window.removeEventListener('message', messageHandler);
-                    window.close();
-                  }
-                };
-                
-                window.addEventListener('message', messageHandler);
-                
-                // Fallback: close after 10 seconds if no confirmation
-                setTimeout(() => {
-                  console.log('⏰ Popup: Timeout reached, closing window');
-                  window.removeEventListener('message', messageHandler);
-                  window.close();
-                }, 10000);
-              } else {
-                // If immediate send failed, show error message
-                document.body.innerHTML = '<p>Authentication completed, but failed to communicate with parent window. Please close this window and try again.</p>';
-              }
-            </script>
-            <p>Authentication successful! Completing setup...</p>
-          </body>
-        </html>
-      `;
+      // Create properly structured HTML with immediate message sending
+      const successHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authentication Success</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      text-align: center; 
+      padding: 20px; 
+      background: #f5f5f5; 
+    }
+    .container { 
+      max-width: 400px; 
+      margin: 0 auto; 
+      background: white; 
+      padding: 20px; 
+      border-radius: 8px; 
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+    }
+    .success { color: #10b981; }
+    .loading { color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="success">✅ Authentication Successful!</h1>
+    <p class="loading">Completing setup...</p>
+    <p><small>This window will close automatically.</small></p>
+  </div>
+  
+  <script>
+    console.log('🔄 Popup: Starting token transmission...');
+    console.log('🌐 Popup: Window origin:', window.location.origin);
+    console.log('🪟 Popup: Opener exists:', !!window.opener);
+    console.log('🪟 Popup: Opener closed:', window.opener ? window.opener.closed : 'no opener');
+    
+    // The tokens to send to parent
+    const tokens = ${JSON.stringify(processedTokens)};
+    console.log('📦 Popup: Prepared tokens:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      expiresIn: tokens.expires_in,
+      scope: tokens.scope
+    });
+    
+    // Create the message with exact structure expected by parent
+    const messageData = {
+      type: 'google-oauth-success',
+      tokens: tokens
+    };
+    
+    console.log('📤 Popup: Final message structure:', messageData);
+    
+    // Function to send message to parent
+    function sendMessageToParent() {
+      try {
+        if (!window.opener) {
+          console.error('❌ Popup: No opener window found');
+          return false;
+        }
+        
+        if (window.opener.closed) {
+          console.error('❌ Popup: Opener window is closed');
+          return false;
+        }
+        
+        console.log('📤 Popup: Sending message to parent...');
+        window.opener.postMessage(messageData, window.location.origin);
+        console.log('✅ Popup: Message sent successfully');
+        return true;
+      } catch (error) {
+        console.error('❌ Popup: Error sending message:', error);
+        return false;
+      }
+    }
+    
+    // Send message immediately when page loads
+    let messageSent = false;
+    
+    // Try to send message as soon as possible
+    if (sendMessageToParent()) {
+      messageSent = true;
+      console.log('✅ Popup: Initial message send successful');
+      
+      // Listen for close confirmation from parent
+      window.addEventListener('message', function(event) {
+        console.log('📨 Popup: Received message from parent:', event.data);
+        
+        if (event.origin !== window.location.origin) {
+          console.log('⚠️ Popup: Ignoring message from different origin');
+          return;
+        }
+        
+        if (event.data && event.data.type === 'oauth-close-popup') {
+          console.log('✅ Popup: Received close confirmation, closing window');
+          window.close();
+        }
+      });
+      
+      // Fallback: close after 10 seconds if no confirmation
+      setTimeout(() => {
+        console.log('⏰ Popup: Timeout reached, closing window');
+        window.close();
+      }, 10000);
+      
+    } else {
+      console.error('❌ Popup: Failed to send initial message');
+      
+      // Retry mechanism - try again after a short delay
+      setTimeout(() => {
+        console.log('🔄 Popup: Retrying message send...');
+        if (sendMessageToParent()) {
+          messageSent = true;
+          console.log('✅ Popup: Retry message send successful');
+          setTimeout(() => window.close(), 2000);
+        } else {
+          console.error('❌ Popup: Retry also failed');
+          document.querySelector('.container').innerHTML = 
+            '<h1>⚠️ Communication Error</h1><p>Please close this window and try again.</p>';
+        }
+      }, 1000);
+    }
+    
+    // Backup mechanism - try sending on window load
+    window.addEventListener('load', function() {
+      if (!messageSent) {
+        console.log('🔄 Popup: Trying message send on window load...');
+        if (sendMessageToParent()) {
+          messageSent = true;
+          setTimeout(() => window.close(), 2000);
+        }
+      }
+    });
+    
+    // Final backup - try sending after DOM is fully ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() {
+        if (!messageSent) {
+          console.log('🔄 Popup: Trying message send on DOM ready...');
+          if (sendMessageToParent()) {
+            messageSent = true;
+            setTimeout(() => window.close(), 2000);
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>`;
+      
+      console.log('📤 Popup: Returning HTML response with Content-Type: text/html');
       
       return new Response(successHtml, {
-        headers: { 'Content-Type': 'text/html' }
+        headers: { 
+          'Content-Type': 'text/html; charset=utf-8',
+          ...corsHeaders 
+        }
       });
     }
 
