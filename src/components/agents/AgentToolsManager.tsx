@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Settings, Save, RefreshCw } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Settings, Save, RefreshCw, ChevronDown, ChevronRight, Info, RotateCcw, Code2 } from 'lucide-react';
 import { Agent, AgentToolConfig } from '@/services/agentService';
 import { MCP } from '@/types/mcp';
 import { useAgentToolConfigs } from '@/hooks/useAgentToolConfigs';
@@ -29,6 +30,7 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
 }) => {
   const { toolConfigs, isLoading, updateToolConfig, deleteToolConfig } = useAgentToolConfigs(agent.id);
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Record<string, Record<string, boolean>>>({});
   const [editingConfigs, setEditingConfigs] = useState<Record<string, Partial<AgentToolConfig>>>({});
   const [hasInitializedDefaults, setHasInitializedDefaults] = useState(false);
   const [savingConfigs, setSavingConfigs] = useState<Record<string, boolean>>({});
@@ -40,7 +42,6 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
         return;
       }
 
-      // Core tools that should be enabled by default for General Assistant
       const defaultToolKeys = [
         'web_search',
         'knowledge_search', 
@@ -77,6 +78,20 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
     initializeDefaultTools();
   }, [agent.is_default, availableTools, toolConfigs.length, isLoading, hasInitializedDefaults, updateToolConfig, onToolConfigUpdate]);
 
+  const toggleSection = (toolId: string, section: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [toolId]: {
+        ...prev[toolId],
+        [section]: !prev[toolId]?.[section]
+      }
+    }));
+  };
+
+  const isSectionExpanded = (toolId: string, section: string) => {
+    return expandedSections[toolId]?.[section] || false;
+  };
+
   const handleToolToggle = async (mcpId: string, enabled: boolean) => {
     try {
       if (enabled) {
@@ -103,10 +118,9 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
     setSavingConfigs(prev => ({ ...prev, [mcpId]: true }));
     
     try {
-      // Ensure custom_use_cases is properly formatted as an array
       const processedConfig = {
         ...config,
-        is_active: true, // Ensure tool remains active when saving custom config
+        is_active: true,
         custom_use_cases: Array.isArray(config.custom_use_cases) 
           ? config.custom_use_cases.filter(uc => uc && uc.trim()) 
           : []
@@ -147,6 +161,14 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
         [field]: value
       }
     }));
+  };
+
+  const resetToDefaults = (mcpId: string) => {
+    setEditingConfigs(prev => {
+      const { [mcpId]: _, ...rest } = prev;
+      return rest;
+    });
+    toast.success('Reset to default configuration');
   };
 
   const getToolConfig = (mcpId: string): AgentToolConfig | null => {
@@ -199,9 +221,16 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
             const isEnabled = isToolEnabled(tool.id);
             const isExpanded = expandedTool === tool.id;
             const editingConfig = getEditingConfig(tool.id);
+            const existingConfig = getToolConfig(tool.id);
             const IconComponent = getToolIcon(tool.title);
             const colorClasses = getToolColor(tool.title);
             const isSaving = savingConfigs[tool.id];
+            const hasCustomizations = existingConfig && (
+              existingConfig.custom_title || 
+              existingConfig.custom_description || 
+              (existingConfig.custom_use_cases && existingConfig.custom_use_cases.length > 0) ||
+              (existingConfig.priority_override && existingConfig.priority_override !== 0)
+            );
 
             return (
               <Card key={tool.id} className={`transition-all ${isEnabled ? 'border-primary/20 bg-primary/5' : ''}`}>
@@ -213,8 +242,19 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
                           <IconComponent className="h-5 w-5" />
                         </div>
                         <div>
-                          <CardTitle className="text-base">{tool.title}</CardTitle>
-                          <p className="text-sm text-muted-foreground">{tool.description}</p>
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-base">
+                              {existingConfig?.custom_title || tool.title}
+                            </CardTitle>
+                            {hasCustomizations && (
+                              <Badge variant="secondary" className="text-xs">
+                                Custom
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {existingConfig?.custom_description || tool.description}
+                          </p>
                         </div>
                       </div>
                       
@@ -248,85 +288,234 @@ const AgentToolsManager: React.FC<AgentToolsManagerProps> = ({
                     <Separator className="mb-4" />
                     
                     <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor={`title-${tool.id}`}>Custom Title</Label>
-                          <Input
-                            id={`title-${tool.id}`}
-                            value={editingConfig.custom_title || ''}
-                            onChange={(e) => handleConfigChange(tool.id, 'custom_title', e.target.value || null)}
-                            placeholder={tool.title}
-                          />
-                        </div>
-                        
-                        <div>
-                          <Label htmlFor={`priority-${tool.id}`}>Priority Override</Label>
-                          <Input
-                            id={`priority-${tool.id}`}
-                            type="number"
-                            value={editingConfig.priority_override || 0}
-                            onChange={(e) => handleConfigChange(tool.id, 'priority_override', parseInt(e.target.value) || 0)}
-                            placeholder="0"
-                          />
-                        </div>
-                      </div>
+                      {/* Tool Capabilities Section */}
+                      <Collapsible 
+                        open={isSectionExpanded(tool.id, 'capabilities')} 
+                        onOpenChange={() => toggleSection(tool.id, 'capabilities')}
+                      >
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" className="w-full justify-between p-0 h-auto">
+                            <div className="flex items-center gap-2">
+                              <Code2 className="h-4 w-4" />
+                              <span className="text-sm font-medium">Tool Capabilities</span>
+                            </div>
+                            {isSectionExpanded(tool.id, 'capabilities') ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="mt-2">
+                          <div className="bg-muted/30 p-3 rounded border space-y-3">
+                            <div>
+                              <h4 className="text-xs font-medium mb-2 text-muted-foreground">Endpoint</h4>
+                              <code className="text-xs bg-background px-2 py-1 rounded border">
+                                {tool.endpoint}
+                              </code>
+                            </div>
+                            
+                            {tool.parameters && tool.parameters.length > 0 && (
+                              <div>
+                                <h4 className="text-xs font-medium mb-2 text-muted-foreground">Available Parameters</h4>
+                                <div className="space-y-2">
+                                  {tool.parameters.map((param, idx) => (
+                                    <div key={idx} className="text-xs bg-background p-2 rounded border">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <code className="font-mono text-primary">{param.name}</code>
+                                        <Badge variant="outline" className="text-xs">
+                                          {param.type}
+                                        </Badge>
+                                        {param.required && (
+                                          <Badge variant="destructive" className="text-xs">
+                                            Required
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      {param.description && (
+                                        <p className="text-muted-foreground">{param.description}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
-                      <div>
-                        <Label htmlFor={`description-${tool.id}`}>Custom Description</Label>
-                        <Textarea
-                          id={`description-${tool.id}`}
-                          value={editingConfig.custom_description || ''}
-                          onChange={(e) => handleConfigChange(tool.id, 'custom_description', e.target.value || null)}
-                          placeholder={tool.description}
-                          className="min-h-[80px]"
-                        />
-                      </div>
+                            {tool.requiresAuth && (
+                              <div>
+                                <h4 className="text-xs font-medium mb-2 text-muted-foreground">Authentication</h4>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    {tool.authType || 'Required'}
+                                  </Badge>
+                                  {tool.requirestoken && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      Token: {tool.requirestoken}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
 
-                      <div>
-                        <Label htmlFor={`use-cases-${tool.id}`}>Custom Use Cases</Label>
-                        <Textarea
-                          id={`use-cases-${tool.id}`}
-                          value={(editingConfig.custom_use_cases || []).join('\n')}
-                          onChange={(e) => {
-                            const useCases = e.target.value.split('\n').filter(line => line.trim());
-                            handleConfigChange(tool.id, 'custom_use_cases', useCases);
-                          }}
-                          placeholder="Enter one use case per line..."
-                          className="min-h-[60px]"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Describe specific scenarios where this agent should use this tool
-                        </p>
-                      </div>
+                      {/* Default Configuration Section */}
+                      <Collapsible 
+                        open={isSectionExpanded(tool.id, 'defaults')} 
+                        onOpenChange={() => toggleSection(tool.id, 'defaults')}
+                      >
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" className="w-full justify-between p-0 h-auto">
+                            <div className="flex items-center gap-2">
+                              <Info className="h-4 w-4" />
+                              <span className="text-sm font-medium">Default Configuration</span>
+                            </div>
+                            {isSectionExpanded(tool.id, 'defaults') ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="mt-2">
+                          <div className="bg-muted/30 p-3 rounded border space-y-2">
+                            <div>
+                              <h4 className="text-xs font-medium text-muted-foreground">Default Title</h4>
+                              <p className="text-sm">{tool.title}</p>
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-medium text-muted-foreground">Default Description</h4>
+                              <p className="text-sm">{tool.description}</p>
+                            </div>
+                            {tool.sampleUseCases && tool.sampleUseCases.length > 0 && (
+                              <div>
+                                <h4 className="text-xs font-medium text-muted-foreground">Sample Use Cases</h4>
+                                <ul className="text-sm space-y-1">
+                                  {tool.sampleUseCases.map((useCase, idx) => (
+                                    <li key={idx} className="text-muted-foreground">• {useCase}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {tool.suggestedPrompt && (
+                              <div>
+                                <h4 className="text-xs font-medium text-muted-foreground">Suggested Prompt</h4>
+                                <p className="text-sm italic text-muted-foreground">"{tool.suggestedPrompt}"</p>
+                              </div>
+                            )}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
 
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setExpandedTool(null);
-                            setEditingConfigs(prev => {
-                              const { [tool.id]: _, ...rest } = prev;
-                              return rest;
-                            });
-                          }}
-                          disabled={isSaving}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleConfigUpdate(tool.id)}
-                          className="gap-2"
-                          disabled={isSaving}
-                        >
-                          {isSaving ? (
-                            <RefreshCw className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Save className="h-3 w-3" />
+                      {/* Custom Configuration Section */}
+                      <div className="bg-background p-4 rounded border">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-medium">Custom Configuration</h4>
+                          {hasCustomizations && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => resetToDefaults(tool.id)}
+                              className="text-xs gap-1"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              Reset to Default
+                            </Button>
                           )}
-                          {isSaving ? 'Saving...' : 'Save Configuration'}
-                        </Button>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor={`title-${tool.id}`}>Custom Title</Label>
+                              <Input
+                                id={`title-${tool.id}`}
+                                value={editingConfig.custom_title || ''}
+                                onChange={(e) => handleConfigChange(tool.id, 'custom_title', e.target.value || null)}
+                                placeholder={tool.title}
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Leave empty to use default: "{tool.title}"
+                              </p>
+                            </div>
+                            
+                            <div>
+                              <Label htmlFor={`priority-${tool.id}`}>Priority Override</Label>
+                              <Input
+                                id={`priority-${tool.id}`}
+                                type="number"
+                                value={editingConfig.priority_override || 0}
+                                onChange={(e) => handleConfigChange(tool.id, 'priority_override', parseInt(e.target.value) || 0)}
+                                placeholder="0"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Higher numbers = higher priority
+                              </p>
+                            </div>
+                          </div>
+
+                          <div>
+                            <Label htmlFor={`description-${tool.id}`}>Custom Description</Label>
+                            <Textarea
+                              id={`description-${tool.id}`}
+                              value={editingConfig.custom_description || ''}
+                              onChange={(e) => handleConfigChange(tool.id, 'custom_description', e.target.value || null)}
+                              placeholder={tool.description}
+                              className="min-h-[80px]"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Leave empty to use default description
+                            </p>
+                          </div>
+
+                          <div>
+                            <Label htmlFor={`use-cases-${tool.id}`}>Custom Use Cases</Label>
+                            <Textarea
+                              id={`use-cases-${tool.id}`}
+                              value={(editingConfig.custom_use_cases || []).join('\n')}
+                              onChange={(e) => {
+                                const useCases = e.target.value.split('\n').filter(line => line.trim());
+                                handleConfigChange(tool.id, 'custom_use_cases', useCases);
+                              }}
+                              placeholder="Enter one use case per line..."
+                              className="min-h-[60px]"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Describe specific scenarios where this agent should use this tool
+                            </p>
+                          </div>
+
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setExpandedTool(null);
+                                setEditingConfigs(prev => {
+                                  const { [tool.id]: _, ...rest } = prev;
+                                  return rest;
+                                });
+                              }}
+                              disabled={isSaving}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => handleConfigUpdate(tool.id)}
+                              className="gap-2"
+                              disabled={isSaving}
+                            >
+                              {isSaving ? (
+                                <RefreshCw className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Save className="h-3 w-3" />
+                              )}
+                              {isSaving ? 'Saving...' : 'Save Configuration'}
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </CardContent>
