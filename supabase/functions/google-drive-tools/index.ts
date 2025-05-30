@@ -1,6 +1,6 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { create, getNumericDate, Header, Payload } from "https://deno.land/x/djwt@v3.0.1/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,6 +9,7 @@ const corsHeaders = {
 
 // Google Drive API base URL
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 interface DriveFile {
   id: string;
@@ -25,6 +26,106 @@ interface DriveFile {
 interface DriveResponse {
   files?: DriveFile[];
   nextPageToken?: string;
+}
+
+interface ServiceAccountKey {
+  type: string;
+  project_id: string;
+  private_key_id: string;
+  private_key: string;
+  client_email: string;
+  client_id: string;
+  auth_uri: string;
+  token_uri: string;
+  auth_provider_x509_cert_url: string;
+  client_x509_cert_url: string;
+}
+
+// Cache for access tokens
+let cachedToken: { token: string; expires: number } | null = null;
+
+async function getAccessToken(): Promise<string> {
+  // Check if we have a valid cached token
+  if (cachedToken && cachedToken.expires > Date.now()) {
+    return cachedToken.token;
+  }
+
+  console.log('Getting new access token from service account');
+
+  const serviceAccountKeyJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY');
+  if (!serviceAccountKeyJson) {
+    throw new Error('Google Service Account key not configured. Please add GOOGLE_SERVICE_ACCOUNT_KEY to Supabase secrets.');
+  }
+
+  let serviceAccountKey: ServiceAccountKey;
+  try {
+    serviceAccountKey = JSON.parse(serviceAccountKeyJson);
+  } catch (error) {
+    throw new Error('Invalid Google Service Account key format. Please ensure it\'s valid JSON.');
+  }
+
+  // Create JWT for Google Service Account authentication
+  const now = Math.floor(Date.now() / 1000);
+  const header: Header = {
+    alg: "RS256",
+    typ: "JWT",
+  };
+
+  const payload: Payload = {
+    iss: serviceAccountKey.client_email,
+    scope: "https://www.googleapis.com/auth/drive",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: getNumericDate(60 * 60), // 1 hour
+    iat: getNumericDate(0),
+  };
+
+  // Import the private key
+  const privateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    new TextEncoder().encode(
+      serviceAccountKey.private_key
+        .replace(/-----BEGIN PRIVATE KEY-----/, "")
+        .replace(/-----END PRIVATE KEY-----/, "")
+        .replace(/\s/g, "")
+    ),
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      hash: "SHA-256",
+    },
+    false,
+    ["sign"]
+  );
+
+  const jwt = await create(header, payload, privateKey);
+
+  // Exchange JWT for access token
+  const tokenResponse = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
+  });
+
+  if (!tokenResponse.ok) {
+    const errorText = await tokenResponse.text();
+    console.error('Token exchange failed:', errorText);
+    throw new Error(`Failed to get access token: ${tokenResponse.status} - ${errorText}`);
+  }
+
+  const tokenData = await tokenResponse.json();
+  
+  // Cache the token (expires in 1 hour, cache for 50 minutes to be safe)
+  cachedToken = {
+    token: tokenData.access_token,
+    expires: Date.now() + (50 * 60 * 1000), // 50 minutes
+  };
+
+  console.log('Successfully obtained access token');
+  return tokenData.access_token;
 }
 
 serve(async (req) => {
@@ -52,14 +153,11 @@ serve(async (req) => {
       throw new Error('Action parameter is required');
     }
 
-    // Get Google access token from user secrets or environment
-    const googleToken = Deno.env.get('GOOGLE_DRIVE_TOKEN');
-    if (!googleToken) {
-      throw new Error('Google Drive access token not configured. Please set up Google OAuth.');
-    }
+    // Get access token using service account
+    const accessToken = await getAccessToken();
 
     const headers = {
-      'Authorization': `Bearer ${googleToken}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     };
 
@@ -132,7 +230,7 @@ serve(async (req) => {
       JSON.stringify({
         success: false,
         error: error.message,
-        details: 'Make sure Google Drive API is enabled and access token is valid'
+        details: 'Make sure Google Service Account key is properly configured in Supabase secrets'
       }),
       { 
         status: 400,

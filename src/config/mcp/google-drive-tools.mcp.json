@@ -6,7 +6,7 @@
     "id": "google-drive-tools",
     "name": "google-drive-tools",
     "title": "Google Drive Tools",
-    "description": "Access and manage Google Drive files, folders, and documents. Upload, download, search, and organize your Google Drive content.",
+    "description": "Access and manage Google Drive files, folders, and documents using Google Service Account authentication. Upload, download, search, and organize your Google Drive content.",
     "endpoint": "google-drive-tools",
     "icon": "hard-drive",
     "category": "Productivity",
@@ -79,9 +79,10 @@
     },
     "security": {
       "authentication": {
-        "type": "oauth",
+        "type": "service_account",
         "provider": "google",
-        "required": true
+        "required": true,
+        "description": "Google Service Account authentication with Drive API access"
       },
       "permissions": ["https://www.googleapis.com/auth/drive"]
     },
