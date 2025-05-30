@@ -1,19 +1,10 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { 
   MessageSquare, 
   Settings,
@@ -21,14 +12,12 @@ import {
   Plus,
   Loader2,
   RefreshCw,
-  Edit3,
-  ChevronDown
+  Edit3
 } from 'lucide-react';
 import { ModelProvider } from '@/services/modelProviderService';
 import { Agent } from '@/services/agentService';
 import AgentSelector from '@/components/agents/AgentSelector';
 import { useNavigate } from 'react-router-dom';
-import { getOpenAIModels, getNpawModels } from '@/services/modelProviderService';
 
 interface SimplifiedChatHeaderProps {
   modelSettings: {
@@ -45,7 +34,6 @@ interface SimplifiedChatHeaderProps {
   useCustomPrompt: boolean;
   currentAgent?: Agent | null;
   onAgentChange?: (agent: Agent) => void;
-  onModelChange?: (modelId: string) => void;
 }
 
 const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
@@ -59,15 +47,9 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
   onOpenPromptEditor,
   useCustomPrompt,
   currentAgent,
-  onAgentChange,
-  onModelChange
+  onAgentChange
 }) => {
   const navigate = useNavigate();
-  const [isChangingModel, setIsChangingModel] = useState(false);
-
-  // Get all available models
-  const openAIModels = getOpenAIModels();
-  const npawModels = getNpawModels();
 
   const handleAgentChange = (agent: Agent) => {
     if (onAgentChange) {
@@ -77,19 +59,6 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
 
   const handleManageAgents = () => {
     navigate('/agents');
-  };
-
-  const handleModelChange = async (modelId: string) => {
-    if (!currentAgent || !onModelChange) return;
-    
-    setIsChangingModel(true);
-    try {
-      await onModelChange(modelId);
-    } catch (error) {
-      console.error('Failed to change model:', error);
-    } finally {
-      setIsChangingModel(false);
-    }
   };
 
   // Helper function to format model display name
@@ -123,33 +92,11 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
   const getModelChipColor = (modelId: string): string => {
     // NPAW models
     if (['DeepSeek-V3', 'Mistral7B'].includes(modelId)) {
-      return 'bg-blue-500/10 text-blue-700 border-blue-200 hover:bg-blue-500/20';
+      return 'bg-blue-500/10 text-blue-700 border-blue-200';
     }
     
     // OpenAI models (default)
-    return 'bg-green-500/10 text-green-700 border-green-200 hover:bg-green-500/20';
-  };
-
-  const getProviderBadgeColor = (provider: string) => {
-    switch (provider) {
-      case 'openai':
-        return 'bg-green-500/10 text-green-700 border-green-200';
-      case 'npaw':
-        return 'bg-blue-500/10 text-blue-700 border-blue-200';
-      default:
-        return 'bg-gray-500/10 text-gray-700 border-gray-200';
-    }
-  };
-
-  const getProviderLabel = (provider: string) => {
-    switch (provider) {
-      case 'openai':
-        return 'OpenAI';
-      case 'npaw':
-        return 'NPAW';
-      default:
-        return provider.toUpperCase();
-    }
+    return 'bg-green-500/10 text-green-700 border-green-200';
   };
 
   return (
@@ -173,82 +120,14 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
             onManageAgents={handleManageAgents}
           />
           
-          {/* Clickable Model chip with dropdown */}
-          {currentAgent?.model && onModelChange && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Badge 
-                  variant="outline" 
-                  className={`text-xs cursor-pointer transition-colors ${getModelChipColor(currentAgent.model)} flex items-center gap-1`}
-                >
-                  {isChangingModel ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <>
-                      {formatModelName(currentAgent.model)}
-                      <ChevronDown className="h-3 w-3" />
-                    </>
-                  )}
-                </Badge>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="flex items-center gap-2">
-                    <Badge 
-                      variant="outline" 
-                      className={`text-xs ${getProviderBadgeColor('openai')}`}
-                    >
-                      {getProviderLabel('openai')}
-                    </Badge>
-                  </DropdownMenuLabel>
-                  {openAIModels.map((model) => (
-                    <DropdownMenuItem 
-                      key={model.id}
-                      onClick={() => handleModelChange(model.id)}
-                      className={currentAgent.model === model.id ? 'bg-accent' : ''}
-                    >
-                      <div className="flex flex-col">
-                        <span className="font-medium">{model.name}</span>
-                        {model.description && (
-                          <span className="text-xs text-muted-foreground">
-                            {model.description}
-                          </span>
-                        )}
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-                
-                <DropdownMenuSeparator />
-                
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="flex items-center gap-2">
-                    <Badge 
-                      variant="outline" 
-                      className={`text-xs ${getProviderBadgeColor('npaw')}`}
-                    >
-                      {getProviderLabel('npaw')}
-                    </Badge>
-                  </DropdownMenuLabel>
-                  {npawModels.map((model) => (
-                    <DropdownMenuItem 
-                      key={model.id}
-                      onClick={() => handleModelChange(model.id)}
-                      className={currentAgent.model === model.id ? 'bg-accent' : ''}
-                    >
-                      <div className="flex flex-col">
-                        <span className="font-medium">{model.name}</span>
-                        {model.description && (
-                          <span className="text-xs text-muted-foreground">
-                            {model.description}
-                          </span>
-                        )}
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          {/* Model chip - subtle indicator of current model */}
+          {currentAgent?.model && (
+            <Badge 
+              variant="outline" 
+              className={`text-xs ${getModelChipColor(currentAgent.model)}`}
+            >
+              {formatModelName(currentAgent.model)}
+            </Badge>
           )}
           
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
