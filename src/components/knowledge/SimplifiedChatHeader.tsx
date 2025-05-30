@@ -96,7 +96,6 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
               checked={loopEnabled}
               onCheckedChange={onToggleLoop}
               disabled={isLoading}
-              size="sm"
             />
             {loopEnabled && (
               <RefreshCw className="h-3 w-3 text-primary" />

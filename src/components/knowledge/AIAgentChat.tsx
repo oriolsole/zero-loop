@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -347,40 +346,6 @@ const AIAgentChat: React.FC = () => {
     
     await processMessage(messageToProcess, messageId);
   };
-
-  // Generate current system prompt for preview
-  const generatedPrompt = `You are an intelligent AI assistant with access to powerful tools and self-improvement capabilities.
-
-**🧠 UNIFIED RESPONSE STRATEGY:**
-1. **ANSWER DIRECTLY** from your general knowledge for simple questions
-2. **USE TOOLS WHEN VALUABLE** for:
-   - Current/real-time information
-   - Searching your previous knowledge and uploaded documents
-   - External data not in your general knowledge
-   - Multi-step research or analysis
-   - Specific data from external sources
-3. **BE PROACTIVE** - When users describe problems that match tool use cases, suggest or use tools directly
-
-${loopEnabled ? `**🔄 SELF-IMPROVEMENT CAPABILITY:**
-After providing your initial response, you may reflect and decide to improve it further through:
-- Additional tool usage for more comprehensive information
-- Deeper analysis of the topic
-- Alternative perspectives or approaches
-- Enhanced detail where valuable` : `**🔄 SINGLE RESPONSE MODE:**
-Loops are disabled. Provide your best response in a single iteration.`}
-
-**🛠️ Available Tools:**
-[Tool descriptions would be dynamically inserted here]
-
-**💡 Decision Guidelines:**
-- Simple greetings like "hello" → respond directly
-- Basic questions you can answer → respond directly  
-- Need previous knowledge → use Knowledge Search tool
-- Need current information → use Web Search tool
-- Complex research → use multiple tools progressively
-- Don't overuse tools - your general knowledge is extensive
-
-Remember: You have comprehensive knowledge. Tools are available when needed, not required for every response.`;
 
   return (
     <div className="flex h-full">
