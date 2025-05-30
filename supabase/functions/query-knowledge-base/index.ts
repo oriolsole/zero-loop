@@ -15,8 +15,8 @@ serve(async (req) => {
       query, 
       limit = 5, 
       useEmbeddings = true, 
-      matchThreshold = 0.5,
-      includeNodes = false // New parameter to include knowledge nodes
+      matchThreshold = 0.2, // Lowered from 0.5 to 0.2 for better recall
+      includeNodes = false
     } = await req.json();
     
     if (!query) {
@@ -43,10 +43,10 @@ serve(async (req) => {
         JSON.stringify({ 
           error: 'Error processing knowledge query',
           details: processingError.message,
-          results: [] // Return empty results instead of failing completely
+          results: []
         }),
         { 
-          status: 200, // Use 200 even for processing errors to avoid 500
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -58,10 +58,10 @@ serve(async (req) => {
       JSON.stringify({ 
         error: 'Failed to query knowledge base',
         details: error.message,
-        results: [] // Return empty results
+        results: []
       }),
       { 
-        status: 400, // 400 for malformed requests
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );

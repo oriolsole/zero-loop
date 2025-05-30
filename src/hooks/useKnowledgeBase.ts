@@ -6,3 +6,6 @@ import type { ExternalSource, FileUploadProgress, KnowledgeQueryOptions, Knowled
 
 export { useKnowledgeBase };
 export type { ExternalSource, FileUploadProgress, KnowledgeQueryOptions, KnowledgeUploadOptions };
+
+// Re-export the repair function for easy access
+export { useKnowledgeQuery } from './knowledge/useKnowledgeQuery';
