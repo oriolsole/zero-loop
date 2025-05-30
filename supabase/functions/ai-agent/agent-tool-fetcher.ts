@@ -1,3 +1,4 @@
+
 /**
  * Agent Tool Configuration Fetcher
  * Fetches and manages agent-specific tool configurations
@@ -15,7 +16,7 @@ export async function getAgentEnabledTools(agentId: string | null, supabase: any
   }
 
   try {
-    // Fetch agent tool configurations with MCP details
+    // Fetch agent tool configurations with MCP details - removing priority column reference
     const { data: agentToolConfigs, error } = await supabase
       .from('agent_tool_configs')
       .select(`
@@ -36,7 +37,6 @@ export async function getAgentEnabledTools(agentId: string | null, supabase: any
           authType,
           authKeyName,
           requirestoken,
-          priority,
           isDefault
         )
       `)
@@ -65,7 +65,7 @@ export async function getAgentEnabledTools(agentId: string | null, supabase: any
           // Override with custom configurations if provided
           title: config.custom_title || mcp.title,
           description: config.custom_description || mcp.description,
-          priority: config.priority_override || mcp.priority || 0,
+          priority: config.priority_override || 5, // Default priority if not set
           custom_use_cases: config.custom_use_cases || [],
           // Keep reference to original config
           agent_config: {

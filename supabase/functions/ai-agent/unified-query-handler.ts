@@ -24,6 +24,10 @@ export async function handleUnifiedQuery(
   agentId?: string // Updated to use agentId for tool configuration
 ): Promise<any> {
   console.log(`🤖 Starting unified query handler (loop ${loopIteration}, enabled: ${loopEnabled}, agent: ${agentId})`);
+  console.log(`🧠 Custom system prompt received: ${customSystemPrompt ? 'YES' : 'NO'}`);
+  if (customSystemPrompt) {
+    console.log(`📝 Custom prompt content: "${customSystemPrompt.substring(0, 100)}${customSystemPrompt.length > 100 ? '...' : ''}"`);
+  }
 
   let finalResponse = '';
   let allToolsUsed: any[] = [];
@@ -166,34 +170,46 @@ export async function handleUnifiedQuery(
       );
     }
 
-    // 2. Get agent-specific enabled tools
+    // 2. Get agent-specific enabled tools with better error handling
     console.log(`🔧 Fetching tools for agent: ${agentId}`);
     
-    // Setup default tools for agent if none exist (for new agents)
-    if (agentId && userId) {
-      await setupDefaultToolsForAgent(agentId, supabase);
-    }
-    
-    // Fetch enabled tools for this specific agent
-    const mcps = await getAgentEnabledTools(agentId, supabase);
-    
-    if (mcps.length === 0) {
-      console.log('⚠️ No tools available for agent, continuing without tools');
-    } else {
-      console.log(`✅ Agent ${agentId} has access to ${mcps.length} tools:`, 
-        mcps.map(m => m.title).join(', '));
+    let mcps: any[] = [];
+    try {
+      // Setup default tools for agent if none exist (for new agents)
+      if (agentId && userId) {
+        await setupDefaultToolsForAgent(agentId, supabase);
+      }
+      
+      // Fetch enabled tools for this specific agent
+      mcps = await getAgentEnabledTools(agentId, supabase);
+      
+      if (mcps.length === 0) {
+        console.log('⚠️ No tools available for agent, continuing without tools');
+      } else {
+        console.log(`✅ Agent ${agentId} has access to ${mcps.length} tools:`, 
+          mcps.map(m => m.title).join(', '));
+      }
+    } catch (toolError) {
+      console.error('❌ Failed to fetch agent tools, continuing without tools:', toolError);
+      mcps = [];
     }
 
     const tools = convertMCPsToTools(mcps);
     
-    // Use custom system prompt if provided, otherwise generate default
-    const systemPrompt = customSystemPrompt && customSystemPrompt.trim() 
-      ? customSystemPrompt 
-      : generateUnifiedSystemPrompt(mcps, loopIteration, loopEnabled);
+    // 3. Handle custom system prompt with detailed logging
+    let systemPrompt: string;
+    
+    if (customSystemPrompt && customSystemPrompt.trim()) {
+      systemPrompt = customSystemPrompt.trim();
+      console.log(`🧠 Using custom system prompt for agent ${agentId}`);
+      console.log(`📝 Custom prompt: "${systemPrompt}"`);
+    } else {
+      systemPrompt = generateUnifiedSystemPrompt(mcps, loopIteration, loopEnabled);
+      console.log(`🧠 Using generated system prompt for agent ${agentId}`);
+      console.log(`📝 Generated prompt preview: "${systemPrompt.substring(0, 200)}..."`);
+    }
 
-    console.log(`🧠 Using ${customSystemPrompt ? 'custom' : 'generated'} system prompt for agent ${agentId}`);
-
-    // 3. Prepare messages
+    // 4. Prepare messages
     const messages = createKnowledgeAwareMessages(
       systemPrompt,
       conversationHistory,
@@ -201,8 +217,9 @@ export async function handleUnifiedQuery(
     );
 
     console.log(`🧠 Calling LLM (loop ${loopIteration}) with ${tools.length} available tools`);
+    console.log(`📨 Message count: ${messages.length}, System prompt length: ${systemPrompt.length}`);
 
-    // 4. LLM call with tool decision-making
+    // 5. LLM call with tool decision-making
     const modelRequestBody = {
       messages,
       tools: tools.length > 0 ? tools : undefined,
@@ -236,7 +253,9 @@ export async function handleUnifiedQuery(
     const data = response.data;
     finalResponse = extractAssistantMessage(data) || '';
 
-    // 5. Execute tools if LLM chose to use them
+    console.log(`🤖 LLM Response: "${finalResponse.substring(0, 100)}${finalResponse.length > 100 ? '...' : ''}"`);
+
+    // 6. Execute tools if LLM chose to use them
     if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
       console.log(`🛠️ LLM chose to use ${data.choices[0].message.tool_calls.length} tools (loop ${loopIteration})`);
       
@@ -334,7 +353,7 @@ export async function handleUnifiedQuery(
         }
       }
       
-      // 6. Synthesize tool results
+      // 7. Synthesize tool results
       if (toolsUsed.length > 0) {
         console.log(`🔄 Synthesizing tool results (loop ${loopIteration})`);
         const synthesizedResponse = await synthesizeResults(
@@ -354,7 +373,7 @@ export async function handleUnifiedQuery(
       console.log(`✅ LLM responded directly without tools (loop ${loopIteration})`);
     }
 
-    // 7. Store current iteration response
+    // 8. Store current iteration response
     const responseMessageType = loopIteration === 0 ? 'response' : 'loop-enhancement';
     await insertMessage(
       finalResponse,
@@ -362,7 +381,7 @@ export async function handleUnifiedQuery(
       { tools_used: allToolsUsed }
     );
 
-    // 8. Self-improvement loop evaluation (only if loops are enabled)
+    // 9. Self-improvement loop evaluation (only if loops are enabled)
     if (loopEnabled && loopIteration < MAX_LOOPS && !streaming) {
       console.log(`🔍 Evaluating if response can be improved (loop ${loopIteration})`);
       
@@ -375,7 +394,7 @@ export async function handleUnifiedQuery(
         modelSettings
       );
 
-      // 9. Store reflection and continue loop if improvement is suggested
+      // 10. Store reflection and continue loop if improvement is suggested
       if (loopEvaluation.shouldContinue) {
         console.log(`🔄 Continuing to loop ${loopIteration + 1}: ${loopEvaluation.reasoning}`);
         
@@ -422,7 +441,7 @@ export async function handleUnifiedQuery(
       console.log(`🚫 Loop evaluation skipped - loops disabled by user`);
     }
 
-    // 10. Persist insights for multi-tool queries
+    // 11. Persist insights for multi-tool queries
     if (userId && allToolsUsed.length > 1) {
       try {
         await persistInsightAsKnowledgeNode(
@@ -438,10 +457,12 @@ export async function handleUnifiedQuery(
       }
     }
 
-    // 11. Validate response
+    // 12. Validate response
     if (!finalResponse || !finalResponse.trim()) {
       finalResponse = createFallbackResponse(message, allToolsUsed);
     }
+
+    console.log(`🎯 Final response: "${finalResponse.substring(0, 100)}${finalResponse.length > 100 ? '...' : ''}"`);
 
     return {
       success: true,
