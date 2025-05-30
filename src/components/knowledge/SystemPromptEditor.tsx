@@ -1,11 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { RefreshCw, Eye, Edit3, Info } from 'lucide-react';
@@ -144,11 +142,11 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
               </Badge>
             </div>
             
-            <ScrollArea className="flex-1 border rounded-md h-[400px] w-full">
-              <div className="p-4 text-sm font-mono whitespace-pre-wrap bg-muted/20 min-h-full">
+            <div className="flex-1 border rounded-md h-[400px] w-full overflow-y-auto">
+              <div className="p-4 text-sm font-mono whitespace-pre-wrap bg-muted/20">
                 {currentPrompt}
               </div>
-            </ScrollArea>
+            </div>
           </TabsContent>
         </Tabs>
 
