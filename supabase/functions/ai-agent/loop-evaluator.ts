@@ -17,8 +17,17 @@ export async function shouldContinueLoop(
   loopCount: number,
   originalMessage: string,
   supabase: any,
-  modelSettings: any
+  modelSettings: any,
+  loopEnabled: boolean = true // New parameter to control loop behavior
 ): Promise<LoopEvaluation> {
+  // Don't continue if loops are disabled by user
+  if (!loopEnabled) {
+    return {
+      shouldContinue: false,
+      reasoning: 'Self-improvement loops are disabled by user preference'
+    };
+  }
+
   // Don't continue if we've reached max loops
   if (loopCount >= MAX_LOOPS) {
     return {

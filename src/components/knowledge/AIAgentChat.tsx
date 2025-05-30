@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -42,9 +41,24 @@ const AIAgentChat: React.FC = () => {
   const { generateMessageId } = useMessageManager();
   const [showSessions, setShowSessions] = React.useState(false);
   const [modelSettings, setModelSettings] = React.useState(getModelSettings());
+  const [loopEnabled, setLoopEnabled] = React.useState(false); // Default to disabled
 
   const activeRequests = useRef<Set<string>>(new Set());
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  // Load loop preference from localStorage
+  useEffect(() => {
+    const savedLoopPreference = localStorage.getItem('aiAgentLoopEnabled');
+    if (savedLoopPreference !== null) {
+      setLoopEnabled(JSON.parse(savedLoopPreference));
+    }
+  }, []);
+
+  // Save loop preference to localStorage
+  const handleToggleLoop = (enabled: boolean) => {
+    setLoopEnabled(enabled);
+    localStorage.setItem('aiAgentLoopEnabled', JSON.stringify(enabled));
+  };
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -153,7 +167,7 @@ const AIAgentChat: React.FC = () => {
           content: msg.content
         }));
 
-      console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages`);
+      console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages, loop enabled: ${loopEnabled}`);
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: {
@@ -162,7 +176,8 @@ const AIAgentChat: React.FC = () => {
           userId: user.id,
           sessionId: currentSessionId,
           streaming: false,
-          modelSettings: modelSettings
+          modelSettings: modelSettings,
+          loopEnabled: loopEnabled // Pass the loop setting to the backend
         }
       });
 
@@ -284,6 +299,8 @@ const AIAgentChat: React.FC = () => {
           onToggleSessions={() => setShowSessions(!showSessions)}
           onNewSession={startNewSession}
           isLoading={isLoading}
+          loopEnabled={loopEnabled}
+          onToggleLoop={handleToggleLoop}
         />
         
         <SimplifiedChatInterface

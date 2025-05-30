@@ -61,7 +61,7 @@ serve(async (req) => {
   }
 
   try {
-    const { message, conversationHistory = [], userId, sessionId, streaming = false, modelSettings, testMode = false } = await req.json();
+    const { message, conversationHistory = [], userId, sessionId, streaming = false, modelSettings, testMode = false, loopEnabled = false } = await req.json();
     
     if (!message) {
       throw new Error('Message is required');
@@ -74,7 +74,8 @@ serve(async (req) => {
       sessionId,
       streaming,
       modelSettings,
-      testMode
+      testMode,
+      loopEnabled
     });
 
     // CRITICAL FIX: Do NOT store user message in database here
@@ -102,7 +103,9 @@ serve(async (req) => {
       sessionId,
       modelSettings,
       streaming,
-      supabase
+      supabase,
+      0, // loopIteration
+      loopEnabled // Pass the loop setting
     );
 
     // Handle streaming responses

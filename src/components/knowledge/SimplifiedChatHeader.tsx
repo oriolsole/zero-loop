@@ -2,7 +2,8 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bot, MessageSquare, Plus, Settings, Loader2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Bot, MessageSquare, Plus, Settings, Loader2, RotateCcw } from 'lucide-react';
 import { ModelProvider } from '@/services/modelProviderService';
 
 interface SimplifiedChatHeaderProps {
@@ -14,6 +15,8 @@ interface SimplifiedChatHeaderProps {
   onToggleSessions: () => void;
   onNewSession: () => void;
   isLoading: boolean;
+  loopEnabled: boolean;
+  onToggleLoop: (enabled: boolean) => void;
 }
 
 const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
@@ -21,7 +24,9 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
   showSessions,
   onToggleSessions,
   onNewSession,
-  isLoading
+  isLoading,
+  loopEnabled,
+  onToggleLoop
 }) => {
   return (
     <div className="border-b border-border/50 px-6 py-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -42,10 +47,22 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
             </div>
           </div>
           
-          <Badge variant="outline" className="text-xs font-medium bg-secondary/50 border-border/50">
-            {modelSettings.provider.toUpperCase()}
-            {modelSettings.selectedModel && ` • ${modelSettings.selectedModel}`}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="text-xs font-medium bg-secondary/50 border-border/50">
+              {modelSettings.provider.toUpperCase()}
+              {modelSettings.selectedModel && ` • ${modelSettings.selectedModel}`}
+            </Badge>
+            
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary/30 border border-border/30">
+              <RotateCcw className={`h-3 w-3 ${loopEnabled ? 'text-primary' : 'text-muted-foreground'}`} />
+              <span className="text-xs font-medium text-muted-foreground">Loop</span>
+              <Switch
+                checked={loopEnabled}
+                onCheckedChange={onToggleLoop}
+                className="h-4 w-7 data-[state=checked]:bg-primary"
+              />
+            </div>
+          </div>
         </div>
         
         <div className="flex items-center gap-1">

@@ -7,7 +7,7 @@ import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 import { shouldContinueLoop, MAX_LOOPS } from './loop-evaluator.ts';
 
 /**
- * Unified query handler with visible self-improvement loop capability
+ * Unified query handler with user-controlled self-improvement loop capability
  */
 export async function handleUnifiedQuery(
   message: string,
@@ -17,9 +17,10 @@ export async function handleUnifiedQuery(
   modelSettings: any,
   streaming: boolean,
   supabase: any,
-  loopIteration: number = 0
+  loopIteration: number = 0,
+  loopEnabled: boolean = false // New parameter to control loop behavior
 ): Promise<any> {
-  console.log(`🤖 Starting unified query handler (loop ${loopIteration})`);
+  console.log(`🤖 Starting unified query handler (loop ${loopIteration}, enabled: ${loopEnabled})`);
 
   let finalResponse = '';
   let allToolsUsed: any[] = [];
@@ -169,8 +170,8 @@ export async function handleUnifiedQuery(
       }
     };
 
-    // 1. Store loop start message (only for iterations > 0)
-    if (loopIteration > 0) {
+    // 1. Store loop start message (only for iterations > 0 AND when loops are enabled)
+    if (loopIteration > 0 && loopEnabled) {
       await insertMessage(
         `🔄 Improving response (Loop ${loopIteration})...`,
         'loop-start'
@@ -189,7 +190,7 @@ export async function handleUnifiedQuery(
     }
 
     const tools = convertMCPsToTools(mcps);
-    const systemPrompt = generateUnifiedSystemPrompt(mcps, loopIteration);
+    const systemPrompt = generateUnifiedSystemPrompt(mcps, loopIteration, loopEnabled);
 
     // 3. Prepare messages
     const messages = createKnowledgeAwareMessages(
@@ -360,8 +361,8 @@ export async function handleUnifiedQuery(
       { tools_used: allToolsUsed }
     );
 
-    // 8. Self-improvement loop evaluation (only for initial iterations)
-    if (loopIteration < MAX_LOOPS && !streaming) {
+    // 8. Self-improvement loop evaluation (only if loops are enabled)
+    if (loopEnabled && loopIteration < MAX_LOOPS && !streaming) {
       console.log(`🔍 Evaluating if response can be improved (loop ${loopIteration})`);
       
       loopEvaluation = await shouldContinueLoop(
@@ -398,7 +399,8 @@ export async function handleUnifiedQuery(
           modelSettings,
           streaming,
           supabase,
-          loopIteration + 1
+          loopIteration + 1,
+          loopEnabled // Pass the loop setting through recursion
         );
       } else {
         // Store loop completion message
@@ -413,6 +415,8 @@ export async function handleUnifiedQuery(
           );
         }
       }
+    } else if (!loopEnabled && loopIteration === 0) {
+      console.log(`🚫 Loop evaluation skipped - loops disabled by user`);
     }
 
     // 10. Persist insights for multi-tool queries
@@ -444,7 +448,8 @@ export async function handleUnifiedQuery(
       sessionId,
       loopIteration,
       improvementReasoning: loopEvaluation?.reasoning,
-      streamedSteps: true // Flag to indicate steps were streamed
+      streamedSteps: true, // Flag to indicate steps were streamed
+      loopEnabled // Include the loop setting in response
     };
 
   } catch (error) {
@@ -476,7 +481,8 @@ export async function handleUnifiedQuery(
       toolsUsed: [],
       sessionId,
       loopIteration,
-      error: 'Processed with fallback response'
+      error: 'Processed with fallback response',
+      loopEnabled
     };
   }
 }
@@ -484,7 +490,7 @@ export async function handleUnifiedQuery(
 /**
  * Generate unified system prompt with loop-awareness
  */
-function generateUnifiedSystemPrompt(mcps: any[], loopIteration: number = 0): string {
+function generateUnifiedSystemPrompt(mcps: any[], loopIteration: number = 0, loopEnabled: boolean = false): string {
   const mcpSummaries = mcps?.map(mcp => ({
     name: mcp.title,
     description: mcp.description,
@@ -495,17 +501,20 @@ function generateUnifiedSystemPrompt(mcps: any[], loopIteration: number = 0): st
     .map(summary => `**${summary.name}**: ${summary.description}`)
     .join('\n');
 
-  const loopGuidance = loopIteration > 0 ? `
+  const loopGuidance = loopEnabled && loopIteration > 0 ? `
 
 **🔄 IMPROVEMENT CONTEXT:**
 This is loop iteration ${loopIteration + 1}. You are reflecting on and improving a previous response. Focus on:
 - Adding valuable information that was missing
 - Using tools that could enhance the answer
 - Providing deeper analysis or additional perspectives
-- Ensuring comprehensive coverage of the user's request` : `
+- Ensuring comprehensive coverage of the user's request` : loopEnabled ? `
 
 **🔄 SELF-IMPROVEMENT:**
-After completing your response, you may have the opportunity to reflect and improve it further through additional tool usage or refinement.`;
+After completing your response, you may have the opportunity to reflect and improve it further through additional tool usage or refinement.` : `
+
+**🔄 SINGLE RESPONSE MODE:**
+Loops are disabled. Provide your best response in a single iteration.`;
 
   return `You are an intelligent AI assistant with access to powerful tools when needed.
 
