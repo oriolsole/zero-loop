@@ -61,6 +61,44 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
     navigate('/agents');
   };
 
+  // Helper function to format model display name
+  const formatModelName = (modelId: string): string => {
+    // Convert technical model IDs to readable names
+    const modelDisplayNames: Record<string, string> = {
+      'gpt-4o': 'GPT-4o',
+      'gpt-4o-mini': 'GPT-4o Mini',
+      'gpt-4.5': 'GPT-4.5',
+      'gpt-4.1': 'GPT-4.1',
+      'gpt-4.1-mini': 'GPT-4.1 Mini',
+      'gpt-4.1-nano': 'GPT-4.1 Nano',
+      'o1': 'O1',
+      'o1-mini': 'O1 Mini',
+      'o1-pro': 'O1 Pro',
+      'o3': 'O3',
+      'o3-mini': 'O3 Mini',
+      'o4-mini': 'O4 Mini',
+      'gpt-3.5-turbo': 'GPT-3.5 Turbo',
+      'gpt-3.5-turbo-16k': 'GPT-3.5 Turbo 16K',
+      'text-davinci-003': 'Davinci 003',
+      'code-davinci-002': 'Code Davinci',
+      'DeepSeek-V3': 'DeepSeek V3',
+      'Mistral7B': 'Mistral 7B'
+    };
+    
+    return modelDisplayNames[modelId] || modelId;
+  };
+
+  // Helper function to get provider-specific colors
+  const getModelChipColor = (modelId: string): string => {
+    // NPAW models
+    if (['DeepSeek-V3', 'Mistral7B'].includes(modelId)) {
+      return 'bg-blue-500/10 text-blue-700 border-blue-200';
+    }
+    
+    // OpenAI models (default)
+    return 'bg-green-500/10 text-green-700 border-green-200';
+  };
+
   return (
     <div className="border-b border-border bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/50">
       <div className="flex items-center justify-between px-6 py-3">
@@ -81,6 +119,16 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
             onAgentChange={handleAgentChange}
             onManageAgents={handleManageAgents}
           />
+          
+          {/* Model chip - subtle indicator of current model */}
+          {currentAgent?.model && (
+            <Badge 
+              variant="outline" 
+              className={`text-xs ${getModelChipColor(currentAgent.model)}`}
+            >
+              {formatModelName(currentAgent.model)}
+            </Badge>
+          )}
           
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             {useCustomPrompt && (
