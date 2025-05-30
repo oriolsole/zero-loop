@@ -17,6 +17,8 @@ import {
 import { ModelProvider } from '@/services/modelProviderService';
 import { Agent } from '@/services/agentService';
 import AgentSelector from '@/components/agents/AgentSelector';
+import ToolsIndicator from '@/components/agents/ToolsIndicator';
+import { useAvailableMCPs } from '@/hooks/useAvailableMCPs';
 import { useNavigate } from 'react-router-dom';
 
 interface SimplifiedChatHeaderProps {
@@ -50,6 +52,7 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
   onAgentChange
 }) => {
   const navigate = useNavigate();
+  const { mcps: availableTools } = useAvailableMCPs();
 
   const handleAgentChange = (agent: Agent) => {
     if (onAgentChange) {
@@ -120,15 +123,23 @@ const SimplifiedChatHeader: React.FC<SimplifiedChatHeaderProps> = ({
             onManageAgents={handleManageAgents}
           />
           
-          {/* Model chip - subtle indicator of current model */}
-          {currentAgent?.model && (
-            <Badge 
-              variant="outline" 
-              className={`text-xs ${getModelChipColor(currentAgent.model)}`}
-            >
-              {formatModelName(currentAgent.model)}
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Model chip - subtle indicator of current model */}
+            {currentAgent?.model && (
+              <Badge 
+                variant="outline" 
+                className={`text-xs ${getModelChipColor(currentAgent.model)}`}
+              >
+                {formatModelName(currentAgent.model)}
+              </Badge>
+            )}
+            
+            {/* Tools indicator - subtle icons showing available tools */}
+            <ToolsIndicator 
+              agent={currentAgent} 
+              availableTools={availableTools}
+            />
+          </div>
           
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             {useCustomPrompt && (
