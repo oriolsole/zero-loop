@@ -231,13 +231,15 @@ class GoogleOAuthService {
         let closureCheckInterval: number | undefined;
         let messageReceived = false;
 
-        // Enhanced message handler with better logging
+        // Enhanced message handler with better data structure debugging
         const messageHandler = async (event: MessageEvent) => {
           console.log('📨 Received message in parent:', {
             origin: event.origin,
             expectedOrigin: window.location.origin,
-            data: event.data,
-            type: event.data?.type,
+            eventData: event.data,
+            dataType: typeof event.data,
+            dataKeys: event.data ? Object.keys(event.data) : 'no data',
+            rawData: JSON.stringify(event.data),
             messageReceived: messageReceived
           });
 
@@ -252,7 +254,24 @@ class GoogleOAuthService {
 
           messageReceived = true;
 
-          if (event.data.type === 'google-oauth-success') {
+          // More flexible message type detection
+          let messageType = null;
+          let messageTokens = null;
+          let messageError = null;
+
+          if (event.data && typeof event.data === 'object') {
+            messageType = event.data.type;
+            messageTokens = event.data.tokens;
+            messageError = event.data.error;
+          }
+
+          console.log('🔍 Extracted message data:', {
+            messageType,
+            hasTokens: !!messageTokens,
+            messageError
+          });
+
+          if (messageType === 'google-oauth-success') {
             try {
               console.log('✅ Received OAuth success message');
               
@@ -266,7 +285,7 @@ class GoogleOAuthService {
               
               // Complete the OAuth flow
               console.log('🔄 Completing OAuth flow with tokens...');
-              await this.completeOAuth(event.data.tokens);
+              await this.completeOAuth(messageTokens);
               
               // Send confirmation to popup to close it
               console.log('📤 Sending close confirmation to popup');
@@ -301,8 +320,8 @@ class GoogleOAuthService {
               
               reject(error);
             }
-          } else if (event.data.type === 'google-oauth-error') {
-            console.error('❌ OAuth error from popup:', event.data.error);
+          } else if (messageType === 'google-oauth-error') {
+            console.error('❌ OAuth error from popup:', messageError);
             isCompleted = true;
             
             if (closureCheckInterval !== undefined) {
@@ -315,9 +334,12 @@ class GoogleOAuthService {
               popup.close();
             }
             
-            reject(new Error(`OAuth error: ${event.data.error}`));
+            reject(new Error(`OAuth error: ${messageError}`));
           } else {
-            console.log('🤷 Unknown message type:', event.data.type);
+            console.log('🤷 Unknown or invalid message type:', {
+              messageType,
+              fullData: event.data
+            });
           }
         };
 

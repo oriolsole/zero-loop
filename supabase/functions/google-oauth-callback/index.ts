@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -43,29 +44,6 @@ async function encryptToken(token: string): Promise<string> {
   
   // Convert to base64
   return btoa(String.fromCharCode(...combined));
-}
-
-async function decryptToken(encryptedToken: string): Promise<string> {
-  if (!encryptedToken) return '';
-  
-  const key = await getEncryptionKey();
-  
-  // Decode from base64
-  const combined = new Uint8Array(
-    atob(encryptedToken).split('').map(char => char.charCodeAt(0))
-  );
-  
-  const iv = combined.slice(0, 12);
-  const encrypted = combined.slice(12);
-  
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    encrypted
-  );
-  
-  const decoder = new TextDecoder();
-  return decoder.decode(decrypted);
 }
 
 serve(async (req) => {
@@ -156,7 +134,7 @@ serve(async (req) => {
         token_type: tokenData.token_type || 'Bearer'
       };
       
-      // Enhanced HTML with better debugging and error handling
+      // Enhanced HTML with better debugging and simplified message sending
       const successHtml = `
         <html>
           <body>
@@ -166,10 +144,18 @@ serve(async (req) => {
               console.log('🪟 Popup: Opener exists:', !!window.opener);
               console.log('🪟 Popup: Opener closed:', window.opener ? window.opener.closed : 'N/A');
               
+              // Create the message object
+              const messageData = {
+                type: 'google-oauth-success',
+                tokens: ${JSON.stringify(processedTokens)}
+              };
+              
+              console.log('📦 Popup: Message to send:', JSON.stringify(messageData));
+              
               let tokensSent = false;
               let windowClosed = false;
               let messageAttempts = 0;
-              const maxAttempts = 5;
+              const maxAttempts = 10;
               
               function attemptSendMessage() {
                 messageAttempts++;
@@ -178,10 +164,10 @@ serve(async (req) => {
                 try {
                   if (window.opener && !window.opener.closed) {
                     console.log('📨 Popup: Sending message to parent...');
-                    window.opener.postMessage({
-                      type: 'google-oauth-success',
-                      tokens: ${JSON.stringify(processedTokens)}
-                    }, window.location.origin);
+                    
+                    // Send the message
+                    window.opener.postMessage(messageData, window.location.origin);
+                    
                     console.log('✅ Popup: Message sent successfully');
                     tokensSent = true;
                     
@@ -194,7 +180,7 @@ serve(async (req) => {
                         return;
                       }
                       
-                      if (event.data.type === 'oauth-close-popup') {
+                      if (event.data && event.data.type === 'oauth-close-popup') {
                         console.log('✅ Popup: Received close confirmation from parent');
                         window.removeEventListener('message', messageHandler);
                         if (!windowClosed) {
@@ -238,7 +224,7 @@ serve(async (req) => {
                 }
               }
               
-              // Start the message sending process
+              // Start the message sending process immediately
               attemptSendMessage();
             </script>
             <p>Authentication successful! Completing setup...</p>
@@ -405,3 +391,26 @@ serve(async (req) => {
 
 // Export decryptToken function for use in other edge functions
 export { decryptToken };
+
+async function decryptToken(encryptedToken: string): Promise<string> {
+  if (!encryptedToken) return '';
+  
+  const key = await getEncryptionKey();
+  
+  // Decode from base64
+  const combined = new Uint8Array(
+    atob(encryptedToken).split('').map(char => char.charCodeAt(0))
+  );
+  
+  const iv = combined.slice(0, 12);
+  const encrypted = combined.slice(12);
+  
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encrypted
+  );
+  
+  const decoder = new TextDecoder();
+  return decoder.decode(decrypted);
+}
