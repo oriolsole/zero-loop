@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { RefreshCw, Eye, Edit3, Info } from 'lucide-react';
+import { RefreshCw, Eye, Edit3, Info, Loader2 } from 'lucide-react';
+import { useGeneratedSystemPrompt } from '@/hooks/useGeneratedSystemPrompt';
 
 interface SystemPromptEditorProps {
   isOpen: boolean;
@@ -26,7 +27,7 @@ interface SystemPromptEditorProps {
 const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
   isOpen,
   onClose,
-  generatedPrompt,
+  generatedPrompt: fallbackPrompt,
   customPrompt,
   useCustomPrompt,
   onCustomPromptChange,
@@ -36,6 +37,18 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
   loopEnabled
 }) => {
   const [localCustomPrompt, setLocalCustomPrompt] = useState(customPrompt);
+
+  // Fetch the real generated system prompt
+  const { 
+    generatedPrompt: realGeneratedPrompt, 
+    isLoading: isLoadingPrompt, 
+    error: promptError,
+    refetch: refetchPrompt
+  } = useGeneratedSystemPrompt({
+    customPrompt,
+    useCustomPrompt,
+    loopEnabled
+  });
 
   useEffect(() => {
     setLocalCustomPrompt(customPrompt);
@@ -51,7 +64,13 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
     onReset();
   };
 
-  const currentPrompt = useCustomPrompt && customPrompt ? customPrompt : generatedPrompt;
+  const handleRefresh = () => {
+    refetchPrompt();
+  };
+
+  // Use the real generated prompt if available, otherwise fall back to the passed one
+  const displayPrompt = realGeneratedPrompt || fallbackPrompt;
+  const currentPrompt = useCustomPrompt && customPrompt ? customPrompt : displayPrompt;
   const estimatedTokens = Math.ceil(currentPrompt.length / 4);
 
   return (
@@ -118,7 +137,6 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
               onChange={(e) => setLocalCustomPrompt(e.target.value)}
               placeholder="Enter your custom system prompt here, or leave empty to use the generated prompt..."
               className="flex-1 min-h-[300px] font-mono text-sm"
-              disabled={!useCustomPrompt}
             />
 
             {useCustomPrompt && (
@@ -139,14 +157,42 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
               <h3 className="text-sm font-medium">
                 {useCustomPrompt && customPrompt ? 'Custom Prompt (Active)' : 'Generated Prompt (Active)'}
               </h3>
-              <Badge variant={useCustomPrompt && customPrompt ? "default" : "secondary"} className="text-xs">
-                {useCustomPrompt && customPrompt ? 'Custom' : 'Generated'}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant={useCustomPrompt && customPrompt ? "default" : "secondary"} className="text-xs">
+                  {useCustomPrompt && customPrompt ? 'Custom' : 'Generated'}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefresh}
+                  disabled={isLoadingPrompt}
+                  className="h-7 px-2"
+                >
+                  {isLoadingPrompt ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
             </div>
+            
+            {promptError && (
+              <div className="text-sm text-red-600 bg-red-50 p-2 rounded mb-2">
+                Error loading prompt: {promptError}
+              </div>
+            )}
             
             <ScrollArea className="flex-1 border rounded-md">
               <div className="p-4 text-sm font-mono whitespace-pre-wrap bg-muted/20">
-                {currentPrompt}
+                {isLoadingPrompt ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading real system prompt...
+                  </div>
+                ) : (
+                  currentPrompt
+                )}
               </div>
             </ScrollArea>
           </TabsContent>
