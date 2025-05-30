@@ -144,8 +144,8 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
               </Badge>
             </div>
             
-            <ScrollArea className="flex-1 border rounded-md max-h-[400px]">
-              <div className="p-4 text-sm font-mono whitespace-pre-wrap bg-muted/20">
+            <ScrollArea className="flex-1 border rounded-md h-[400px] w-full">
+              <div className="p-4 text-sm font-mono whitespace-pre-wrap bg-muted/20 min-h-full">
                 {currentPrompt}
               </div>
             </ScrollArea>
