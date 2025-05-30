@@ -226,6 +226,9 @@ class GoogleOAuthService {
           return;
         }
 
+        let isCompleted = false;
+        let closureCheckInterval: number;
+
         // Listen for OAuth completion
         const messageHandler = async (event: MessageEvent) => {
           console.log('📨 Received message:', {
@@ -243,31 +246,72 @@ class GoogleOAuthService {
           if (event.data.type === 'google-oauth-success') {
             try {
               console.log('✅ Received OAuth success message');
+              
+              // Clear the closure check interval since we received a valid message
+              if (closureCheckInterval) {
+                clearInterval(closureCheckInterval);
+              }
+              
+              isCompleted = true;
+              
+              // Complete the OAuth flow
               await this.completeOAuth(event.data.tokens);
+              
+              // Send confirmation to popup to close it
+              console.log('📤 Sending close confirmation to popup');
+              popup.postMessage({ type: 'oauth-close-popup' }, window.location.origin);
+              
+              // Clean up
               window.removeEventListener('message', messageHandler);
-              popup.close();
+              
+              // Ensure popup is closed
+              setTimeout(() => {
+                if (!popup.closed) {
+                  popup.close();
+                }
+              }, 1000);
+              
               resolve();
             } catch (error) {
               console.error('❌ Error completing OAuth:', error);
+              isCompleted = true;
+              
+              // Clear interval and clean up
+              if (closureCheckInterval) {
+                clearInterval(closureCheckInterval);
+              }
               window.removeEventListener('message', messageHandler);
-              popup.close();
+              
+              if (!popup.closed) {
+                popup.close();
+              }
+              
               reject(error);
             }
           } else if (event.data.type === 'google-oauth-error') {
             console.error('❌ OAuth error from popup:', event.data.error);
+            isCompleted = true;
+            
+            if (closureCheckInterval) {
+              clearInterval(closureCheckInterval);
+            }
             window.removeEventListener('message', messageHandler);
-            popup.close();
+            
+            if (!popup.closed) {
+              popup.close();
+            }
+            
             reject(new Error(`OAuth error: ${event.data.error}`));
           }
         };
 
         window.addEventListener('message', messageHandler);
 
-        // Check if popup was closed manually
-        const checkClosed = setInterval(() => {
-          if (popup.closed) {
-            console.log('⚠️ Popup was closed manually');
-            clearInterval(checkClosed);
+        // Check if popup was closed manually (only if flow hasn't completed)
+        closureCheckInterval = setInterval(() => {
+          if (popup.closed && !isCompleted) {
+            console.log('⚠️ Popup was closed manually before completion');
+            clearInterval(closureCheckInterval);
             window.removeEventListener('message', messageHandler);
             reject(new Error('OAuth flow was cancelled'));
           }

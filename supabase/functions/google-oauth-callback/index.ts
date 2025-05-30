@@ -96,22 +96,52 @@ serve(async (req) => {
         token_type: tokenData.token_type || 'Bearer'
       };
       
-      // Return HTML that sends tokens to parent window
+      // Return HTML that sends tokens to parent window and waits for confirmation
       const successHtml = `
         <html>
           <body>
             <script>
               console.log('🔄 Sending tokens to parent window...');
+              let tokensSent = false;
+              let windowClosed = false;
+              
               try {
-                if (window.opener) {
+                if (window.opener && !window.opener.closed) {
                   window.opener.postMessage({
                     type: 'google-oauth-success',
                     tokens: ${JSON.stringify(processedTokens)}
                   }, window.location.origin);
                   console.log('✅ Tokens sent successfully');
-                  setTimeout(() => window.close(), 500);
+                  tokensSent = true;
+                  
+                  // Listen for confirmation from parent
+                  const messageHandler = (event) => {
+                    if (event.origin !== window.location.origin) return;
+                    
+                    if (event.data.type === 'oauth-close-popup') {
+                      console.log('✅ Received close confirmation from parent');
+                      window.removeEventListener('message', messageHandler);
+                      if (!windowClosed) {
+                        windowClosed = true;
+                        window.close();
+                      }
+                    }
+                  };
+                  
+                  window.addEventListener('message', messageHandler);
+                  
+                  // Fallback: close after 10 seconds if no confirmation received
+                  setTimeout(() => {
+                    if (!windowClosed) {
+                      console.log('⚠️ No confirmation received, closing anyway');
+                      window.removeEventListener('message', messageHandler);
+                      windowClosed = true;
+                      window.close();
+                    }
+                  }, 10000);
+                  
                 } else {
-                  console.error('❌ No opener window found');
+                  console.error('❌ No opener window found or opener was closed');
                   document.body.innerHTML = '<p>Please close this window and try again.</p>';
                 }
               } catch (error) {
@@ -119,7 +149,7 @@ serve(async (req) => {
                 document.body.innerHTML = '<p>Authentication completed. Please close this window.</p>';
               }
             </script>
-            <p>Authentication successful! This window will close automatically.</p>
+            <p>Authentication successful! Completing setup...</p>
           </body>
         </html>
       `;
