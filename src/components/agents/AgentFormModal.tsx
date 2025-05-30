@@ -27,8 +27,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { Agent } from '@/services/agentService';
+import { getOpenAIModels, getNpawModels, getModelSettings } from '@/services/modelProviderService';
 
 const agentSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
@@ -49,13 +53,6 @@ interface AgentFormModalProps {
   agent?: Agent | null;
 }
 
-const AVAILABLE_MODELS = [
-  { value: 'gpt-4o', label: 'GPT-4o' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
-];
-
 const AgentFormModal: React.FC<AgentFormModalProps> = ({
   isOpen,
   onClose,
@@ -63,12 +60,23 @@ const AgentFormModal: React.FC<AgentFormModalProps> = ({
   mode,
   agent,
 }) => {
+  // Get all available models dynamically
+  const openAIModels = getOpenAIModels();
+  const npawModels = getNpawModels();
+  const currentSettings = getModelSettings();
+  
+  // Group models by category for better organization
+  const modelsByProvider = {
+    openai: openAIModels,
+    npaw: npawModels,
+  };
+
   const form = useForm<AgentFormData>({
     resolver: zodResolver(agentSchema),
     defaultValues: {
       name: agent?.name || '',
       description: agent?.description || '',
-      model: agent?.model || 'gpt-4o',
+      model: agent?.model || currentSettings.selectedModel || 'gpt-4o',
       system_prompt: agent?.system_prompt || '',
       loop_enabled: agent?.loop_enabled || false,
       is_default: agent?.is_default || false,
@@ -81,13 +89,13 @@ const AgentFormModal: React.FC<AgentFormModalProps> = ({
       form.reset({
         name: agent?.name || '',
         description: agent?.description || '',
-        model: agent?.model || 'gpt-4o',
+        model: agent?.model || currentSettings.selectedModel || 'gpt-4o',
         system_prompt: agent?.system_prompt || '',
         loop_enabled: agent?.loop_enabled || false,
         is_default: agent?.is_default || false,
       });
     }
-  }, [agent, isOpen, form]);
+  }, [agent, isOpen, form, currentSettings.selectedModel]);
 
   const handleSubmit = async (data: AgentFormData) => {
     try {
@@ -101,6 +109,28 @@ const AgentFormModal: React.FC<AgentFormModalProps> = ({
   const handleClose = () => {
     form.reset();
     onClose();
+  };
+
+  const getProviderBadgeColor = (provider: string) => {
+    switch (provider) {
+      case 'openai':
+        return 'bg-green-500/10 text-green-700 border-green-200';
+      case 'npaw':
+        return 'bg-blue-500/10 text-blue-700 border-blue-200';
+      default:
+        return 'bg-gray-500/10 text-gray-700 border-gray-200';
+    }
+  };
+
+  const getProviderLabel = (provider: string) => {
+    switch (provider) {
+      case 'openai':
+        return 'OpenAI';
+      case 'npaw':
+        return 'NPAW';
+      default:
+        return provider.toUpperCase();
+    }
   };
 
   return (
@@ -159,10 +189,29 @@ const AgentFormModal: React.FC<AgentFormModalProps> = ({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {AVAILABLE_MODELS.map((model) => (
-                        <SelectItem key={model.value} value={model.value}>
-                          {model.label}
-                        </SelectItem>
+                      {Object.entries(modelsByProvider).map(([provider, models]) => (
+                        <SelectGroup key={provider}>
+                          <SelectLabel className="flex items-center gap-2">
+                            <Badge 
+                              variant="outline" 
+                              className={`text-xs ${getProviderBadgeColor(provider)}`}
+                            >
+                              {getProviderLabel(provider)}
+                            </Badge>
+                          </SelectLabel>
+                          {models.map((model) => (
+                            <SelectItem key={model.id} value={model.id}>
+                              <div className="flex flex-col">
+                                <span>{model.name}</span>
+                                {model.description && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {model.description}
+                                  </span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       ))}
                     </SelectContent>
                   </Select>
