@@ -1,8 +1,7 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Link, useLocation } from 'react-router-dom';
-import { Bot, Brain, Settings, Database, Puzzle, Search, MessageSquare } from 'lucide-react';
+import { Bot, Brain, Settings, Database, Puzzle, Search, MessageSquare, Wrench } from 'lucide-react';
 import UserMenu from './UserMenu';
 import { cn } from '@/lib/utils';
 
@@ -41,6 +40,15 @@ const Header: React.FC = () => {
               )}
             >
               Knowledge
+            </Link>
+            <Link
+              to="/tools"
+              className={cn(
+                "transition-colors hover:text-foreground/80",
+                isActive("/tools") ? "text-foreground" : "text-foreground/60"
+              )}
+            >
+              Tools
             </Link>
             <Link
               to="/ai-agent"

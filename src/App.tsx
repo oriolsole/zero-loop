@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Settings from "./pages/Settings";
 import KnowledgeManagement from "./pages/KnowledgeManagement";
+import Tools from "./pages/Tools";
 import DomainCustomization from "./pages/DomainCustomization";
 import CreateWebSearchMCP from "./pages/CreateWebSearchMCP";
 import AIAgent from "./pages/AIAgent";
@@ -49,6 +50,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <KnowledgeManagement />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/tools"
+                  element={
+                    <ProtectedRoute>
+                      <Tools />
                     </ProtectedRoute>
                   }
                 />
