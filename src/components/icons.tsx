@@ -1,5 +1,8 @@
+
 import {
   ArrowRight,
+  Book,
+  Brain,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -11,6 +14,7 @@ import {
   FileSearch,
   Folder,
   Github,
+  Globe,
   HelpCircle,
   Info,
   KanbanSquare,
@@ -39,8 +43,12 @@ import {
   Zap,
 } from "lucide-react";
 
+import JiraIcon from "./icons/JiraIcon";
+
 export const Icons = {
   arrowRight: ArrowRight,
+  book: Book,
+  brain: Brain,
   checkCircle2: CheckCircle2,
   chevronDown: ChevronDown,
   chevronUp: ChevronUp,
@@ -52,8 +60,10 @@ export const Icons = {
   fileSearch: FileSearch,
   folder: Folder,
   github: Github,
+  globe: Globe,
   helpCircle: HelpCircle,
   info: Info,
+  jira: JiraIcon,
   key: Key,
   loader2: Loader2,
   lock: Lock,
