@@ -9,6 +9,8 @@ import { useConversationContext } from '@/contexts/ConversationContext';
 import { useMessageManager } from '@/hooks/conversation/useMessageManager';
 import { useSessionManager } from '@/hooks/conversation/useSessionManager';
 import { useSystemPrompt } from '@/hooks/useSystemPrompt';
+import { useAgentManagement } from '@/hooks/useAgentManagement';
+import { useGeneratedSystemPrompt } from '@/hooks/useGeneratedSystemPrompt';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
@@ -30,7 +32,9 @@ const AIAgentChat: React.FC = () => {
     setCurrentSession,
     addMessage,
     persistMessage,
-    loadConversation
+    loadConversation,
+    currentAgent,
+    setCurrentAgent
   } = useConversationContext();
 
   const { 
@@ -41,10 +45,11 @@ const AIAgentChat: React.FC = () => {
     deleteSession
   } = useSessionManager();
 
+  const { ensureDefaultAgent } = useAgentManagement();
   const { generateMessageId } = useMessageManager();
   const [showSessions, setShowSessions] = React.useState(false);
   const [modelSettings, setModelSettings] = React.useState(getModelSettings());
-  const [loopEnabled, setLoopEnabled] = React.useState(false); // Default to disabled
+  const [loopEnabled, setLoopEnabled] = React.useState(false);
   const [showPromptEditor, setShowPromptEditor] = React.useState(false);
 
   // System prompt management
@@ -56,6 +61,14 @@ const AIAgentChat: React.FC = () => {
     resetToDefault
   } = useSystemPrompt();
 
+  // Generated system prompt hook
+  const { generatedPrompt } = useGeneratedSystemPrompt({
+    customPrompt,
+    useCustomPrompt,
+    loopEnabled,
+    agentId: currentAgent?.id || null
+  });
+
   const activeRequests = useRef<Set<string>>(new Set());
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +79,19 @@ const AIAgentChat: React.FC = () => {
       setLoopEnabled(JSON.parse(savedLoopPreference));
     }
   }, []);
+
+  // Ensure default agent exists on mount
+  useEffect(() => {
+    if (user && !currentAgent) {
+      console.log('🤖 Ensuring default agent exists');
+      ensureDefaultAgent().then(agent => {
+        if (agent) {
+          setCurrentAgent(agent);
+          console.log('✅ Default agent loaded:', agent.name);
+        }
+      });
+    }
+  }, [user, currentAgent, ensureDefaultAgent, setCurrentAgent]);
 
   // Save loop preference to localStorage
   const handleToggleLoop = (enabled: boolean) => {
@@ -157,6 +183,12 @@ const AIAgentChat: React.FC = () => {
       return;
     }
 
+    if (!currentAgent) {
+      console.error('❌ Cannot process message - no current agent');
+      toast.error('No agent selected. Please wait for the default agent to load.');
+      return;
+    }
+
     const requestKey = `${currentSessionId}-${Math.abs(message.split('').reduce((a, b) => {
       a = ((a << 5) - a) + b.charCodeAt(0);
       return a & a;
@@ -170,7 +202,7 @@ const AIAgentChat: React.FC = () => {
     activeRequests.current.add(requestKey);
     setIsLoading(true);
 
-    console.log(`🚀 Processing message: ${requestKey}`);
+    console.log(`🚀 Processing message: ${requestKey} with agent: ${currentAgent.name}`);
 
     try {
       const conversationHistory = messages
@@ -180,9 +212,9 @@ const AIAgentChat: React.FC = () => {
           content: msg.content
         }));
 
-      console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages, loop enabled: ${loopEnabled}`);
+      console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages, agent: ${currentAgent.name}, loop enabled: ${loopEnabled}`);
 
-      // Prepare the request body with custom prompt if enabled
+      // Prepare the request body with agent context
       const requestBody: {
         message: string;
         conversationHistory: { role: "user" | "assistant"; content: string; }[];
@@ -191,6 +223,7 @@ const AIAgentChat: React.FC = () => {
         streaming: boolean;
         modelSettings: typeof modelSettings;
         loopEnabled: boolean;
+        agentId: string;
         customSystemPrompt?: string;
       } = {
         message,
@@ -198,13 +231,19 @@ const AIAgentChat: React.FC = () => {
         userId: user.id,
         sessionId: currentSessionId,
         streaming: false,
-        modelSettings: modelSettings,
-        loopEnabled: loopEnabled
+        modelSettings: {
+          ...modelSettings,
+          selectedModel: currentAgent.model // Use agent's preferred model
+        },
+        loopEnabled: currentAgent.loop_enabled || loopEnabled,
+        agentId: currentAgent.id
       };
 
       // Add custom prompt if user has enabled it and provided one
       if (useCustomPrompt && customPrompt.trim()) {
         requestBody.customSystemPrompt = customPrompt;
+      } else if (currentAgent.system_prompt) {
+        requestBody.customSystemPrompt = currentAgent.system_prompt;
       }
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
@@ -363,10 +402,11 @@ Remember: You have comprehensive knowledge. Tools are available when needed, not
           onToggleSessions={() => setShowSessions(!showSessions)}
           onNewSession={startNewSession}
           isLoading={isLoading}
-          loopEnabled={loopEnabled}
+          loopEnabled={currentAgent?.loop_enabled || loopEnabled}
           onToggleLoop={handleToggleLoop}
           onOpenPromptEditor={() => setShowPromptEditor(true)}
           useCustomPrompt={useCustomPrompt}
+          currentAgent={currentAgent}
         />
         
         <SimplifiedChatInterface
@@ -398,7 +438,7 @@ Remember: You have comprehensive knowledge. Tools are available when needed, not
         onUseCustomPromptChange={setUseCustomPrompt}
         onReset={resetToDefault}
         toolsCount={5} // This would be dynamically calculated
-        loopEnabled={loopEnabled}
+        loopEnabled={currentAgent?.loop_enabled || loopEnabled}
       />
     </div>
   );

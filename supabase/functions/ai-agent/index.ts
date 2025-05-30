@@ -70,6 +70,7 @@ serve(async (req) => {
       modelSettings, 
       testMode = false, 
       loopEnabled = false,
+      agentId, // Add agent ID parameter
       customSystemPrompt // Add custom system prompt parameter
     } = await req.json();
     
@@ -86,6 +87,7 @@ serve(async (req) => {
       modelSettings,
       testMode,
       loopEnabled,
+      agentId,
       hasCustomPrompt: !!customSystemPrompt
     });
 
@@ -98,7 +100,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: true,
-          message: `Test mode: Unified handler would process query "${message}"`,
+          message: `Test mode: Unified handler would process query "${message}" with agent ${agentId || 'default'}`,
           unifiedApproach: true,
           testMode: true
         }),
@@ -117,7 +119,8 @@ serve(async (req) => {
       supabase,
       0, // loopIteration
       loopEnabled, // Pass the loop setting
-      customSystemPrompt // Pass the custom system prompt
+      customSystemPrompt, // Pass the custom system prompt
+      agentId // Pass the agent ID
     );
 
     // Handle streaming responses

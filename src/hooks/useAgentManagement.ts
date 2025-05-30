@@ -24,6 +24,22 @@ export const useAgentManagement = () => {
     }
   };
 
+  const ensureDefaultAgent = async (): Promise<Agent | null> => {
+    try {
+      const agent = await agentService.ensureDefaultAgent();
+      if (agent) {
+        setDefaultAgent(agent);
+        // Reload agents to get updated list
+        const userAgents = await agentService.getUserAgents();
+        setAgents(userAgents);
+      }
+      return agent;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to ensure default agent');
+      return null;
+    }
+  };
+
   const createAgent = async (input: CreateAgentInput): Promise<Agent | null> => {
     const newAgent = await agentService.createAgent(input);
     if (newAgent) {
@@ -69,6 +85,7 @@ export const useAgentManagement = () => {
     isLoading,
     error,
     loadAgents,
+    ensureDefaultAgent,
     createAgent,
     updateAgent,
     deleteAgent,

@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 import type { Json } from '@/integrations/supabase/types';
@@ -111,6 +110,56 @@ export const agentService = {
     }
 
     return data;
+  },
+
+  /**
+   * Ensure a default agent exists for the current user, create one if it doesn't
+   */
+  async ensureDefaultAgent(): Promise<Agent | null> {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      console.error('No authenticated user found');
+      return null;
+    }
+
+    // Check if a default agent already exists
+    const existingDefault = await this.getDefaultAgent();
+    if (existingDefault) {
+      return existingDefault;
+    }
+
+    // Check if any agents exist for this user
+    const userAgents = await this.getUserAgents();
+    
+    if (userAgents.length > 0) {
+      // If agents exist but none are default, make the first one default
+      const firstAgent = userAgents[0];
+      const updatedAgent = await this.updateAgent({
+        id: firstAgent.id,
+        is_default: true
+      });
+      if (updatedAgent) {
+        console.log('Set existing agent as default:', updatedAgent.name);
+        return updatedAgent;
+      }
+    }
+
+    // Create a new default agent
+    console.log('Creating new default agent for user');
+    const defaultAgent = await this.createAgent({
+      name: 'General Assistant',
+      description: 'A helpful AI assistant with access to various tools and capabilities',
+      system_prompt: '', // Will use generated system prompt
+      model: 'gpt-4o',
+      loop_enabled: false,
+      is_default: true
+    });
+
+    if (defaultAgent) {
+      console.log('Created default agent:', defaultAgent.name);
+    }
+
+    return defaultAgent;
   },
 
   /**

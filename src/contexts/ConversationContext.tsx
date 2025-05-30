@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ToolProgressItem } from '@/types/tools';
 import { useMessageManager } from '@/hooks/conversation/useMessageManager';
 import { useMessagePolling } from '@/hooks/conversation/useMessagePolling';
+import { Agent } from '@/services/agentService';
 
 interface ConversationContextType {
   // Messages - simplified state management
@@ -21,6 +22,10 @@ interface ConversationContextType {
   setCurrentSession: React.Dispatch<React.SetStateAction<ConversationSession | null>>;
   sessions: ConversationSession[];
   setSessions: React.Dispatch<React.SetStateAction<ConversationSession[]>>;
+  
+  // Agent management
+  currentAgent: Agent | null;
+  setCurrentAgent: React.Dispatch<React.SetStateAction<Agent | null>>;
   
   // UI state
   isLoading: boolean;
@@ -47,6 +52,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentSession, setCurrentSession] = useState<ConversationSession | null>(null);
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
+  const [currentAgent, setCurrentAgent] = useState<Agent | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [input, setInput] = useState('');
@@ -298,6 +304,8 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     setCurrentSession,
     sessions,
     setSessions,
+    currentAgent,
+    setCurrentAgent,
     isLoading,
     setIsLoading,
     isLoadingSessions,
