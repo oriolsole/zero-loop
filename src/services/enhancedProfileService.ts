@@ -37,7 +37,7 @@ class EnhancedProfileService {
       return null;
     }
 
-    // Transform the profile to include enhanced fields
+    // Transform the profile to include enhanced fields with proper defaults
     return {
       ...data,
       google_services_connected: data.google_services_connected || [],

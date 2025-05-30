@@ -557,6 +557,8 @@ export type Database = {
           full_name: string | null
           google_drive_connected: boolean | null
           google_id: string | null
+          google_scopes_granted: string[] | null
+          google_services_connected: string[] | null
           id: string
           updated_at: string | null
         }
@@ -567,6 +569,8 @@ export type Database = {
           full_name?: string | null
           google_drive_connected?: boolean | null
           google_id?: string | null
+          google_scopes_granted?: string[] | null
+          google_services_connected?: string[] | null
           id: string
           updated_at?: string | null
         }
@@ -577,6 +581,8 @@ export type Database = {
           full_name?: string | null
           google_drive_connected?: boolean | null
           google_id?: string | null
+          google_scopes_granted?: string[] | null
+          google_services_connected?: string[] | null
           id?: string
           updated_at?: string | null
         }

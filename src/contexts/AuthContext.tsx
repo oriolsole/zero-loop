@@ -145,7 +145,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error('Google sign in error:', error);
-      throw error;
     } finally {
       setIsLoading(false);
     }
