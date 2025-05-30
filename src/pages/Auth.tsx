@@ -1,7 +1,7 @@
 
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import AuthForm from '@/components/AuthForm';
+import EnhancedAuthForm from '@/components/EnhancedAuthForm';
 import { useAuth } from '@/contexts/AuthContext';
 import { Brain } from 'lucide-react';
 
@@ -30,7 +30,7 @@ const AuthPage: React.FC = () => {
       </div>
       
       <div className="w-full max-w-md">
-        <AuthForm />
+        <EnhancedAuthForm />
       </div>
     </div>
   );

@@ -8,6 +8,8 @@ export interface UserProfile {
   avatar_url?: string;
   google_id?: string;
   google_drive_connected: boolean;
+  google_services_connected?: string[];
+  google_scopes_granted?: string[];
   created_at: string;
   updated_at: string;
 }

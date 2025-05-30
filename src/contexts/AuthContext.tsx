@@ -3,12 +3,12 @@ import React, { createContext, useState, useEffect, useContext, ReactNode } from
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
-import { profileService, UserProfile } from '@/services/profileService';
+import { enhancedProfileService, EnhancedUserProfile } from '@/services/enhancedProfileService';
 
 interface AuthContextProps {
   session: Session | null;
   user: User | null;
-  profile: UserProfile | null;
+  profile: EnhancedUserProfile | null;
   isLoading: boolean;
   isInitialized: boolean;
   signIn: (email: string, password: string) => Promise<void>;
@@ -23,13 +23,13 @@ const AuthContext = createContext<AuthContextProps | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<EnhancedUserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
 
   const refreshProfile = async () => {
     if (user) {
-      const userProfile = await profileService.getProfile();
+      const userProfile = await enhancedProfileService.getProfile();
       setProfile(userProfile);
     } else {
       setProfile(null);
@@ -135,7 +135,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
-          scopes: 'https://www.googleapis.com/auth/drive'
+          scopes: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/documents'
         }
       });
       
