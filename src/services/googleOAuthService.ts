@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface GoogleOAuthTokens {
@@ -211,7 +210,6 @@ class GoogleOAuthService {
     return new Promise(async (resolve, reject) => {
       try {
         console.log('🔄 Starting popup OAuth flow...');
-        console.log('🌐 Current origin:', window.location.origin);
         
         const { authUrl } = await this.initiateOAuth();
         
@@ -229,46 +227,27 @@ class GoogleOAuthService {
 
         let isCompleted = false;
         let pollAttempts = 0;
-        const maxPollAttempts = 30; // 30 seconds
+        const maxPollAttempts = 10; // Reduced from 30 to 10 seconds
         let pollInterval: number | undefined;
 
-        // Enhanced message handler with better data structure debugging
+        // Simplified message handler
         const messageHandler = async (event: MessageEvent) => {
-          console.log('📨 Received message in parent:', {
-            origin: event.origin,
-            expectedOrigin: window.location.origin,
-            eventData: event.data,
-            dataType: typeof event.data,
-            isCompleted
-          });
-
-          // Only accept messages from our origin
-          if (event.origin !== window.location.origin) {
-            console.log('⚠️ Ignoring message from different origin:', {
-              received: event.origin,
-              expected: window.location.origin
-            });
-            return;
-          }
+          console.log('📨 Received message:', event.data);
 
           // Skip if already completed
           if (isCompleted) {
-            console.log('⚠️ Ignoring message - flow already completed');
             return;
           }
 
-          // Extract message data safely
-          const messageType = event.data?.type;
-          const messageTokens = event.data?.tokens;
-          const messageError = event.data?.error;
+          // Check for valid message structure
+          if (!event.data || typeof event.data !== 'object') {
+            console.log('⚠️ Invalid message structure:', event.data);
+            return;
+          }
 
-          console.log('🔍 Extracted message data:', {
-            messageType,
-            hasTokens: !!messageTokens,
-            messageError
-          });
+          const { type, tokens, error: messageError } = event.data;
 
-          if (messageType === 'google-oauth-success' && messageTokens) {
+          if (type === 'google-oauth-success' && tokens) {
             try {
               console.log('✅ Received OAuth success message');
               isCompleted = true;
@@ -280,30 +259,21 @@ class GoogleOAuthService {
               }
               
               // Complete the OAuth flow
-              console.log('🔄 Completing OAuth flow with tokens...');
-              await this.completeOAuth(messageTokens);
-              
-              // Send confirmation to popup to close it
-              console.log('📤 Sending close confirmation to popup');
-              popup.postMessage({ type: 'oauth-close-popup' }, window.location.origin);
+              await this.completeOAuth(tokens);
               
               // Clean up
               window.removeEventListener('message', messageHandler);
               
-              // Ensure popup is closed
-              setTimeout(() => {
-                if (!popup.closed) {
-                  console.log('🔒 Force closing popup');
-                  popup.close();
-                }
-              }, 1000);
+              // Close popup
+              if (!popup.closed) {
+                popup.close();
+              }
               
               resolve();
             } catch (error) {
               console.error('❌ Error completing OAuth:', error);
               isCompleted = true;
               
-              // Clear interval and clean up
               if (pollInterval !== undefined) {
                 clearInterval(pollInterval);
                 pollInterval = undefined;
@@ -316,7 +286,7 @@ class GoogleOAuthService {
               
               reject(error);
             }
-          } else if (messageType === 'google-oauth-error') {
+          } else if (type === 'google-oauth-error') {
             console.error('❌ OAuth error from popup:', messageError);
             isCompleted = true;
             
@@ -331,11 +301,6 @@ class GoogleOAuthService {
             }
             
             reject(new Error(`OAuth error: ${messageError}`));
-          } else {
-            console.log('🤷 Unknown or invalid message type:', {
-              messageType,
-              fullData: event.data
-            });
           }
         };
 
@@ -343,17 +308,15 @@ class GoogleOAuthService {
         console.log('👂 Setting up message listener...');
         window.addEventListener('message', messageHandler);
 
-        // Improved polling mechanism with proper bounds checking
+        // Simplified polling with lower frequency
         const pollForCompletion = () => {
           pollAttempts++;
           console.log(`🔄 Polling attempt ${pollAttempts}/${maxPollAttempts}`);
           
-          // Check if we've exceeded the limit
           if (pollAttempts >= maxPollAttempts) {
-            console.log('⏰ Polling timeout - max attempts reached');
+            console.log('⏰ Polling timeout');
             isCompleted = true;
             
-            // Clean up
             if (pollInterval !== undefined) {
               clearInterval(pollInterval);
               pollInterval = undefined;
@@ -364,13 +327,12 @@ class GoogleOAuthService {
               popup.close();
             }
             
-            reject(new Error('OAuth flow timed out. No response received from popup.'));
+            reject(new Error('OAuth flow timed out'));
             return;
           }
           
-          // Check if popup was closed manually
           if (popup.closed && !isCompleted) {
-            console.log('⚠️ Popup closed manually by user');
+            console.log('⚠️ Popup closed manually');
             isCompleted = true;
             
             if (pollInterval !== undefined) {
@@ -379,15 +341,15 @@ class GoogleOAuthService {
             }
             window.removeEventListener('message', messageHandler);
             
-            reject(new Error('OAuth popup was closed by user.'));
+            reject(new Error('OAuth popup was closed'));
             return;
           }
         };
 
-        // Start polling with proper interval management
+        // Start polling every 1 second
         pollInterval = window.setInterval(pollForCompletion, 1000);
 
-        console.log('✅ Popup OAuth setup complete, waiting for response...');
+        console.log('✅ Popup OAuth setup complete');
 
       } catch (error) {
         console.error('❌ Error in connectWithPopup:', error);
