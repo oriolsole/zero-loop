@@ -126,8 +126,11 @@ export const GOOGLE_SCOPE_CATEGORIES: GoogleScopeCategory[] = [
   }
 ];
 
+// Essential scopes for basic authentication - only the most necessary ones
 export const getRequiredScopes = (): string[] => {
-  return GOOGLE_SCOPES.filter(scope => scope.required).map(scope => scope.scope);
+  return [
+    'https://www.googleapis.com/auth/drive', // Essential for file access
+  ];
 };
 
 export const getAllScopes = (): string[] => {

@@ -7,9 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, AlertCircle } from 'lucide-react';
-import GoogleScopeSelector from './GoogleScopeSelector';
 import { enhancedGoogleOAuthService } from '@/services/enhancedGoogleOAuthService';
 import { getRequiredScopes } from '@/types/googleScopes';
 
@@ -27,8 +25,6 @@ const EnhancedAuthForm = () => {
   const [password, setPassword] = useState('');
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [error, setError] = useState<string | null>(null);
-  const [showScopeSelector, setShowScopeSelector] = useState(false);
-  const [selectedScopes, setSelectedScopes] = useState<string[]>(getRequiredScopes());
   const [isGoogleAuthLoading, setIsGoogleAuthLoading] = useState(false);
   
   const { signIn, signUp, isLoading } = useAuth();
@@ -51,14 +47,12 @@ const EnhancedAuthForm = () => {
 
   const handleGoogleSignIn = async () => {
     setError(null);
-    setShowScopeSelector(true);
-  };
-
-  const handleScopeSelection = async () => {
     setIsGoogleAuthLoading(true);
+    
     try {
-      await enhancedGoogleOAuthService.connectWithPopup(selectedScopes);
-      setShowScopeSelector(false);
+      // Use essential scopes for basic authentication
+      const essentialScopes = getRequiredScopes();
+      await enhancedGoogleOAuthService.connectWithPopup(essentialScopes);
     } catch (error: any) {
       console.error('Google auth error:', error);
       setError(error.message || 'Google authentication failed');
@@ -68,192 +62,175 @@ const EnhancedAuthForm = () => {
   };
   
   return (
-    <>
-      <Card className="w-full">
-        <Tabs defaultValue="signin" onValueChange={(value) => setAuthMode(value as 'signin' | 'signup')}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="signin">Sign In</TabsTrigger>
-            <TabsTrigger value="signup">Sign Up</TabsTrigger>
-          </TabsList>
-          
-          <form onSubmit={handleSubmit}>
-            <TabsContent value="signin">
-              <CardHeader>
-                <CardTitle>Sign In</CardTitle>
-                <CardDescription>
-                  Sign in to access your ZeroLoop dashboard.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
-                
-                {/* Google Sign In Button */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleGoogleSignIn}
-                  disabled={isLoading || isGoogleAuthLoading}
-                  className="w-full"
-                >
-                  {isGoogleAuthLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <GoogleIcon />
-                  )}
-                  <span className="ml-2">Continue with Google</span>
-                </Button>
-                
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <Separator className="w-full" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">
-                      Or continue with email
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm font-medium">Email</label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="your@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="password" className="text-sm font-medium">Password</label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="••••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
-              </CardContent>
-            </TabsContent>
-            
-            <TabsContent value="signup">
-              <CardHeader>
-                <CardTitle>Create an Account</CardTitle>
-                <CardDescription>
-                  Sign up to start building your intelligence framework.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
-                
-                {/* Google Sign In Button */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleGoogleSignIn}
-                  disabled={isLoading || isGoogleAuthLoading}
-                  className="w-full"
-                >
-                  {isGoogleAuthLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <GoogleIcon />
-                  )}
-                  <span className="ml-2">Continue with Google</span>
-                </Button>
-                
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <Separator className="w-full" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">
-                      Or continue with email
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="signup-email" className="text-sm font-medium">Email</label>
-                  <Input
-                    id="signup-email"
-                    type="email"
-                    placeholder="your@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="signup-password" className="text-sm font-medium">Password</label>
-                  <Input
-                    id="signup-password"
-                    type="password"
-                    placeholder="••••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    disabled={isLoading}
-                    minLength={6}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Password must be at least 6 characters.
-                  </p>
-                </div>
-              </CardContent>
-            </TabsContent>
-            
-            <CardFooter>
-              <Button 
-                type="submit" 
+    <Card className="w-full">
+      <Tabs defaultValue="signin" onValueChange={(value) => setAuthMode(value as 'signin' | 'signup')}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="signin">Sign In</TabsTrigger>
+          <TabsTrigger value="signup">Sign Up</TabsTrigger>
+        </TabsList>
+        
+        <form onSubmit={handleSubmit}>
+          <TabsContent value="signin">
+            <CardHeader>
+              <CardTitle>Sign In</CardTitle>
+              <CardDescription>
+                Sign in to access your ZeroLoop dashboard.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              
+              {/* Google Sign In Button */}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleSignIn}
+                disabled={isLoading || isGoogleAuthLoading}
                 className="w-full"
-                disabled={isLoading}
               >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {authMode === 'signin' ? 'Signing In...' : 'Signing Up...'}
-                  </>
+                {isGoogleAuthLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  authMode === 'signin' ? 'Sign In' : 'Sign Up'
+                  <GoogleIcon />
                 )}
+                <span className="ml-2">Continue with Google</span>
               </Button>
-            </CardFooter>
-          </form>
-        </Tabs>
-      </Card>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <Separator className="w-full" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">
+                    Or continue with email
+                  </span>
+                </div>
+              </div>
 
-      {/* Google Scope Selection Dialog */}
-      <Dialog open={showScopeSelector} onOpenChange={setShowScopeSelector}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Connect Google Services</DialogTitle>
-          </DialogHeader>
-          <GoogleScopeSelector
-            selectedScopes={selectedScopes}
-            onScopesChange={setSelectedScopes}
-            onProceed={handleScopeSelection}
-            isLoading={isGoogleAuthLoading}
-          />
-        </DialogContent>
-      </Dialog>
-    </>
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm font-medium">Email</label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="password" className="text-sm font-medium">Password</label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+            </CardContent>
+          </TabsContent>
+          
+          <TabsContent value="signup">
+            <CardHeader>
+              <CardTitle>Create an Account</CardTitle>
+              <CardDescription>
+                Sign up to start building your intelligence framework.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              
+              {/* Google Sign In Button */}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleSignIn}
+                disabled={isLoading || isGoogleAuthLoading}
+                className="w-full"
+              >
+                {isGoogleAuthLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <GoogleIcon />
+                )}
+                <span className="ml-2">Continue with Google</span>
+              </Button>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <Separator className="w-full" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">
+                    Or continue with email
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="signup-email" className="text-sm font-medium">Email</label>
+                <Input
+                  id="signup-email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="signup-password" className="text-sm font-medium">Password</label>
+                <Input
+                  id="signup-password"
+                  type="password"
+                  placeholder="••••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  minLength={6}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Password must be at least 6 characters.
+                </p>
+              </div>
+            </CardContent>
+          </TabsContent>
+          
+          <CardFooter>
+            <Button 
+              type="submit" 
+              className="w-full"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {authMode === 'signin' ? 'Signing In...' : 'Signing Up...'}
+                </>
+              ) : (
+                authMode === 'signin' ? 'Sign In' : 'Sign Up'
+              )}
+            </Button>
+          </CardFooter>
+        </form>
+      </Tabs>
+    </Card>
   );
 };
 
