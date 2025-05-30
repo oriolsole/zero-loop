@@ -161,6 +161,55 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Handle special actions that don't require API calls
+    if (action === 'get_connection_status') {
+      const { data: tokenData, error } = await supabase
+        .from('google_oauth_tokens')
+        .select('expires_at, scope')
+        .eq('user_id', userId)
+        .single();
+
+      if (error || !tokenData) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: { connected: false }
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            connected: true,
+            expires_at: tokenData.expires_at
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (action === 'disconnect') {
+      const { error } = await supabase
+        .from('google_oauth_tokens')
+        .delete()
+        .eq('user_id', userId);
+
+      if (error) {
+        throw new Error('Failed to disconnect Google Drive');
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { message: 'Successfully disconnected Google Drive' }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Get valid access token (handles refresh if needed)
     const accessToken = await getValidAccessToken(userId, supabase);
 

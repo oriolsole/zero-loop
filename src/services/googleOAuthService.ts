@@ -40,16 +40,16 @@ class GoogleOAuthService {
 
     const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000));
 
-    const { error } = await supabase
-      .from('google_oauth_tokens')
-      .upsert({
-        user_id: user.id,
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        expires_at: expiresAt.toISOString(),
-        scope: tokens.scope || 'https://www.googleapis.com/auth/drive',
-        updated_at: new Date().toISOString()
-      });
+    // Use the edge function to handle token storage
+    const { error } = await supabase.functions.invoke('google-oauth-callback', {
+      body: {
+        tokens: {
+          ...tokens,
+          expires_at: expiresAt.toISOString()
+        },
+        user_id: user.id
+      }
+    });
 
     if (error) {
       throw new Error('Failed to save OAuth tokens');
@@ -66,20 +66,26 @@ class GoogleOAuthService {
       return { connected: false };
     }
 
-    const { data: tokenData, error } = await supabase
-      .from('google_oauth_tokens')
-      .select('expires_at, scope')
-      .eq('user_id', user.id)
-      .single();
+    try {
+      // Try to make a simple call to check if tokens exist and are valid
+      const response = await supabase.functions.invoke('google-drive-tools', {
+        body: {
+          action: 'get_connection_status',
+          userId: user.id
+        }
+      });
 
-    if (error || !tokenData) {
+      if (response.error) {
+        return { connected: false };
+      }
+
+      return {
+        connected: response.data?.connected || false,
+        expires_at: response.data?.expires_at
+      };
+    } catch (error) {
       return { connected: false };
     }
-
-    return {
-      connected: true,
-      expires_at: tokenData.expires_at
-    };
   }
 
   /**
@@ -92,10 +98,12 @@ class GoogleOAuthService {
       throw new Error('User not authenticated');
     }
 
-    const { error } = await supabase
-      .from('google_oauth_tokens')
-      .delete()
-      .eq('user_id', user.id);
+    const { error } = await supabase.functions.invoke('google-drive-tools', {
+      body: {
+        action: 'disconnect',
+        userId: user.id
+      }
+    });
 
     if (error) {
       throw new Error('Failed to disconnect Google Drive');
