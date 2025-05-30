@@ -18,7 +18,7 @@ interface SystemPromptEditorProps {
   generatedPrompt: string;
   customPrompt: string;
   useCustomPrompt: boolean;
-  onCustomPromptChange: (prompt: string) => void;
+  onCustomPromptChange: (prompt: string) => Promise<void>;
   onUseCustomPromptChange: (use: boolean) => void;
   onReset: () => void;
   toolsCount: number;
@@ -39,6 +39,7 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
 }) => {
   const [localCustomPrompt, setLocalCustomPrompt] = useState(customPrompt);
   const [copied, setCopied] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Fetch the real generated system prompt
   const { 
@@ -56,14 +57,29 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
     setLocalCustomPrompt(customPrompt);
   }, [customPrompt]);
 
-  const handleSave = () => {
-    onCustomPromptChange(localCustomPrompt);
-    onClose();
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await onCustomPromptChange(localCustomPrompt);
+      onClose();
+    } catch (error) {
+      console.error('Error saving custom prompt:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     setLocalCustomPrompt('');
-    onReset();
+    setIsSaving(true);
+    try {
+      await onCustomPromptChange('');
+      onReset();
+    } catch (error) {
+      console.error('Error resetting prompt:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleRefresh = () => {
@@ -103,6 +119,7 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
               <Switch
                 checked={useCustomPrompt}
                 onCheckedChange={onUseCustomPromptChange}
+                disabled={isSaving}
               />
             </div>
             <Badge variant="outline" className="text-xs">
@@ -133,14 +150,19 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
 
           <TabsContent value="editor" className="flex-1 flex flex-col space-y-4 min-h-0">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">Custom System Prompt</h3>
+              <h3 className="text-sm font-medium">Agent Custom System Prompt</h3>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleReset}
+                disabled={isSaving}
                 className="flex items-center gap-2"
               >
-                <RefreshCw className="h-3 w-3" />
+                {isSaving ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3" />
+                )}
                 Reset to Default
               </Button>
             </div>
@@ -150,19 +172,18 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
               onChange={(e) => setLocalCustomPrompt(e.target.value)}
               placeholder="Enter your custom system prompt here, or leave empty to use the generated prompt..."
               className="flex-1 min-h-[300px] font-mono text-sm"
+              disabled={isSaving}
             />
 
-            {useCustomPrompt && (
-              <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
-                <strong>Tips:</strong>
-                <ul className="mt-1 space-y-1 list-disc list-inside">
-                  <li>Be specific about how you want the AI to behave</li>
-                  <li>Include instructions about tool usage if needed</li>
-                  <li>Consider tone, response style, and decision-making preferences</li>
-                  <li>Test changes with simple queries to see the effect</li>
-                </ul>
-              </div>
-            )}
+            <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
+              <strong>Note:</strong> This prompt will be saved to the agent and used for all conversations with this agent.
+              <ul className="mt-1 space-y-1 list-disc list-inside">
+                <li>Be specific about how you want the AI to behave</li>
+                <li>Include instructions about tool usage if needed</li>
+                <li>Consider tone, response style, and decision-making preferences</li>
+                <li>Test changes with simple queries to see the effect</li>
+              </ul>
+            </div>
           </TabsContent>
 
           <TabsContent value="preview" className="flex-1 flex flex-col min-h-0">
@@ -236,14 +257,21 @@ const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
 
         <div className="flex justify-between items-center">
           <div className="text-xs text-muted-foreground">
-            Changes will apply to new messages in this session
+            Changes will be saved to the agent and apply to all future conversations
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={onClose} disabled={isSaving}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={!useCustomPrompt}>
-              Save Changes
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save to Agent'
+              )}
             </Button>
           </div>
         </div>

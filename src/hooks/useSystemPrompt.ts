@@ -1,43 +1,28 @@
 
 import { useState, useEffect } from 'react';
+import { Agent } from '@/services/agentService';
 
 interface SystemPromptState {
   customPrompt: string;
   useCustomPrompt: boolean;
 }
 
-const STORAGE_KEY = 'aiAgentSystemPrompt';
-
-export const useSystemPrompt = () => {
+export const useSystemPrompt = (currentAgent?: Agent | null) => {
   const [customPrompt, setCustomPrompt] = useState('');
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
 
-  // Load from localStorage on mount
+  // Initialize from agent data when agent changes
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed: SystemPromptState = JSON.parse(saved);
-        setCustomPrompt(parsed.customPrompt || '');
-        setUseCustomPrompt(parsed.useCustomPrompt || false);
-      }
-    } catch (error) {
-      console.warn('Failed to load system prompt settings:', error);
+    if (currentAgent) {
+      const hasCustomPrompt = !!(currentAgent.system_prompt && currentAgent.system_prompt.trim());
+      setCustomPrompt(currentAgent.system_prompt || '');
+      setUseCustomPrompt(hasCustomPrompt);
+    } else {
+      // Reset when no agent
+      setCustomPrompt('');
+      setUseCustomPrompt(false);
     }
-  }, []);
-
-  // Save to localStorage when state changes
-  useEffect(() => {
-    try {
-      const state: SystemPromptState = {
-        customPrompt,
-        useCustomPrompt
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (error) {
-      console.warn('Failed to save system prompt settings:', error);
-    }
-  }, [customPrompt, useCustomPrompt]);
+  }, [currentAgent]);
 
   const resetToDefault = () => {
     setCustomPrompt('');

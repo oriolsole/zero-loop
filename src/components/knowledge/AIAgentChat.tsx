@@ -6,6 +6,8 @@ import { useConversationContext } from '@/contexts/ConversationContext';
 import { useAIAgentChat } from '@/hooks/conversation/useAIAgentChat';
 import { useChatActions } from '@/hooks/conversation/useChatActions';
 import { useChatInitialization } from '@/hooks/conversation/useChatInitialization';
+import { agentService } from '@/services/agentService';
+import { toast } from '@/components/ui/sonner';
 import SimplifiedChatInterface from './SimplifiedChatInterface';
 import SimplifiedChatInput from './SimplifiedChatInput';
 import SimplifiedChatHeader from './SimplifiedChatHeader';
@@ -43,14 +45,14 @@ const AIAgentChat: React.FC = () => {
   const [showSessions, setShowSessions] = useState(false);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
 
-  // System prompt management
+  // System prompt management - now agent-aware
   const {
     customPrompt,
     useCustomPrompt,
     setCustomPrompt,
     setUseCustomPrompt,
     resetToDefault
-  } = useSystemPrompt();
+  } = useSystemPrompt(currentAgent);
 
   // Generated system prompt hook
   const { generatedPrompt } = useGeneratedSystemPrompt({
@@ -68,6 +70,31 @@ const AIAgentChat: React.FC = () => {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
   }, [messages, activeTool]);
+
+  // Handle saving custom prompt to agent
+  const handleCustomPromptSave = async (newPrompt: string) => {
+    if (!currentAgent) {
+      toast.error('No agent selected');
+      return;
+    }
+
+    try {
+      const updatedAgent = await agentService.updateAgent({
+        id: currentAgent.id,
+        system_prompt: newPrompt.trim() || undefined
+      });
+
+      if (updatedAgent) {
+        // Update the current agent in the chat context
+        handleAgentChange(updatedAgent);
+        setCustomPrompt(newPrompt);
+        toast.success('Agent system prompt updated');
+      }
+    } catch (error) {
+      console.error('Failed to update agent system prompt:', error);
+      toast.error('Failed to save system prompt');
+    }
+  };
 
   return (
     <div className="flex h-full">
@@ -122,7 +149,7 @@ const AIAgentChat: React.FC = () => {
         generatedPrompt={generatedPrompt}
         customPrompt={customPrompt}
         useCustomPrompt={useCustomPrompt}
-        onCustomPromptChange={setCustomPrompt}
+        onCustomPromptChange={handleCustomPromptSave}
         onUseCustomPromptChange={setUseCustomPrompt}
         onReset={resetToDefault}
         toolsCount={5}
