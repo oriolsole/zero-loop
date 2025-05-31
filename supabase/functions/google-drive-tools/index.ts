@@ -28,7 +28,7 @@ interface DriveResponse {
   nextPageToken?: string;
 }
 
-// Simple encryption/decryption using Web Crypto API (duplicated from google-oauth-callback)
+// Simple encryption/decryption using Web Crypto API
 async function getEncryptionKey(): Promise<CryptoKey> {
   const keyMaterial = Deno.env.get('GOOGLE_OAUTH_ENCRYPTION_KEY') || 'default-key-material-change-in-production';
   const encoder = new TextEncoder();
@@ -109,7 +109,7 @@ async function getValidAccessToken(userId: string, supabase: any): Promise<strin
     .single();
 
   if (error || !tokenData) {
-    throw new Error('Google Drive not connected. Please connect your Google Drive account first.');
+    throw new Error('Google Drive not connected. Please connect your Google Drive account in the Tools section first.');
   }
 
   // Decrypt the stored tokens
@@ -127,15 +127,16 @@ async function getValidAccessToken(userId: string, supabase: any): Promise<strin
       token: decryptedAccessToken,
       expires: expiresAt.getTime()
     });
+    console.log('✅ Using existing valid OAuth token');
     return decryptedAccessToken;
   }
 
   // Token expired, refresh it
   if (!decryptedRefreshToken) {
-    throw new Error('Google Drive connection expired. Please reconnect your account.');
+    throw new Error('Google Drive connection expired. Please reconnect your account in the Tools section.');
   }
 
-  console.log('Refreshing expired OAuth token for user:', userId);
+  console.log('🔄 Refreshing expired OAuth token for user:', userId);
 
   const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
   const clientSecret = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET');
@@ -161,7 +162,7 @@ async function getValidAccessToken(userId: string, supabase: any): Promise<strin
   if (!refreshResponse.ok) {
     const errorText = await refreshResponse.text();
     console.error('Token refresh failed:', errorText);
-    throw new Error('Failed to refresh Google Drive access. Please reconnect your account.');
+    throw new Error('Failed to refresh Google Drive access. Please reconnect your account in the Tools section.');
   }
 
   const refreshData = await refreshResponse.json();
@@ -191,7 +192,7 @@ async function getValidAccessToken(userId: string, supabase: any): Promise<strin
     expires: newExpiresAt.getTime()
   });
 
-  console.log('Successfully refreshed OAuth token for user:', userId);
+  console.log('✅ Successfully refreshed OAuth token for user:', userId);
   return refreshData.access_token;
 }
 
@@ -264,7 +265,8 @@ serve(async (req) => {
           success: true,
           data: {
             connected: true,
-            expires_at: tokenData.expires_at
+            expires_at: tokenData.expires_at,
+            authentication_method: 'oauth'
           }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -358,7 +360,8 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         data: result,
-        action: action
+        action: action,
+        authentication_method: 'oauth'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -10,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { mcpService } from '@/services/mcpService';
-import { Loader2, Save, ShieldAlert, Key, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Loader2, Save, ShieldAlert, Key, AlertTriangle, ExternalLink, CheckCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
@@ -21,6 +22,7 @@ import { userSecretService } from '@/services/userSecretService';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface MCPExecutePanelProps {
   mcp: MCP;
@@ -32,21 +34,28 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [authMissing, setAuthMissing] = useState(false);
   const [requestInfo, setRequestInfo] = useState<string | null>(null);
+  const [googleDriveConnected, setGoogleDriveConnected] = useState(false);
 
-  // Check for current user session
-  const [session, setSession] = useState<any>(null);
+  const { user, profile } = useAuth();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    // Check authentication status
-    const checkAuth = async () => {
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
-      setIsAuthenticated(!!data.session);
+    setIsAuthenticated(!!user);
+  }, [user]);
+
+  // Check for Google Drive OAuth connection
+  useEffect(() => {
+    const checkGoogleDriveConnection = () => {
+      if (mcp.endpoint === 'google-drive-tools' && profile) {
+        const hasGoogleDrive = profile.google_services_connected?.includes('google-drive') || 
+                               profile.google_drive_connected;
+        setGoogleDriveConnected(hasGoogleDrive);
+        console.log('Google Drive connection status:', hasGoogleDrive);
+      }
     };
-    
-    checkAuth();
-  }, []);
+
+    checkGoogleDriveConnection();
+  }, [mcp.endpoint, profile]);
 
   // Check if required API key is available for this MCP
   const { data: userSecrets, isLoading: secretsLoading } = useQuery({
@@ -55,7 +64,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
       if (!mcp.requirestoken) return [];
       return await userSecretService.fetchSecretsByProvider(mcp.requirestoken);
     },
-    enabled: !!mcp.requirestoken && isAuthenticated,
+    enabled: !!mcp.requirestoken && isAuthenticated && !googleDriveConnected,
   });
 
   // Create a dynamic form schema based on the MCP parameters
@@ -108,19 +117,21 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     defaultValues: getDefaultValues(),
   });
 
-  // Check if token is available
+  // Check if token is required for non-Google Drive tools or if Google Drive is not connected
   useEffect(() => {
-    if (mcp.requirestoken && userSecrets && userSecrets.length === 0 && !secretsLoading) {
+    if (mcp.endpoint === 'google-drive-tools') {
+      // For Google Drive tools, only require token if OAuth is not connected
+      setAuthMissing(!googleDriveConnected);
+    } else if (mcp.requirestoken && userSecrets && userSecrets.length === 0 && !secretsLoading) {
       setAuthMissing(true);
     } else {
       setAuthMissing(false);
     }
-  }, [mcp.requirestoken, userSecrets, secretsLoading]);
+  }, [mcp.requirestoken, mcp.endpoint, userSecrets, secretsLoading, googleDriveConnected]);
 
   // Display information about the endpoint being used
   const getEndpointInfo = () => {
     let endpoint = mcp.endpoint;
-    // Check if this is a local function or external API
     const isLocalFunction = endpoint.includes('supabase') || 
                             !endpoint.includes('://') || 
                             endpoint.startsWith('/');
@@ -157,7 +168,8 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     const debugInfo = {
       endpoint: mcp.endpoint,
       parameters: values,
-      requiresToken: mcp.requirestoken
+      requiresToken: mcp.requirestoken,
+      googleDriveConnected: googleDriveConnected
     };
     setRequestInfo(JSON.stringify(debugInfo, null, 2));
     
@@ -208,9 +220,35 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Google Drive OAuth Status */}
+      {mcp.endpoint === 'google-drive-tools' && isAuthenticated && (
+        <Alert variant={googleDriveConnected ? "default" : "warning"}>
+          {googleDriveConnected ? (
+            <>
+              <CheckCircle className="h-4 w-4" />
+              <AlertTitle>Google Drive Connected</AlertTitle>
+              <AlertDescription>
+                Using your existing Google Drive OAuth connection. No additional tokens needed.
+              </AlertDescription>
+            </>
+          ) : (
+            <>
+              <Key className="h-4 w-4" />
+              <AlertTitle>Google Drive Connection Required</AlertTitle>
+              <AlertDescription className="space-y-2">
+                <p>This tool requires Google Drive access. Please connect your Google Drive account first.</p>
+                <p className="text-sm text-muted-foreground">
+                  Go to the Tools page and connect your Google Drive account via OAuth.
+                </p>
+              </AlertDescription>
+            </>
+          )}
+        </Alert>
+      )}
       
-      {/* API Key warning */}
-      {authMissing && (
+      {/* API Key warning for non-Google Drive tools */}
+      {authMissing && mcp.endpoint !== 'google-drive-tools' && (
         <Alert variant="warning">
           <Key className="h-4 w-4" />
           <AlertTitle>API Key Required</AlertTitle>
