@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface GoogleIconProps {
@@ -7,12 +6,14 @@ interface GoogleIconProps {
 }
 
 export const GoogleDriveIcon: React.FC<GoogleIconProps> = ({ size = 24, className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-    <path fill="#4285F4" d="M6 2l6 10.5L18 2H6z"/>
-    <path fill="#34A853" d="M16 17H8l-6-10.5h12L16 17z"/>
-    <path fill="#EA4335" d="M20 17l-4-7h8l-4 7z"/>
-    <path fill="#FBBC04" d="M2 17h16l-2 3.5H4L2 17z"/>
-  </svg>
+  <img 
+    src="/google-drive-icon.png" 
+    alt="Google Drive" 
+    width={size} 
+    height={size} 
+    className={className}
+    style={{ objectFit: 'contain' }}
+  />
 );
 
 export const GmailIcon: React.FC<GoogleIconProps> = ({ size = 24, className = "" }) => (
