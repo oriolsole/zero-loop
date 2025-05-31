@@ -1,29 +1,24 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
+import { 
+  ToolProgress, 
+  createToolProgress, 
+  updateToolProgress, 
+  completeToolProgress, 
+  failToolProgress 
+} from './tool-progress-tracker.ts';
+import { 
+  ToolResult, 
+  processToolResult, 
+  createErrorResult, 
+  prepareToolParameters 
+} from './tool-result-processor.ts';
 
 /**
- * Tool execution utilities
+ * Main tool execution orchestrator
  */
 
-export interface ToolProgress {
-  id: string;
-  name: string;
-  displayName: string;
-  status: 'starting' | 'executing' | 'completed' | 'failed';
-  startTime: string;
-  endTime?: string;
-  parameters: any;
-  progress: number;
-  result?: any;
-  error?: string;
-}
-
-export interface ToolResult {
-  name: string;
-  parameters: any;
-  result: any;
-  success: boolean;
-}
+export interface ToolProgressItem extends ToolProgress {}
 
 /**
  * Executes tools based on AI model tool calls
@@ -33,11 +28,11 @@ export async function executeTools(
   mcps: any[],
   userId: string,
   supabase: ReturnType<typeof createClient>
-): Promise<{ toolResults: any[], toolsUsed: ToolResult[], toolProgress: ToolProgress[] }> {
+): Promise<{ toolResults: any[], toolsUsed: ToolResult[], toolProgress: ToolProgressItem[] }> {
   console.log('Processing', toolCalls.length, 'tool calls');
   const toolResults = [];
   const toolsUsed: ToolResult[] = [];
-  const toolProgress: ToolProgress[] = [];
+  let toolProgress: ToolProgressItem[] = [];
   
   for (const toolCall of toolCalls) {
     const functionName = toolCall.function.name;
@@ -52,17 +47,9 @@ export async function executeTools(
     
     console.log('Executing tool:', functionName, 'with parameters:', parameters);
     
-    // Enhanced tool progress tracking
-    const toolProgressItem: ToolProgress = {
-      id: `tool-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: functionName,
-      displayName: functionName.replace('execute_', '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-      status: 'starting',
-      startTime: new Date().toISOString(),
-      parameters,
-      progress: 0
-    };
-    toolProgress.push(toolProgressItem);
+    // Create tool progress tracking
+    const progressItem = createToolProgress(functionName, parameters);
+    toolProgress.push(progressItem);
     
     // Extract MCP ID from function name
     const mcpKey = functionName.replace('execute_', '');
@@ -70,31 +57,15 @@ export async function executeTools(
     
     if (!targetMcp) {
       console.error('Tool not found:', mcpKey, 'Available tools:', mcps?.map(m => m.default_key));
-      const errorResult = { error: `Tool '${mcpKey}' not found or not available`, toolName: functionName };
+      const { toolResult, toolUsed } = createErrorResult(
+        toolCall, 
+        new Error(`Tool '${mcpKey}' not found or not available`), 
+        parameters
+      );
       
-      toolResults.push({
-        tool_call_id: toolCall.id,
-        role: 'tool',
-        content: JSON.stringify(errorResult)
-      });
-      
-      // Update progress with failure
-      const progressIndex = toolProgress.findIndex(t => t.name === functionName);
-      if (progressIndex !== -1) {
-        toolProgress[progressIndex] = {
-          ...toolProgress[progressIndex],
-          status: 'failed',
-          endTime: new Date().toISOString(),
-          error: 'Tool not found'
-        };
-      }
-      
-      toolsUsed.push({
-        name: functionName,
-        parameters,
-        result: errorResult,
-        success: false
-      });
+      toolResults.push(toolResult);
+      toolsUsed.push(toolUsed);
+      toolProgress = failToolProgress(toolProgress, functionName, 'Tool not found');
       continue;
     }
 
@@ -102,39 +73,18 @@ export async function executeTools(
       console.log('Using MCP endpoint:', targetMcp.endpoint, 'for tool:', targetMcp.title);
       
       // Update progress to executing
-      const progressIndex = toolProgress.findIndex(t => t.name === functionName);
-      if (progressIndex !== -1) {
-        toolProgress[progressIndex] = {
-          ...toolProgress[progressIndex],
-          status: 'executing',
-          progress: 25
-        };
-      }
+      toolProgress = updateToolProgress(toolProgress, functionName, {
+        status: 'executing',
+        progress: 25
+      });
       
       // Prepare parameters based on the tool type
-      let toolParameters = { ...parameters };
-      
-      // Special handling for knowledge-search-v2
-      if (mcpKey === 'knowledge-search-v2') {
-        // For knowledge proxy, send parameters directly
-        toolParameters = {
-          query: parameters.query || '',
-          limit: parameters.limit || 5,
-          includeNodes: parameters.includeNodes !== false,
-          matchThreshold: parameters.matchThreshold || 0.5,
-          useEmbeddings: parameters.useEmbeddings !== false
-        };
-      } else {
-        // For other tools, add userId if available
-        toolParameters.userId = userId;
-      }
+      const toolParameters = prepareToolParameters(mcpKey, parameters, userId);
       
       console.log('Calling edge function:', targetMcp.endpoint, 'with parameters:', toolParameters);
       
       // Simulate progress updates during execution
-      if (progressIndex !== -1) {
-        toolProgress[progressIndex].progress = 50;
-      }
+      toolProgress = updateToolProgress(toolProgress, functionName, { progress: 50 });
       
       const { data: edgeResult, error: edgeError } = await supabase.functions.invoke(targetMcp.endpoint, {
         body: toolParameters
@@ -153,43 +103,11 @@ export async function executeTools(
         throw new Error(`Edge function error: ${edgeError.message}`);
       }
       
-      let mcpResult = edgeResult;
+      const { toolResult, toolUsed } = processToolResult(toolCall, edgeResult, parameters);
       
-      // Handle different response formats
-      let processedResult = mcpResult;
-      if (mcpResult && mcpResult.success === false) {
-        throw new Error(mcpResult.error || 'Tool execution failed');
-      }
-      
-      if (mcpResult && mcpResult.data) {
-        processedResult = mcpResult.data;
-      } else if (mcpResult && mcpResult.results) {
-        processedResult = mcpResult.results;
-      }
-      
-      toolResults.push({
-        tool_call_id: toolCall.id,
-        role: 'tool',
-        content: JSON.stringify(processedResult)
-      });
-
-      // Update progress with completion
-      if (progressIndex !== -1) {
-        toolProgress[progressIndex] = {
-          ...toolProgress[progressIndex],
-          status: 'completed',
-          endTime: new Date().toISOString(),
-          progress: 100,
-          result: processedResult
-        };
-      }
-
-      toolsUsed.push({
-        name: functionName,
-        parameters,
-        result: processedResult,
-        success: true
-      });
+      toolResults.push(toolResult);
+      toolsUsed.push(toolUsed);
+      toolProgress = completeToolProgress(toolProgress, functionName, toolUsed.result);
 
       console.log('Tool execution successful:', functionName);
       
@@ -201,35 +119,11 @@ export async function executeTools(
         stack: error.stack
       });
       
-      const errorResult = { 
-        error: error.message,
-        toolName: functionName,
-        details: 'Check if required API tokens are configured and valid'
-      };
+      const { toolResult, toolUsed } = createErrorResult(toolCall, error, parameters);
       
-      toolResults.push({
-        tool_call_id: toolCall.id,
-        role: 'tool',
-        content: JSON.stringify(errorResult)
-      });
-
-      // Update progress with failure
-      const progressIndex = toolProgress.findIndex(t => t.name === functionName);
-      if (progressIndex !== -1) {
-        toolProgress[progressIndex] = {
-          ...toolProgress[progressIndex],
-          status: 'failed',
-          endTime: new Date().toISOString(),
-          error: error.message
-        };
-      }
-
-      toolsUsed.push({
-        name: functionName,
-        parameters,
-        result: errorResult,
-        success: false
-      });
+      toolResults.push(toolResult);
+      toolsUsed.push(toolUsed);
+      toolProgress = failToolProgress(toolProgress, functionName, error.message);
     }
   }
   
