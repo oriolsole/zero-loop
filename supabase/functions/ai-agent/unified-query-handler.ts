@@ -107,35 +107,15 @@ export async function handleUnifiedQuery(
   console.log(`🧠 Custom system prompt received: ${customSystemPrompt ? 'YES' : 'NO'}`);
 
   try {
-    // Fetch available tools for the agent using the correct table
+    // Fetch available tools for the agent using a simplified approach
     let mcps: ToolMetadata[] = [];
     if (agentId) {
       console.log(`🔧 Fetching tool configurations for agent: ${agentId}`);
       
-      // Use agent_tool_configs table instead of non-existent agent_mcps
+      // First, get the agent tool configs
       const { data: agentToolConfigs, error: agentConfigError } = await supabase
         .from('agent_tool_configs')
-        .select(`
-          *,
-          mcps:mcp_id (
-            id,
-            title,
-            description,
-            endpoint,
-            icon,
-            parameters,
-            default_key,
-            category,
-            tags,
-            suggestedPrompt,
-            sampleUseCases,
-            requiresAuth,
-            authType,
-            authKeyName,
-            requirestoken,
-            isDefault
-          )
-        `)
+        .select('mcp_id')
         .eq('agent_id', agentId)
         .eq('is_active', true);
 
@@ -144,10 +124,23 @@ export async function handleUnifiedQuery(
         throw new Error('Failed to fetch agent tool configs');
       }
 
-      // Transform the data to get the MCP details
-      mcps = (agentToolConfigs || [])
-        .filter(config => config.mcps) // Ensure MCP data exists
-        .map(config => config.mcps) as ToolMetadata[];
+      if (agentToolConfigs && agentToolConfigs.length > 0) {
+        // Get the MCP IDs from the configs
+        const mcpIds = agentToolConfigs.map(config => config.mcp_id);
+        
+        // Then fetch the actual MCP data
+        const { data: mcpsData, error: mcpsError } = await supabase
+          .from('mcps')
+          .select('*')
+          .in('id', mcpIds);
+
+        if (mcpsError) {
+          console.error('❌ Failed to fetch MCPs for agent:', mcpsError);
+          throw new Error('Failed to fetch MCPs for agent');
+        }
+
+        mcps = mcpsData as ToolMetadata[];
+      }
 
       console.log(`🛠️  Loaded ${mcps.length} tools for agent ${agentId}:`, mcps.map(m => m.title).join(', '));
     } else {
