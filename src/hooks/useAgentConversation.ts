@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useContext, createContext } from 'react';
 
 export type AgentMessageType = 
@@ -13,17 +14,34 @@ export type AgentMessageType =
   | 'loop-enhancement'
   | 'loop-complete'
   | 'tool-executing'
-  | 'tool-result'; // ✅ Added this type
+  | 'tool-result';
 
 export interface ConversationMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
+  updatedAt?: Date;
   messageType?: AgentMessageType;
   loopIteration?: number;
   toolsUsed?: { name: string; success: boolean; result?: any }[];
   improvementReasoning?: string;
+  selfReflection?: string;
+  toolDecision?: {
+    reasoning: string;
+    selectedTools: string[];
+  };
+  aiReasoning?: string;
+  shouldContinueLoop?: boolean;
+}
+
+export interface ConversationSession {
+  id: string;
+  title: string;
+  created_at: Date;
+  updated_at: Date;
+  lastMessage?: string;
+  messageCount?: number;
 }
 
 interface ConversationContextProps {
