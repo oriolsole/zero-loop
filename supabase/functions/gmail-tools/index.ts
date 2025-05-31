@@ -94,17 +94,31 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization');
     
     if (!authHeader) {
+      console.error('❌ No Authorization header provided');
       throw new Error('Authorization header required');
     }
 
     const token = authHeader.replace('Bearer ', '');
+    console.log('🔍 Validating Supabase user token...');
+    
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     
-    if (userError || !user) {
-      throw new Error('Invalid user token');
+    if (userError) {
+      console.error('❌ Supabase auth error:', userError);
+      throw new Error(`Authentication failed: ${userError.message}. Please refresh the page and log in again.`);
+    }
+    
+    if (!user) {
+      console.error('❌ No user found for token');
+      throw new Error('Invalid user token. Please refresh the page and log in again.');
     }
 
+    console.log('✅ User authenticated:', user.id);
+    console.log('🔍 Fetching Google OAuth token...');
+
     const googleToken = await getGoogleToken(user.id, supabase);
+    console.log('✅ Google token retrieved successfully');
+    
     let result;
 
     console.log(`📧 Executing Gmail action: ${action}`);
@@ -118,10 +132,12 @@ serve(async (req) => {
           ...(labelIds.length > 0 && { labelIds: labelIds.join(',') })
         });
         
+        console.log('📨 Fetching email list...');
         result = await callGmailAPI(`/users/me/messages?${queryParams}`, googleToken);
         
         // Get email details for each message
         if (result.messages) {
+          console.log(`📧 Fetching details for ${Math.min(result.messages.length, 5)} emails...`);
           const emails = await Promise.all(
             result.messages.slice(0, 5).map(async (msg: any) => {
               const details = await callGmailAPI(`/users/me/messages/${msg.id}`, googleToken);
@@ -137,6 +153,7 @@ serve(async (req) => {
             })
           );
           result.emails = emails;
+          console.log('✅ Email details fetched successfully');
         }
         break;
       }
@@ -217,10 +234,19 @@ serve(async (req) => {
   } catch (error) {
     console.error('❌ Gmail Tools error:', error);
     
+    // Provide more helpful error messages
+    let errorMessage = error.message || 'An unexpected error occurred';
+    
+    if (errorMessage.includes('Google OAuth token not found')) {
+      errorMessage = 'Google account not connected. Please connect your Google account in the settings.';
+    } else if (errorMessage.includes('Authentication failed') || errorMessage.includes('Invalid user token')) {
+      errorMessage = 'Session expired. Please refresh the page and log in again.';
+    }
+    
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message
+        error: errorMessage
       }),
       { 
         status: 400,
