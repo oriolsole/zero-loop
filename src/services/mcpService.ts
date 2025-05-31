@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult, MCPParameter } from '@/types/mcp';
 import { defaultMCPs } from '@/constants/defaultMCPs';
@@ -49,9 +50,18 @@ const convertMCPForDatabase = (mcp: Partial<MCP>) => {
 export const mcpService = {
   // Fetch all MCPs for the current user
   async fetchMCPs(): Promise<MCP[]> {
+    // Get current user to filter MCPs
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      console.warn('No authenticated user found, returning empty MCPs array');
+      return [];
+    }
+
     const { data, error } = await supabase
       .from('mcps')
       .select('*')
+      .eq('user_id', user.id)  // ✅ Add user filtering
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -125,16 +135,23 @@ export const mcpService = {
     console.log('Executing MCP:', mcpId, 'with parameters:', parameters);
     
     try {
-      // First, get the MCP details
+      // Get current user for authentication
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Authentication required');
+      }
+
+      // First, get the MCP details with user filtering for security
       const { data: mcp, error: mcpError } = await supabase
         .from('mcps')
         .select('*')
         .eq('id', mcpId)
+        .eq('user_id', user.id)  // ✅ Add user filtering for security
         .single();
 
       if (mcpError || !mcp) {
-        console.error('MCP not found:', mcpId, mcpError);
-        throw new Error('MCP not found');
+        console.error('MCP not found or access denied:', mcpId, mcpError);
+        throw new Error('MCP not found or access denied');
       }
 
       console.log('Found MCP:', mcp.title, 'endpoint:', mcp.endpoint);
