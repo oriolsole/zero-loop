@@ -46,6 +46,38 @@ async function encryptToken(token: string): Promise<string> {
   return btoa(String.fromCharCode(...combined));
 }
 
+// Helper function to map scopes to service IDs
+function mapScopesToServiceIds(scopes: string[]): string[] {
+  const scopeToServiceMap: Record<string, string> = {
+    'https://www.googleapis.com/auth/userinfo.email': 'google-account',
+    'https://www.googleapis.com/auth/userinfo.profile': 'google-account',
+    'https://www.googleapis.com/auth/drive': 'google-drive',
+    'https://www.googleapis.com/auth/drive.file': 'google-drive',
+    'https://www.googleapis.com/auth/drive.readonly': 'google-drive',
+    'https://www.googleapis.com/auth/gmail.readonly': 'gmail',
+    'https://www.googleapis.com/auth/gmail.modify': 'gmail',
+    'https://www.googleapis.com/auth/gmail.send': 'gmail',
+    'https://www.googleapis.com/auth/calendar': 'google-calendar',
+    'https://www.googleapis.com/auth/calendar.readonly': 'google-calendar',
+    'https://www.googleapis.com/auth/spreadsheets': 'google-sheets',
+    'https://www.googleapis.com/auth/documents': 'google-docs',
+    'https://www.googleapis.com/auth/contacts': 'google-contacts',
+    'https://www.googleapis.com/auth/photoslibrary.readonly': 'google-photos',
+    'https://www.googleapis.com/auth/youtube.readonly': 'youtube'
+  };
+
+  const serviceIds = new Set<string>();
+  
+  scopes.forEach(scope => {
+    const serviceId = scopeToServiceMap[scope];
+    if (serviceId) {
+      serviceIds.add(serviceId);
+    }
+  });
+
+  return Array.from(serviceIds);
+}
+
 function getAppUrl(): string {
   // Get the actual app URL from the request headers or environment
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -259,6 +291,33 @@ serve(async (req) => {
           });
         }
 
+        // Update user profile with connected services
+        console.log('🔄 Updating user profile with connected services...');
+        const grantedScopes = (tokenData.scope || '').split(' ').filter(Boolean);
+        const connectedServices = mapScopesToServiceIds(grantedScopes);
+        
+        console.log('📊 Mapped services:', {
+          grantedScopes,
+          connectedServices
+        });
+
+        const { error: profileUpdateError } = await supabase
+          .from('profiles')
+          .update({
+            google_services_connected: connectedServices,
+            google_scopes_granted: grantedScopes,
+            google_drive_connected: grantedScopes.includes('https://www.googleapis.com/auth/drive'),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', finalUserId);
+
+        if (profileUpdateError) {
+          console.error('⚠️ Failed to update profile, but tokens stored:', profileUpdateError);
+          // Don't fail the whole flow, just log the error
+        } else {
+          console.log('✅ Profile updated successfully');
+        }
+
         console.log('✅ Tokens stored successfully, redirecting to tools page');
         console.log('🔗 Redirecting to:', `${appUrl}/tools?success=google_connected`);
         
@@ -342,6 +401,25 @@ serve(async (req) => {
       if (upsertError) {
         console.error('❌ Failed to store tokens:', upsertError);
         throw new Error(`Failed to store authentication tokens: ${upsertError.message}`);
+      }
+
+      // Update user profile with connected services
+      console.log('🔄 Updating user profile with connected services...');
+      const grantedScopes = (tokens.scope || '').split(' ').filter(Boolean);
+      const connectedServices = mapScopesToServiceIds(grantedScopes);
+
+      const { error: profileUpdateError } = await supabase
+        .from('profiles')
+        .update({
+          google_services_connected: connectedServices,
+          google_scopes_granted: grantedScopes,
+          google_drive_connected: grantedScopes.includes('https://www.googleapis.com/auth/drive'),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user_id);
+
+      if (profileUpdateError) {
+        console.error('⚠️ Failed to update profile, but tokens stored:', profileUpdateError);
       }
 
       console.log('✅ Successfully stored encrypted tokens via POST');

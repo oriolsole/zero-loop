@@ -1,4 +1,3 @@
-
 export interface GoogleScope {
   id: string;
   name: string;
@@ -125,6 +124,93 @@ export const GOOGLE_SCOPE_CATEGORIES: GoogleScopeCategory[] = [
     scopes: GOOGLE_SCOPES.filter(s => s.category === 'media')
   }
 ];
+
+// Enhanced Google Services with proper branding
+export const GOOGLE_SERVICES = [
+  {
+    id: 'google-account',
+    name: 'Google Account',
+    description: 'Basic profile and email access',
+    icon: 'user-circle',
+    color: 'bg-blue-500',
+    scopes: ['https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile']
+  },
+  {
+    id: 'gmail',
+    name: 'Gmail',
+    description: 'Read, send, and manage emails',
+    icon: 'mail',
+    color: 'bg-red-500',
+    scopes: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.send'
+    ]
+  },
+  {
+    id: 'google-drive',
+    name: 'Google Drive',
+    description: 'Access and manage your files',
+    icon: 'hard-drive',
+    color: 'bg-blue-600',
+    scopes: [
+      'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/drive.readonly'
+    ]
+  },
+  {
+    id: 'google-calendar',
+    name: 'Google Calendar',
+    description: 'Manage events and schedules',
+    icon: 'calendar',
+    color: 'bg-blue-700',
+    scopes: [
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/calendar.readonly'
+    ]
+  },
+  {
+    id: 'google-sheets',
+    name: 'Google Sheets',
+    description: 'Create and edit spreadsheets',
+    icon: 'table',
+    color: 'bg-green-600',
+    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+  },
+  {
+    id: 'google-docs',
+    name: 'Google Docs',
+    description: 'Create and edit documents',
+    icon: 'file-text',
+    color: 'bg-blue-800',
+    scopes: ['https://www.googleapis.com/auth/documents']
+  },
+  {
+    id: 'google-contacts',
+    name: 'Google Contacts',
+    description: 'Access your contact information',
+    icon: 'users',
+    color: 'bg-orange-500',
+    scopes: ['https://www.googleapis.com/auth/contacts']
+  },
+  {
+    id: 'google-photos',
+    name: 'Google Photos',
+    description: 'Access your photo library',
+    icon: 'camera',
+    color: 'bg-yellow-500',
+    scopes: ['https://www.googleapis.com/auth/photoslibrary.readonly']
+  },
+  {
+    id: 'youtube',
+    name: 'YouTube',
+    description: 'Access your YouTube data',
+    icon: 'youtube',
+    color: 'bg-red-600',
+    scopes: ['https://www.googleapis.com/auth/youtube.readonly']
+  }
+] as const;
 
 // Essential scopes for basic authentication - only the most necessary ones
 export const getRequiredScopes = (): string[] => {
