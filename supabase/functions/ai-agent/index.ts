@@ -2,6 +2,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
+
 import { handleUnifiedQuery } from './unified-query-handler.ts';
 
 const corsHeaders = {
@@ -14,194 +15,128 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-serve(async (req) => {
-  console.log('🤖 AI Agent request received');
-  console.log('Method:', req.method);
-  console.log('Headers:', Object.fromEntries(req.headers.entries()));
+/**
+ * Enhanced content validation with guaranteed non-null response
+ */
+function validateAndEnsureContent(content: any, context: string = 'Unknown'): string {
+  console.log(`[CONTENT_VALIDATION] Validating content for ${context}:`, {
+    contentType: typeof content,
+    contentLength: content?.length || 0,
+    isNull: content === null,
+    isUndefined: content === undefined,
+    isEmpty: !content || content.trim?.() === ''
+  });
 
+  if (!content) {
+    const fallbackMessage = `I apologize, but I encountered an issue generating a response for your request (${context}). Please try again or rephrase your question.`;
+    console.error(`[CONTENT_VALIDATION] Content validation failed for ${context}: content is null/undefined, using fallback`);
+    return fallbackMessage;
+  }
+
+  if (typeof content !== 'string') {
+    console.warn(`[CONTENT_VALIDATION] Content validation warning for ${context}: content is not a string, converting`);
+    const stringContent = String(content);
+    if (!stringContent.trim()) {
+      const fallbackMessage = `I processed your request but encountered an issue formatting the response (${context}). Please try again.`;
+      console.error(`[CONTENT_VALIDATION] Converted content is empty for ${context}, using fallback`);
+      return fallbackMessage;
+    }
+    return stringContent;
+  }
+
+  if (!content.trim()) {
+    const fallbackMessage = `I received your request but generated an empty response (${context}). Please try rephrasing your question.`;
+    console.error(`[CONTENT_VALIDATION] Content validation failed for ${context}: content is empty string, using fallback`);
+    return fallbackMessage;
+  }
+
+  console.log(`[CONTENT_VALIDATION] Content validation successful for ${context}: ${content.length} characters`);
+  return content;
+}
+
+serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Validate request method
-    if (req.method !== 'POST') {
-      console.error('❌ Invalid request method:', req.method);
+    const { 
+      message, 
+      conversationHistory = [], 
+      userId, 
+      sessionId, 
+      streaming = false, 
+      modelSettings, 
+      testMode = false, 
+      loopEnabled = false,
+      agentId, // Agent ID parameter for tool configuration
+      customSystemPrompt // Custom system prompt parameter
+    } = await req.json();
+    
+    if (!message) {
+      throw new Error('Message is required');
+    }
+
+    console.log('🤖 AI Agent unified request:', { 
+      message: message.substring(0, 100) + (message.length > 100 ? '...' : ''), 
+      historyLength: conversationHistory.length, 
+      userId, 
+      sessionId,
+      streaming,
+      modelSettings,
+      testMode,
+      loopEnabled,
+      agentId, // Log the agent ID
+      hasCustomPrompt: !!customSystemPrompt
+    });
+
+    // CRITICAL FIX: Do NOT store user message in database here
+    // The frontend already handles user message insertion to prevent duplicates
+    console.log('🚫 Skipping user message insertion - handled by frontend to prevent duplicates');
+
+    // In test mode, return basic response for validation
+    if (testMode) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Method not allowed. Use POST.' 
+        JSON.stringify({
+          success: true,
+          message: `Test mode: Unified handler would process query "${message}" with agent ${agentId || 'default'}`,
+          unifiedApproach: true,
+          testMode: true,
+          agentId
         }),
-        { 
-          status: 405, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Get the raw request body first
-    let rawBody: string;
-    try {
-      rawBody = await req.text();
-      console.log('📥 Raw request body length:', rawBody.length);
-      
-      if (!rawBody || rawBody.trim() === '') {
-        console.error('❌ Empty request body');
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Request body is empty' 
-          }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-    } catch (error) {
-      console.error('❌ Failed to read request body:', error);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Failed to read request body' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Parse JSON with error handling
-    let requestData: any;
-    try {
-      requestData = JSON.parse(rawBody);
-      console.log('✅ Successfully parsed JSON request');
-      console.log('📋 Request keys:', Object.keys(requestData || {}));
-    } catch (error) {
-      console.error('❌ JSON parsing failed:', error);
-      console.error('❌ Raw body that failed to parse:', rawBody.substring(0, 200));
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Invalid JSON in request body' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Validate required fields
-    const { message, userId, sessionId, modelSettings, streaming = false, loopEnabled = false, agentId, customSystemPrompt } = requestData;
-
-    if (!message || typeof message !== 'string' || message.trim() === '') {
-      console.error('❌ Missing or invalid message');
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Message is required and must be a non-empty string' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!userId || typeof userId !== 'string') {
-      console.error('❌ Missing or invalid userId');
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'userId is required and must be a string' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!sessionId || typeof sessionId !== 'string') {
-      console.error('❌ Missing or invalid sessionId');
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'sessionId is required and must be a string' 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    console.log(`🎯 Processing message: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
-    console.log(`👤 User: ${userId}`);
-    console.log(`📱 Session: ${sessionId}`);
-    console.log(`🤖 Agent: ${agentId || 'default'}`);
-    console.log(`🔄 Loop enabled: ${loopEnabled}`);
-
-    // Get conversation history
-    const { data: conversationHistory, error: historyError } = await supabase
-      .from('agent_conversations')
-      .select('role, content, message_type, created_at')
-      .eq('user_id', userId)
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: true })
-      .limit(20);
-
-    if (historyError) {
-      console.error('❌ Failed to fetch conversation history:', historyError);
-    }
-
-    const history = conversationHistory || [];
-    console.log(`📚 Loaded ${history.length} messages from conversation history`);
-
-    // Add user message to conversation history immediately
-    const userMessageData = {
-      user_id: userId,
-      session_id: sessionId,
-      role: 'user',
-      content: message.trim(),
-      message_type: 'request',
-      loop_iteration: 0,
-      agent_id: agentId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    console.log('💾 Storing user message in database');
-    const { error: insertError } = await supabase
-      .from('agent_conversations')
-      .insert(userMessageData);
-
-    if (insertError) {
-      console.error('❌ Failed to store user message:', insertError);
-      // Continue processing even if storage fails
-    } else {
-      console.log('✅ User message stored successfully');
-    }
-
-    // Process the query using unified handler
+    // Use unified query handler for all requests with agent ID
     const result = await handleUnifiedQuery(
-      message.trim(),
-      history,
+      message,
+      conversationHistory,
       userId,
       sessionId,
       modelSettings,
       streaming,
       supabase,
       0, // loopIteration
-      loopEnabled,
-      customSystemPrompt,
-      agentId
+      loopEnabled, // Pass the loop setting
+      customSystemPrompt, // Pass the custom system prompt
+      agentId // Pass the agent ID for tool configuration
     );
 
-    console.log('🎉 AI Agent processing completed successfully');
+    // Handle streaming responses
+    if (result.streaming) {
+      return new Response(JSON.stringify(result.data), {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+      });
+    }
+
+    console.log('✅ Unified query completed successfully for agent:', agentId);
+    console.log('📏 Response length:', result.message?.length || 0);
+    console.log('🛠️ Tools available:', result.availableToolsCount || 0);
 
     return new Response(
       JSON.stringify(result),
@@ -214,8 +149,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: `Internal server error: ${error.message}`,
-        details: error.stack ? error.stack.substring(0, 500) : 'No stack trace available'
+        error: error.message || 'An unexpected error occurred',
+        details: 'Check the edge function logs for more information'
       }),
       { 
         status: 500,

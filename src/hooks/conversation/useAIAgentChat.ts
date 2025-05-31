@@ -1,187 +1,241 @@
-
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useConversationContext } from '@/contexts/ConversationContext';
-import { agentService, Agent } from '@/services/agentService';
+import { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
-import { ModelProvider, ModelSettings } from '@/services/modelProviderService';
+import { ConversationMessage } from '@/hooks/useAgentConversation';
+import { useAuth } from '@/contexts/AuthContext';
+import { getModelSettings } from '@/services/modelProviderService';
+import { useConversationContext } from '@/contexts/ConversationContext';
+import { useMessageManager } from '@/hooks/conversation/useMessageManager';
+import { useAgentManagement } from '@/hooks/useAgentManagement';
+import { Agent } from '@/services/agentService';
 
 export const useAIAgentChat = () => {
-  const { user, session } = useAuth();
-  const { addMessage, currentSessionId, setIsLoading } = useConversationContext();
-  
-  const [currentAgent, setCurrentAgent] = useState<Agent | null>(null);
-  const [modelSettings, setModelSettings] = useState<ModelSettings>({
-    provider: 'npaw',
-    selectedModel: 'gpt-4o'
-  });
-  const [loopEnabled, setLoopEnabled] = useState(false);
+  const { user } = useAuth();
+  const {
+    messages,
+    currentSessionId,
+    isLoading,
+    setIsLoading,
+    input,
+    setInput,
+    addMessage,
+    persistMessage,
+    currentAgent,
+    setCurrentAgent
+  } = useConversationContext();
 
-  // Load default agent on mount
+  const { ensureDefaultAgent } = useAgentManagement();
+  const { generateMessageId } = useMessageManager();
+  const [modelSettings, setModelSettings] = useState(getModelSettings());
+  const [loopEnabled, setLoopEnabled] = useState(false);
+  const activeRequests = useRef<Set<string>>(new Set());
+
+  // Load loop preference from localStorage
   useEffect(() => {
-    const loadDefaultAgent = async () => {
-      if (!user) return;
-      
-      try {
-        const agents = await agentService.getUserAgents();
-        if (agents.length > 0) {
-          setCurrentAgent(agents[0]);
-          setLoopEnabled(agents[0].loop_enabled || false);
+    const savedLoopPreference = localStorage.getItem('aiAgentLoopEnabled');
+    if (savedLoopPreference !== null) {
+      setLoopEnabled(JSON.parse(savedLoopPreference));
+    }
+  }, []);
+
+  // Ensure default agent exists on mount
+  useEffect(() => {
+    if (user && !currentAgent) {
+      console.log('🤖 Ensuring default agent exists');
+      ensureDefaultAgent().then(agent => {
+        if (agent) {
+          setCurrentAgent(agent);
+          console.log('✅ Default agent loaded:', agent.name);
         }
-      } catch (error) {
-        console.error('Failed to load default agent:', error);
+      });
+    }
+  }, [user, currentAgent, ensureDefaultAgent, setCurrentAgent]);
+
+  // Load model settings
+  useEffect(() => {
+    const loadSettings = () => {
+      const settings = getModelSettings();
+      setModelSettings(settings);
+    };
+
+    loadSettings();
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'modelSettings') {
+        loadSettings();
       }
     };
 
-    loadDefaultAgent();
-  }, [user]);
-
-  const validateSession = useCallback(async () => {
-    if (!session) {
-      toast.error('Please log in to use AI features');
-      return false;
-    }
-
-    // Check if session is still valid
-    const { data: { user: currentUser }, error } = await supabase.auth.getUser();
-    
-    if (error || !currentUser) {
-      toast.error('Your session has expired. Please log in again.');
-      return false;
-    }
-
-    return true;
-  }, [session]);
-
-  const handleToggleLoop = useCallback(async (enabled: boolean) => {
-    setLoopEnabled(enabled);
-    
-    if (currentAgent) {
-      try {
-        const updatedAgent = await agentService.updateAgent({
-          id: currentAgent.id,
-          loop_enabled: enabled
-        });
-        
-        if (updatedAgent) {
-          setCurrentAgent(updatedAgent);
-        }
-      } catch (error) {
-        console.error('Failed to update agent loop setting:', error);
-        toast.error('Failed to update loop setting');
-      }
-    }
-  }, [currentAgent]);
-
-  const handleAgentChange = useCallback((agent: Agent) => {
-    setCurrentAgent(agent);
-    setLoopEnabled(agent.loop_enabled || false);
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const processMessage = useCallback(async (message: string) => {
+  const handleToggleLoop = (enabled: boolean) => {
+    setLoopEnabled(enabled);
+    localStorage.setItem('aiAgentLoopEnabled', JSON.stringify(enabled));
+  };
+
+  const handleAgentChange = (agent: Agent) => {
+    console.log('🔄 Agent change requested:', agent.name);
+    console.log('🔍 Agent data being set:', {
+      id: agent.id,
+      name: agent.name,
+      system_prompt: agent.system_prompt ? 'Has custom prompt' : 'No custom prompt',
+      model: agent.model,
+      loop_enabled: agent.loop_enabled
+    });
+    
+    setCurrentAgent(agent);
+    console.log('✅ Agent changed to:', agent.name);
+    
+    if (agent.loop_enabled !== undefined) {
+      setLoopEnabled(agent.loop_enabled);
+      localStorage.setItem('aiAgentLoopEnabled', JSON.stringify(agent.loop_enabled));
+    }
+  };
+
+  const processMessage = async (message: string, existingMessageId?: string) => {
     if (!user || !currentSessionId) {
-      toast.error('Please log in to send messages');
+      console.error('❌ Cannot process message - missing user or session');
       return;
     }
 
-    // Validate input
-    if (!message || !message.trim()) {
-      toast.error('Please enter a message');
+    if (!currentAgent) {
+      console.error('❌ Cannot process message - no current agent');
+      toast.error('No agent selected. Please wait for the default agent to load.');
       return;
     }
 
-    // Validate session before proceeding
-    const isSessionValid = await validateSession();
-    if (!isSessionValid) {
+    const requestKey = `${currentSessionId}-${Math.abs(message.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0)).toString(36).substring(0, 8)}`;
+    
+    if (activeRequests.current.has(requestKey)) {
+      console.log('⚠️ Request already in progress, skipping:', requestKey);
       return;
     }
 
+    activeRequests.current.add(requestKey);
     setIsLoading(true);
 
-    try {
-      // Get fresh session token
-      const { data: { session: freshSession }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !freshSession?.access_token) {
-        toast.error('Failed to get valid session. Please log in again.');
-        setIsLoading(false);
-        return;
-      }
+    console.log(`🚀 Processing message: ${requestKey} with agent: ${currentAgent.name}`);
 
-      console.log('🔑 Using fresh session token for AI agent call');
-      console.log('📤 Sending request body:', {
-        message: message.trim(),
+    try {
+      const conversationHistory = messages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }));
+
+      console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages, agent: ${currentAgent.name}, loop enabled: ${loopEnabled}`);
+
+      const requestBody: {
+        message: string;
+        conversationHistory: { role: "user" | "assistant"; content: string; }[];
+        userId: string;
+        sessionId: string;
+        streaming: boolean;
+        modelSettings: typeof modelSettings;
+        loopEnabled: boolean;
+        agentId: string;
+        customSystemPrompt?: string;
+      } = {
+        message,
+        conversationHistory,
         userId: user.id,
         sessionId: currentSessionId,
         streaming: false,
-        modelSettings,
-        loopEnabled,
-        agentId: currentAgent?.id || null,
-        customSystemPrompt: currentAgent?.system_prompt || null
-      });
-
-      // DO NOT add user message here - let the backend handle it to avoid duplication
-      const response = await supabase.functions.invoke('ai-agent', {
-        body: {
-          message: message.trim(),
-          userId: user.id,
-          sessionId: currentSessionId,
-          streaming: false,
-          modelSettings,
-          loopEnabled,
-          agentId: currentAgent?.id || null,
-          customSystemPrompt: currentAgent?.system_prompt || null
+        modelSettings: {
+          ...modelSettings,
+          selectedModel: currentAgent.model
         },
-        headers: {
-          Authorization: `Bearer ${freshSession.access_token}`,
-          'Content-Type': 'application/json'
-        }
+        loopEnabled: currentAgent.loop_enabled || loopEnabled,
+        agentId: currentAgent.id
+      };
+
+      if (currentAgent.system_prompt) {
+        requestBody.customSystemPrompt = currentAgent.system_prompt;
+      }
+
+      const { data, error } = await supabase.functions.invoke('ai-agent', {
+        body: requestBody
       });
 
-      console.log('📥 AI agent response:', response);
-
-      if (response.error) {
-        console.error('AI agent error:', response.error);
-        
-        // Check if it's an authentication error
-        if (response.error.message?.includes('Invalid user token') || 
-            response.error.message?.includes('JWT')) {
-          toast.error('Session expired. Please refresh the page and log in again.');
-        } else {
-          toast.error(`AI Error: ${response.error.message}`);
-        }
-        return;
+      if (error) {
+        console.error('❌ Supabase function error:', error);
+        throw new Error(error.message);
       }
 
-      if (!response.data?.success) {
-        console.error('AI agent failed:', response.data);
-        toast.error('AI request failed. Please try again.');
-        return;
+      if (!data || !data.success) {
+        console.error('❌ AI agent returned error:', data);
+        throw new Error(data?.error || 'Failed to get response from AI agent');
       }
 
-      console.log('✅ AI agent response received successfully');
+      console.log('✅ AI agent response received');
 
-    } catch (error: any) {
-      console.error('Error in processMessage:', error);
+      const aiResponse = data.message || data.response;
       
-      // Handle specific error types
-      if (error.message?.includes('JWT') || error.message?.includes('auth')) {
-        toast.error('Authentication error. Please refresh the page and log in again.');
-      } else {
-        toast.error('Failed to send message. Please try again.');
+      if (aiResponse) {
+        const assistantMessageId = generateMessageId(aiResponse, 'assistant', currentSessionId);
+        
+        const assistantMessage: ConversationMessage = {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: aiResponse,
+          timestamp: new Date(),
+          messageType: 'response',
+          loopIteration: data.loopIteration || 0,
+          toolsUsed: data.toolsUsed || undefined,
+          improvementReasoning: data.improvementReasoning || undefined
+        };
+
+        console.log(`🤖 Adding assistant response to context: ${assistantMessageId}`);
+        
+        addMessage(assistantMessage);
+        const persistResult = await persistMessage(assistantMessage);
+        console.log(`${persistResult ? '✅' : '❌'} Assistant message persistence ${persistResult ? 'succeeded' : 'failed'}`);
       }
+      
+      if (data.toolsUsed && data.toolsUsed.length > 0) {
+        const successCount = data.toolsUsed.filter((tool: any) => tool.success).length;
+        if (successCount > 0) {
+          toast.success(`Used ${successCount} tool(s) successfully`);
+        }
+      }
+
+    } catch (error) {
+      console.error('❌ Error processing message:', error);
+      
+      toast.error('Failed to send message', {
+        description: error.message || 'Please try again.',
+        duration: 10000
+      });
+
+      const errorMessageId = generateMessageId(`Error: ${error.message}`, 'assistant', currentSessionId);
+      
+      const errorMessage: ConversationMessage = {
+        id: errorMessageId,
+        role: 'assistant',
+        content: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
+        timestamp: new Date()
+      };
+
+      addMessage(errorMessage);
+      await persistMessage(errorMessage);
     } finally {
       setIsLoading(false);
+      activeRequests.current.delete(requestKey);
     }
-  }, [user, currentSessionId, modelSettings, loopEnabled, currentAgent, addMessage, setIsLoading, validateSession]);
+  };
 
   return {
-    currentAgent,
     modelSettings,
     loopEnabled,
     handleToggleLoop,
     handleAgentChange,
-    processMessage
+    processMessage,
+    currentAgent
   };
 };
