@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -77,10 +78,6 @@ serve(async (req) => {
       throw new Error('Message is required');
     }
 
-    // Extract user auth token from Authorization header
-    const authHeader = req.headers.get('Authorization');
-    const userAuthToken = authHeader?.replace('Bearer ', '');
-
     console.log('🤖 AI Agent unified request:', { 
       message: message.substring(0, 100) + (message.length > 100 ? '...' : ''), 
       historyLength: conversationHistory.length, 
@@ -91,8 +88,7 @@ serve(async (req) => {
       testMode,
       loopEnabled,
       agentId, // Log the agent ID
-      hasCustomPrompt: !!customSystemPrompt,
-      hasAuthToken: !!userAuthToken
+      hasCustomPrompt: !!customSystemPrompt
     });
 
     // CRITICAL FIX: Do NOT store user message in database here
@@ -113,7 +109,7 @@ serve(async (req) => {
       );
     }
 
-    // Use unified query handler for all requests with agent ID and user auth token
+    // Use unified query handler for all requests with agent ID
     const result = await handleUnifiedQuery(
       message,
       conversationHistory,
@@ -125,8 +121,7 @@ serve(async (req) => {
       0, // loopIteration
       loopEnabled, // Pass the loop setting
       customSystemPrompt, // Pass the custom system prompt
-      agentId, // Pass the agent ID for tool configuration
-      userAuthToken // Pass the user auth token
+      agentId // Pass the agent ID for tool configuration
     );
 
     // Handle streaming responses

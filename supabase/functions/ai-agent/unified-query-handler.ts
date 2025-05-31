@@ -1,322 +1,424 @@
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
-import { OpenAI } from "https://deno.land/x/openai@v4.20.1/mod.ts";
-
 import { executeTools } from './tool-executor.ts';
-import { createToolExecutionMessage } from './tool-message.ts';
-
-const systemPrompt = `You are a helpful AI assistant that helps users achieve their goals.
-You can use tools to get more information to better answer questions.
-Please respond in a friendly, conversational style.`;
-
-interface Message {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}
-
-interface ToolMetadata {
-  id: string;
-  title: string;
-  description: string;
-  default_key: string;
-  endpoint: string;
-  parameters: any[];
-}
+import { convertMCPsToTools } from './mcp-tools.ts';
+import { generateSystemPrompt, createKnowledgeAwareMessages } from './system-prompts.ts';
+import { extractAssistantMessage } from './response-handler.ts';
+import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
+import { shouldContinueLoop, MAX_LOOPS } from './loop-evaluator.ts';
+import { getAgentEnabledTools, setupDefaultToolsForAgent } from './agent-tool-fetcher.ts';
 
 /**
- * Helper function to build messages array for LLM calls
+ * Unified query handler with user-controlled self-improvement loop capability
  */
-function buildMessages(
-  conversationHistory: any[],
-  message: string,
-  systemPrompt: string
-): Message[] {
-  const messages: Message[] = [
-    { role: 'system', content: systemPrompt },
-    ...conversationHistory.map((msg: any) => ({
-      role: msg.role,
-      content: msg.content,
-    })),
-    { role: 'user', content: message },
-  ];
-  return messages;
-}
-
-/**
- * Helper function to call the LLM with tools
- */
-async function callLLMWithTools(
-  messages: Message[],
-  mcpTools: any[],
-  modelSettings: any,
-  supabase: ReturnType<typeof createClient>
-): Promise<any> {
-  const openAI = new OpenAI({ apiKey: modelSettings.openAiApiKey });
-
-  const tools = mcpTools.map((tool: any) => {
-    // Parse parameters if it's a JSON string
-    let parameters = tool.parameters;
-    if (typeof parameters === 'string') {
-      try {
-        parameters = JSON.parse(parameters);
-      } catch (e) {
-        console.error('Failed to parse tool parameters JSON:', e);
-        parameters = [];
-      }
-    }
-    
-    // Ensure parameters is an array
-    if (!Array.isArray(parameters)) {
-      console.error('Tool parameters is not an array:', typeof parameters);
-      parameters = [];
-    }
-
-    return {
-      type: 'function',
-      function: {
-        name: `execute_${tool.default_key}`,
-        description: tool.description,
-        parameters: {
-          type: 'object',
-          properties: parameters.reduce((acc: any, param: any) => {
-            acc[param.name] = {
-              type: param.type,
-              description: param.description,
-            };
-            if (param.enum) {
-              acc[param.name].enum = param.enum;
-            }
-            return acc;
-          }, {}),
-          required: parameters
-            .filter((param: any) => param.required)
-            .map((param: any) => param.name),
-        },
-      },
-    };
-  });
-
-  const model = modelSettings.selectedModel || 'gpt-3.5-turbo-1106';
-
-  const chatCompletion = await openAI.chat.completions.create({
-    messages: messages,
-    model: model,
-    tools: tools.length > 0 ? tools : undefined,
-    tool_choice: tools.length > 0 ? 'auto' : 'none',
-  });
-
-  return chatCompletion.choices[0].message;
-}
-
 export async function handleUnifiedQuery(
   message: string,
   conversationHistory: any[],
-  userId: string,
-  sessionId: string,
+  userId: string | null,
+  sessionId: string | null,
   modelSettings: any,
   streaming: boolean,
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   loopIteration: number = 0,
   loopEnabled: boolean = false,
   customSystemPrompt?: string,
-  agentId?: string,
-  userAuthToken?: string
+  agentId?: string
 ): Promise<any> {
-  console.log(`🤖 Starting unified query handler (loop ${loopIteration}, enabled: ${loopEnabled}, agent: ${agentId || 'default'})`);
+  console.log(`🤖 Starting unified query handler (loop ${loopIteration}, enabled: ${loopEnabled}, agent: ${agentId})`);
   console.log(`🧠 Custom system prompt received: ${customSystemPrompt ? 'YES' : 'NO'}`);
+  if (customSystemPrompt) {
+    console.log(`📝 Custom prompt content: "${customSystemPrompt.substring(0, 100)}${customSystemPrompt.length > 100 ? '...' : ''}"`);
+  }
+
+  let finalResponse = '';
+  let allToolsUsed: any[] = [];
+  let loopEvaluation = null;
+  const toolCallMessageMap = new Map<string, string>();
 
   try {
-    // Fetch available tools for the agent using a simplified approach
-    let mcps: ToolMetadata[] = [];
-    if (agentId) {
-      console.log(`🔧 Fetching tool configurations for agent: ${agentId}`);
+    // Helper function to check if message already exists in database
+    const messageExists = async (content: string, messageType: string, loopIter: number): Promise<boolean> => {
+      if (!userId || !sessionId) return false;
       
-      // First, get the agent tool configs
-      const { data: agentToolConfigs, error: agentConfigError } = await supabase
-        .from('agent_tool_configs')
-        .select('mcp_id')
-        .eq('agent_id', agentId)
-        .eq('is_active', true);
-
-      if (agentConfigError) {
-        console.error('❌ Failed to fetch agent tool configs:', agentConfigError);
-        throw new Error('Failed to fetch agent tool configs');
-      }
-
-      if (agentToolConfigs && agentToolConfigs.length > 0) {
-        // Get the MCP IDs from the configs
-        const mcpIds = agentToolConfigs.map(config => config.mcp_id);
+      try {
+        const { data, error } = await supabase
+          .from('agent_conversations')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('session_id', sessionId)
+          .eq('content', content)
+          .eq('message_type', messageType)
+          .eq('loop_iteration', loopIter)
+          .gte('created_at', new Date(Date.now() - 10000).toISOString())
+          .maybeSingle();
         
-        // Then fetch the actual MCP data
-        const { data: mcpsData, error: mcpsError } = await supabase
-          .from('mcps')
-          .select('*')
-          .in('id', mcpIds);
+        return !error && data !== null;
+      } catch {
+        return false;
+      }
+    };
 
-        if (mcpsError) {
-          console.error('❌ Failed to fetch MCPs for agent:', mcpsError);
-          throw new Error('Failed to fetch MCPs for agent');
+    // Helper function to check if tool message exists by toolCallId
+    const toolMessageExistsByCallId = async (toolCallId: string, loopIter: number): Promise<string | null> => {
+      if (!userId || !sessionId || !toolCallId) return null;
+      
+      try {
+        const { data, error } = await supabase
+          .from('agent_conversations')
+          .select('id, content')
+          .eq('user_id', userId)
+          .eq('session_id', sessionId)
+          .eq('message_type', 'tool-executing')
+          .eq('loop_iteration', loopIter)
+          .gte('created_at', new Date(Date.now() - 60000).toISOString());
+        
+        if (error || !data) return null;
+        
+        for (const msg of data) {
+          try {
+            const parsedContent = JSON.parse(msg.content);
+            if (parsedContent.toolCallId === toolCallId) {
+              console.log(`🔍 Found existing tool message for call ID ${toolCallId}: ${msg.id}`);
+              return msg.id;
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
         }
-
-        mcps = mcpsData as ToolMetadata[];
+        
+        return null;
+      } catch {
+        return null;
       }
+    };
 
-      console.log(`🛠️  Loaded ${mcps.length} tools for agent ${agentId}:`, mcps.map(m => m.title).join(', '));
-    } else {
-      console.log('🔧 No agent ID provided, fetching default tools');
-      const { data: mcpsData, error: mcpsError } = await supabase
-        .from('mcps')
-        .select('*')
-        .eq('isDefault', true);
-
-      if (mcpsError) {
-        console.error('❌ Failed to fetch default MCPs:', mcpsError);
-        throw new Error('Failed to fetch default MCPs');
+    // Helper function to insert message with duplicate prevention
+    const insertMessage = async (content: string, messageType: string, additionalData: any = {}): Promise<string | null> => {
+      if (!userId || !sessionId) return null;
+      
+      const exists = await messageExists(content, messageType, loopIteration);
+      if (exists) {
+        console.log(`⚠️ Message already exists: ${messageType} (loop ${loopIteration})`);
+        return null;
       }
+      
+      try {
+        const { data, error } = await supabase.from('agent_conversations').insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'assistant',
+          content,
+          message_type: messageType,
+          loop_iteration: loopIteration,
+          agent_id: agentId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          ...additionalData
+        }).select('id').single();
+        
+        if (error) {
+          console.error(`❌ Failed to insert message: ${messageType}`, error);
+          return null;
+        }
+        
+        console.log(`✅ Inserted message: ${messageType} (loop ${loopIteration}) with ID: ${data.id}`);
+        return data.id;
+      } catch (error) {
+        console.error(`❌ Failed to insert message: ${messageType}`, error);
+        return null;
+      }
+    };
 
-      mcps = mcpsData as ToolMetadata[];
-      console.log(`🛠️  Loaded ${mcps.length} default tools`);
-    }
-
-    // Filter out any tools that require auth if the user is not authenticated
-    const mcpTools = mcps.filter(mcp => {
-      if (mcp.requirestoken) {
-        if (!userId) {
-          console.warn(`⚠️  Skipping tool ${mcp.title} because it requires authentication and user is not authenticated`);
+    // Helper function to update existing message with better error handling
+    const updateMessage = async (messageId: string, content: string, additionalData: any = {}): Promise<boolean> => {
+      if (!userId || !sessionId || !messageId) {
+        console.error('❌ Missing required parameters for message update');
+        return false;
+      }
+      
+      try {
+        console.log(`🔄 Updating message ${messageId} with new content`);
+        
+        const { error } = await supabase
+          .from('agent_conversations')
+          .update({
+            content,
+            updated_at: new Date().toISOString(),
+            ...additionalData
+          })
+          .eq('id', messageId)
+          .eq('user_id', userId)
+          .eq('session_id', sessionId);
+        
+        if (error) {
+          console.error(`❌ Failed to update message: ${messageId}`, error);
           return false;
         }
+        
+        console.log(`✅ Successfully updated message: ${messageId}`);
+        return true;
+      } catch (error) {
+        console.error(`❌ Exception updating message: ${messageId}`, error);
+        return false;
       }
-      return true;
-    });
+    };
 
-    // Apply custom system prompt if provided
-    let systemPrompt = customSystemPrompt || `You are a helpful AI assistant that helps users achieve their goals.
-You can use tools to get more information to better answer questions.
-Please respond in a friendly, conversational style.`;
+    // 1. Store loop start message (only for iterations > 0 AND when loops are enabled)
+    if (loopIteration > 0 && loopEnabled) {
+      await insertMessage(
+        `🔄 Improving response (Loop ${loopIteration})...`,
+        'loop-start'
+      );
+    }
 
-    // Build messages for LLM
-    const messages = buildMessages(conversationHistory, message, systemPrompt);
+    // 2. Get agent-specific enabled tools with strict enforcement
+    console.log(`🔧 Fetching tools for agent: ${agentId}`);
     
-    console.log(`🧠 Calling LLM (loop ${loopIteration}) with ${mcpTools.length} available tools`);
+    let mcps: any[] = [];
+    try {
+      // ONLY setup default tools for completely new agents with zero configurations
+      // DO NOT auto-setup tools for existing agents with explicit configurations
+      if (agentId && userId) {
+        console.log(`🔍 Checking if agent ${agentId} needs initial tool setup`);
+        await setupDefaultToolsForAgent(agentId, supabase);
+      }
+      
+      // Fetch enabled tools for this specific agent with strict enforcement
+      mcps = await getAgentEnabledTools(agentId, supabase);
+      
+      console.log(`🛠️ Agent ${agentId} has access to ${mcps.length} tools:`, 
+        mcps.map(m => m.title).join(', ') || 'NONE');
+        
+      // Strict enforcement: If agent has 0 tools, it means user explicitly disabled all tools
+      if (mcps.length === 0) {
+        console.log('🚫 Agent has NO tools available - respecting user configuration');
+        console.log('🔒 This agent will operate without any tool access');
+      }
+    } catch (toolError) {
+      console.error('❌ Failed to fetch agent tools:', toolError);
+      mcps = []; // No fallback - respect configuration errors as "no tools"
+      console.log('⚠️ Due to error, agent will have NO tool access');
+    }
+
+    const tools = convertMCPsToTools(mcps);
+    
+    // 3. Handle custom system prompt with detailed logging
+    let systemPrompt: string;
+    
+    if (customSystemPrompt && customSystemPrompt.trim()) {
+      systemPrompt = customSystemPrompt.trim();
+      console.log(`🧠 Using custom system prompt for agent ${agentId}`);
+      console.log(`📝 Custom prompt: "${systemPrompt}"`);
+    } else {
+      systemPrompt = generateUnifiedSystemPrompt(mcps, loopIteration, loopEnabled);
+      console.log(`🧠 Using generated system prompt for agent ${agentId}`);
+      console.log(`📝 Generated prompt preview: "${systemPrompt.substring(0, 200)}..."`);
+    }
+
+    // 4. Prepare messages
+    const messages = createKnowledgeAwareMessages(
+      systemPrompt,
+      conversationHistory,
+      message
+    );
+
+    console.log(`🧠 Calling LLM (loop ${loopIteration}) with ${tools.length} available tools`);
     console.log(`📨 Message count: ${messages.length}, System prompt length: ${systemPrompt.length}`);
 
-    // Call LLM with tools
-    const llmResponse = await callLLMWithTools(messages, mcpTools, modelSettings, supabase);
-    
-    console.log(`🤖 LLM Response: "${llmResponse.content || 'No content'}"`);
+    // 5. LLM call with tool decision-making
+    const modelRequestBody = {
+      messages,
+      tools: tools.length > 0 ? tools : undefined,
+      tool_choice: 'auto',
+      temperature: 0.7,
+      max_tokens: 2000,
+      stream: streaming,
+      ...(modelSettings && {
+        provider: modelSettings.provider,
+        model: modelSettings.selectedModel,
+        localModelUrl: modelSettings.localModelUrl
+      })
+    };
 
-    // Handle tool calls if present
-    if (llmResponse.tool_calls && llmResponse.tool_calls.length > 0) {
-      console.log(`🛠️ LLM chose to use ${llmResponse.tool_calls.length} tools (loop ${loopIteration})`);
+    const response = await supabase.functions.invoke('ai-model-proxy', {
+      body: modelRequestBody
+    });
+
+    if (response.error) {
+      throw new Error(`AI Model Proxy error: ${response.error.message}`);
+    }
+
+    if (streaming) {
+      return {
+        success: true,
+        streaming: true,
+        data: response.data
+      };
+    }
+
+    const data = response.data;
+    finalResponse = extractAssistantMessage(data) || '';
+
+    console.log(`🤖 LLM Response: "${finalResponse.substring(0, 100)}${finalResponse.length > 100 ? '...' : ''}"`);
+
+    // 6. Execute tools if LLM chose to use them
+    if (data?.choices?.[0]?.message?.tool_calls && data.choices[0].message.tool_calls.length > 0) {
+      console.log(`🛠️ LLM chose to use ${data.choices[0].message.tool_calls.length} tools (loop ${loopIteration})`);
       
-      // Create tool execution messages
-      const toolCallMessageMap = new Map();
-      for (const toolCall of llmResponse.tool_calls) {
+      // Create or find tool execution messages - ONE per unique tool call
+      for (const toolCall of data.choices[0].message.tool_calls) {
         const toolName = toolCall.function.name.replace('execute_', '');
-        const toolProgressMessage = await createToolExecutionMessage(
-          toolCall,
-          toolName,
-          userId,
-          sessionId,
-          loopIteration,
-          supabase
-        );
+        const mcpInfo = mcps?.find(m => m.default_key === toolName);
         
-        if (toolProgressMessage) {
-          toolCallMessageMap.set(toolCall.id, toolProgressMessage.id);
-          console.log(`📝 Mapped tool call ${toolCall.id} to message ${toolProgressMessage.id}`);
+        let parameters;
+        try {
+          parameters = JSON.parse(toolCall.function.arguments);
+        } catch (e) {
+          parameters = {};
         }
-      }
-      
-      // Execute tools with user auth token
-      const { toolResults, toolsUsed, toolProgress } = await executeTools(
-        llmResponse.tool_calls, 
-        mcps, 
-        userId, 
-        supabase,
-        userAuthToken
-      );
-
-      // Update tool execution messages with results
-      for (const toolResult of toolResults) {
-        const messageId = toolCallMessageMap.get(toolResult.tool_call_id);
-        if (messageId) {
-          const { error } = await supabase
-            .from('messages')
-            .update({ content: toolResult.content })
-            .eq('id', messageId);
-
-          if (error) {
-            console.error('❌ Failed to update tool execution message:', error);
+        
+        // Check if message already exists for this tool call
+        const existingMessageId = await toolMessageExistsByCallId(toolCall.id, loopIteration);
+        
+        if (existingMessageId) {
+          // Use existing message
+          toolCallMessageMap.set(toolCall.id, existingMessageId);
+          console.log(`♻️ Reusing existing tool message ${existingMessageId} for call ${toolCall.id}`);
+        } else {
+          // Create new tool execution message
+          const toolExecutionData = {
+            toolName: toolName,
+            displayName: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            status: 'executing',
+            parameters: parameters,
+            startTime: new Date().toISOString(),
+            toolCallId: toolCall.id
+          };
+          
+          console.log(`🚀 Creating tool execution message for ${toolName} (call: ${toolCall.id})`);
+          const messageId = await insertMessage(
+            JSON.stringify(toolExecutionData),
+            'tool-executing'
+          );
+          
+          if (messageId) {
+            toolCallMessageMap.set(toolCall.id, messageId);
+            console.log(`📝 Mapped tool call ${toolCall.id} to message ${messageId}`);
           } else {
-            console.log(`✅ Updated tool execution message ${messageId} with result`);
+            console.error(`❌ Failed to create message for tool ${toolName}`);
           }
         }
       }
-
-      // Construct the final response content
-      const content = toolResults.map(toolResult => toolResult.content).join('\n');
-      console.log(`💬 Constructed response content: ${content.substring(0, 100)}...`);
-
-      return {
-        message: content,
-        toolsUsed,
-        availableToolsCount: mcpTools.length,
-        loopIteration,
-        toolProgress
-      };
+      
+      const { toolResults, toolsUsed } = await executeTools(
+        data.choices[0].message.tool_calls,
+        mcps,
+        userId,
+        supabase
+      );
+      
+      allToolsUsed = toolsUsed;
+      
+      // Update existing tool messages with completion data
+      for (const toolCall of data.choices[0].message.tool_calls) {
+        const messageId = toolCallMessageMap.get(toolCall.id);
+        if (!messageId) {
+          console.error(`❌ No message ID found for tool call ${toolCall.id}`);
+          continue;
+        }
+        
+        const toolName = toolCall.function.name.replace('execute_', '');
+        const mcpInfo = mcps?.find(m => m.default_key === toolName);
+        const tool = toolsUsed.find(t => t.name === toolCall.function.name);
+        
+        if (tool) {
+          const toolCompletionData = {
+            toolName: toolName,
+            displayName: mcpInfo?.title || toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            status: tool.success ? 'completed' : 'failed',
+            parameters: tool.parameters || {},
+            result: tool.result,
+            error: tool.success ? undefined : (tool.error || 'Tool execution failed'),
+            success: tool.success,
+            startTime: new Date().toISOString(),
+            endTime: new Date().toISOString(),
+            toolCallId: toolCall.id
+          };
+          
+          console.log(`🔄 Updating tool message ${messageId} from executing to ${tool.success ? 'completed' : 'failed'}`);
+          
+          const updateSuccess = await updateMessage(messageId, JSON.stringify(toolCompletionData));
+          
+          if (!updateSuccess) {
+            console.error(`❌ Failed to update tool message ${messageId} for ${toolName}`);
+          } else {
+            console.log(`✅ Successfully updated tool message ${messageId} for ${toolName}`);
+          }
+        } else {
+          console.error(`❌ No tool result found for ${toolCall.function.name}`);
+        }
+      }
+      
+      // 7. Synthesize tool results
+      if (toolsUsed.length > 0) {
+        console.log(`🔄 Synthesizing tool results (loop ${loopIteration})`);
+        const synthesizedResponse = await synthesizeResults(
+          message,
+          conversationHistory,
+          toolsUsed,
+          finalResponse,
+          modelSettings,
+          supabase
+        );
+        
+        if (synthesizedResponse && synthesizedResponse.trim()) {
+          finalResponse = synthesizedResponse;
+        }
+      }
     } else {
-      // No tool calls, return the LLM response directly
-      console.log('No tool calls, returning LLM response');
-      return {
-        message: llmResponse.content,
-        toolsUsed: [],
-        availableToolsCount: mcpTools.length,
-        loopIteration
-      };
+      console.log(`✅ LLM responded directly without tools (loop ${loopIteration})`);
     }
 
-    // Evaluate if loop should be enabled
-    if (loopEnabled) {
-      console.log(`\n\n🌀 [Loop ${loopIteration}] Evaluating response for improvement...`);
-      const reflectionPrompt = `You are evaluating the previous response from an AI assistant to determine if it fully achieved the user's goal.
+    // 8. Store current iteration response
+    const responseMessageType = loopIteration === 0 ? 'response' : 'loop-enhancement';
+    await insertMessage(
+      finalResponse,
+      responseMessageType,
+      { tools_used: allToolsUsed }
+    );
 
-      Here is the user's original request:
-      ${message}
+    // 9. Self-improvement loop evaluation (only if loops are enabled)
+    if (loopEnabled && loopIteration < MAX_LOOPS && !streaming) {
+      console.log(`🔍 Evaluating if response can be improved (loop ${loopIteration})`);
+      
+      loopEvaluation = await shouldContinueLoop(
+        finalResponse,
+        allToolsUsed,
+        loopIteration,
+        message,
+        supabase,
+        modelSettings
+      );
 
-      Here is the AI assistant's response:
-      ${llmResponse.content}
+      // 10. Store reflection and continue loop if improvement is suggested
+      if (loopEvaluation.shouldContinue) {
+        console.log(`🔄 Continuing to loop ${loopIteration + 1}: ${loopEvaluation.reasoning}`);
+        
+        // Store reflection message
+        await insertMessage(
+          `🔍 **Reflection**: ${loopEvaluation.reasoning}`,
+          'loop-reflection',
+          {
+            improvement_reasoning: loopEvaluation.reasoning,
+            should_continue_loop: true
+          }
+        );
 
-      Please provide a brief explanation of why the response was sufficient or what could be improved.
-      If the response was sufficient, respond with "COMPLETE".
-      If the response could be improved, provide a concise reason for the improvement.`;
-
-      const reflectionMessages = [
-        { role: 'system', content: reflectionPrompt }
-      ];
-
-      const reflectionResponse = await openAI.chat.completions.create({
-        messages: reflectionMessages,
-        model: modelSettings.selectedModel || 'gpt-3.5-turbo-1106',
-      });
-
-      const improvementReasoning = reflectionResponse.choices[0].message.content;
-      console.log(`\n\n💡 [Loop ${loopIteration}] Improvement reasoning: ${improvementReasoning}`);
-
-      if (improvementReasoning === 'COMPLETE') {
-        console.log(`\n\n✅ [Loop ${loopIteration}] Loop completed, returning final result`);
-        return {
-          message: llmResponse.content,
-          toolsUsed: [],
-          availableToolsCount: mcpTools.length,
-          loopIteration,
-          messageType: 'loop-complete'
-        };
-      } else {
-        console.log(`\n\n🔄 [Loop ${loopIteration}] Continuing loop with improvement reasoning`);
+        // Create improvement message and recurse
+        const improvementMessage = `Reflecting to improve prior response. Previous iteration: "${finalResponse.substring(0, 100)}..."`;
+        
         return await handleUnifiedQuery(
-          message,
-          [...conversationHistory, { role: 'assistant', content: llmResponse.content }],
+          improvementMessage,
+          [...conversationHistory, { role: 'assistant', content: finalResponse }],
           userId,
           sessionId,
           modelSettings,
@@ -325,20 +427,236 @@ Please respond in a friendly, conversational style.`;
           loopIteration + 1,
           loopEnabled,
           customSystemPrompt,
-          agentId
+          agentId // Pass agentId through recursion
         );
+      } else {
+        // Store loop completion message
+        if (loopIteration > 0) {
+          await insertMessage(
+            `✅ **Loop Complete**: Enhanced response ready after ${loopIteration + 1} iteration(s)`,
+            'loop-complete',
+            {
+              improvement_reasoning: loopEvaluation.reasoning,
+              should_continue_loop: false
+            }
+          );
+        }
       }
-    } else {
-      console.log('Loop disabled, returning final result');
-      return {
-        message: llmResponse.content,
-        toolsUsed: [],
-        availableToolsCount: mcpTools.length,
-        loopIteration
-      };
+    } else if (!loopEnabled && loopIteration === 0) {
+      console.log(`🚫 Loop evaluation skipped - loops disabled by user`);
     }
+
+    // 11. Persist insights for multi-tool queries
+    if (userId && allToolsUsed.length > 1) {
+      try {
+        await persistInsightAsKnowledgeNode(
+          message,
+          finalResponse,
+          [{ toolsUsed: allToolsUsed, response: finalResponse }],
+          userId,
+          { classification: 'UNIFIED_LOOP', reasoning: `Loop ${loopIteration} with ${allToolsUsed.length} tools` },
+          supabase
+        );
+      } catch (error) {
+        console.warn('Failed to persist insights:', error);
+      }
+    }
+
+    // 12. Validate response
+    if (!finalResponse || !finalResponse.trim()) {
+      finalResponse = createFallbackResponse(message, allToolsUsed);
+    }
+
+    console.log(`🛠️ Tools available: ${mcps.length}`);
+    console.log(`📏 Response length: ${finalResponse.length}`);
+    console.log(`✅ Unified query completed successfully for agent: ${agentId}`);
+
+    return {
+      success: true,
+      message: finalResponse,
+      unifiedApproach: true,
+      toolsUsed: allToolsUsed,
+      sessionId,
+      loopIteration,
+      improvementReasoning: loopEvaluation?.reasoning,
+      streamedSteps: true,
+      loopEnabled,
+      usedCustomPrompt: customSystemPrompt ? true : false,
+      agentId,
+      availableToolsCount: mcps.length
+    };
+
   } catch (error) {
-    console.error('❌ Unified query handler error:', error);
-    throw error;
+    console.error(`❌ Error in unified query handler (loop ${loopIteration}):`, error);
+    
+    finalResponse = `I apologize, but I encountered an error while processing your message "${message}". Please try again or rephrase your question.`;
+    
+    if (userId && sessionId) {
+      try {
+        await supabase.from('agent_conversations').insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'assistant',
+          content: finalResponse,
+          tools_used: [],
+          loop_iteration: loopIteration,
+          agent_id: agentId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      } catch (dbError) {
+        console.error('Failed to insert error fallback:', dbError);
+      }
+    }
+
+    return {
+      success: true,
+      message: finalResponse,
+      unifiedApproach: true,
+      toolsUsed: [],
+      sessionId,
+      loopIteration,
+      error: 'Processed with fallback response',
+      loopEnabled,
+      usedCustomPrompt: customSystemPrompt ? true : false,
+      agentId,
+      availableToolsCount: 0
+    };
   }
+}
+
+/**
+ * Generate unified system prompt with loop-awareness
+ */
+function generateUnifiedSystemPrompt(mcps: any[], loopIteration: number = 0, loopEnabled: boolean = false): string {
+  const mcpSummaries = mcps?.map(mcp => ({
+    name: mcp.title,
+    description: mcp.description,
+    parameters: mcp.parameters
+  })) || [];
+  
+  const toolDescriptions = mcpSummaries
+    .map(summary => `**${summary.name}**: ${summary.description}`)
+    .join('\n');
+
+  const loopGuidance = loopEnabled && loopIteration > 0 ? `
+
+**🔄 IMPROVEMENT CONTEXT:**
+This is loop iteration ${loopIteration + 1}. You are reflecting on and improving a previous response. Focus on:
+- Adding valuable information that was missing
+- Using tools that could enhance the answer
+- Providing deeper analysis or additional perspectives
+- Ensuring comprehensive coverage of the user's request` : loopEnabled ? `
+
+**🔄 SELF-IMPROVEMENT:**
+After completing your response, you may have the opportunity to reflect and improve it further through additional tool usage or refinement.` : `
+
+**🔄 SINGLE RESPONSE MODE:**
+Loops are disabled. Provide your best response in a single iteration.`;
+
+  return `You are an intelligent AI assistant with access to powerful tools when needed.
+
+**🧠 NATURAL RESPONSE STRATEGY:**
+1. **ANSWER DIRECTLY** from your knowledge for simple questions, greetings, and general conversations
+2. **USE TOOLS SELECTIVELY** only when they add clear value:
+   - Knowledge Search: When you need to access previous learnings or uploaded documents
+   - Web Search: For current/real-time information not in your knowledge
+   - GitHub Tools: For code repository analysis
+   - Other tools: When specific external data is needed
+
+**🛠️ Available Tools (use only when valuable):**
+${toolDescriptions}${loopGuidance}
+
+**💡 Decision Guidelines:**
+- Simple greetings like "hello" → respond directly
+- Basic questions you can answer → respond directly  
+- Need previous knowledge → use Knowledge Search tool
+- Need current information → use Web Search tool
+- Complex research → use multiple tools progressively
+- **Don't overuse tools** - your general knowledge is extensive
+
+**📋 Response Style:**
+- Be conversational and helpful
+- Only use tools when they genuinely improve your answer
+- Integrate tool results naturally when used
+- Provide clear, actionable information
+
+Remember: You have comprehensive knowledge. Tools are available when needed, not required for every response.`;
+}
+
+/**
+ * Synthesize results from tools and knowledge
+ */
+async function synthesizeResults(
+  originalMessage: string,
+  conversationHistory: any[],
+  toolsUsed: any[],
+  originalResponse: string,
+  modelSettings: any,
+  supabase: any
+): Promise<string | null> {
+  try {
+    const toolResultsSummary = toolsUsed.map(tool => {
+      if (tool.success && tool.result) {
+        const resultPreview = typeof tool.result === 'string' 
+          ? tool.result.substring(0, 500) + (tool.result.length > 500 ? '...' : '')
+          : JSON.stringify(tool.result).substring(0, 500);
+        return `${tool.name}: ${resultPreview}`;
+      }
+      return `${tool.name}: Failed`;
+    }).join('\n');
+
+    const synthesisMessages = [
+      {
+        role: 'system',
+        content: `Provide a comprehensive, well-structured answer based on the tool results.
+
+User asked: "${originalMessage}"
+
+Tool results:
+${toolResultsSummary}
+
+Create a clear, helpful response that integrates this information naturally. Format appropriately for readability.`
+      },
+      {
+        role: 'user',
+        content: originalMessage
+      }
+    ];
+
+    const synthesisResponse = await supabase.functions.invoke('ai-model-proxy', {
+      body: {
+        messages: synthesisMessages,
+        temperature: 0.3,
+        max_tokens: 1000,
+        ...(modelSettings && {
+          provider: modelSettings.provider,
+          model: modelSettings.selectedModel,
+          localModelUrl: modelSettings.localModelUrl
+        })
+      }
+    });
+    
+    if (synthesisResponse.error) {
+      console.error('Synthesis failed:', synthesisResponse.error);
+      return null;
+    }
+    
+    return extractAssistantMessage(synthesisResponse.data);
+    
+  } catch (error) {
+    console.error('Error in synthesis:', error);
+    return null;
+  }
+}
+
+function createFallbackResponse(message: string, toolsUsed: any[]): string {
+  if (toolsUsed && toolsUsed.length > 0) {
+    const successfulTools = toolsUsed.filter(t => t.success);
+    if (successfulTools.length > 0) {
+      return `I processed your request "${message}" using ${successfulTools.length} tool(s), but encountered an issue formatting the response. The tools executed successfully, but I need to try again to provide a proper answer.`;
+    }
+  }
+  
+  return `I received your message "${message}" and attempted to process it, but encountered technical difficulties. Please try rephrasing your question or try again in a moment.`;
 }
