@@ -140,17 +140,7 @@ export const useAIAgentChat = () => {
 
       console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages, agent: ${currentAgent.name}, loop enabled: ${loopEnabled}`);
 
-      const requestBody: {
-        message: string;
-        conversationHistory: { role: "user" | "assistant"; content: string; }[];
-        userId: string;
-        sessionId: string;
-        streaming: boolean;
-        modelSettings: typeof modelSettings;
-        loopEnabled: boolean;
-        agentId: string;
-        customSystemPrompt?: string;
-      } = {
+      const requestBody = {
         message,
         conversationHistory,
         userId: user.id,
@@ -161,12 +151,9 @@ export const useAIAgentChat = () => {
           selectedModel: currentAgent.model
         },
         loopEnabled: currentAgent.loop_enabled || loopEnabled,
-        agentId: currentAgent.id
+        agentId: currentAgent.id,
+        ...(currentAgent.system_prompt && { customSystemPrompt: currentAgent.system_prompt })
       };
-
-      if (currentAgent.system_prompt) {
-        requestBody.customSystemPrompt = currentAgent.system_prompt;
-      }
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: requestBody
@@ -208,7 +195,7 @@ export const useAIAgentChat = () => {
             // Update UI with tool execution progress
             console.log(`🔧 Tool ${execution.tool} status: ${execution.status}`);
             
-            // You could add a message for each tool execution or update a progress indicator
+            // Add a message for each tool execution result
             if (execution.status === 'completed' && execution.result) {
               const toolResultId = generateMessageId(`Tool result: ${execution.tool}`, 'assistant', currentSessionId);
               const toolMessage: ConversationMessage = {
