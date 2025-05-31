@@ -1,3 +1,4 @@
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { OpenAI } from "https://deno.land/x/openai@v4.20.1/mod.ts";
 
@@ -106,38 +107,55 @@ export async function handleUnifiedQuery(
   console.log(`🧠 Custom system prompt received: ${customSystemPrompt ? 'YES' : 'NO'}`);
 
   try {
-    // Fetch available tools for the agent
+    // Fetch available tools for the agent using the correct table
     let mcps: ToolMetadata[] = [];
     if (agentId) {
-      const { data: agentMcps, error: agentMcpError } = await supabase
-        .from('agent_mcps')
-        .select('mcp_id')
-        .eq('agent_id', agentId);
+      console.log(`🔧 Fetching tool configurations for agent: ${agentId}`);
+      
+      // Use agent_tool_configs table instead of non-existent agent_mcps
+      const { data: agentToolConfigs, error: agentConfigError } = await supabase
+        .from('agent_tool_configs')
+        .select(`
+          *,
+          mcps:mcp_id (
+            id,
+            title,
+            description,
+            endpoint,
+            icon,
+            parameters,
+            default_key,
+            category,
+            tags,
+            suggestedPrompt,
+            sampleUseCases,
+            requiresAuth,
+            authType,
+            authKeyName,
+            requirestoken,
+            isDefault
+          )
+        `)
+        .eq('agent_id', agentId)
+        .eq('is_active', true);
 
-      if (agentMcpError) {
-        console.error('❌ Failed to fetch agent MCPs:', agentMcpError);
-        throw new Error('Failed to fetch agent MCPs');
+      if (agentConfigError) {
+        console.error('❌ Failed to fetch agent tool configs:', agentConfigError);
+        throw new Error('Failed to fetch agent tool configs');
       }
 
-      const mcpIds = agentMcps.map((agentMcp: any) => agentMcp.mcp_id);
+      // Transform the data to get the MCP details
+      mcps = (agentToolConfigs || [])
+        .filter(config => config.mcps) // Ensure MCP data exists
+        .map(config => config.mcps) as ToolMetadata[];
 
-      const { data: mcpsData, error: mcpsError } = await supabase
-        .from('mcps')
-        .select('*')
-        .in('id', mcpIds);
-
-      if (mcpsError) {
-        console.error('❌ Failed to fetch MCPs for agent:', mcpsError);
-        throw new Error('Failed to fetch MCPs for agent');
-      }
-
-      mcps = mcpsData as ToolMetadata[];
-      console.log(`🛠️  Loaded ${mcps.length} tools for agent ${agentId}`);
+      console.log(`🛠️  Loaded ${mcps.length} tools for agent ${agentId}:`, mcps.map(m => m.title).join(', '));
     } else {
+      console.log('🔧 No agent ID provided, fetching default tools');
       const { data: mcpsData, error: mcpsError } = await supabase
         .from('mcps')
         .select('*')
-        .eq('is_default', true);
+        .eq('isDefault', true);
 
       if (mcpsError) {
         console.error('❌ Failed to fetch default MCPs:', mcpsError);

@@ -90,24 +90,17 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { action, ...parameters } = await req.json();
-    const authHeader = req.headers.get('Authorization');
+    const { action, userId, ...parameters } = await req.json();
     
-    if (!authHeader) {
-      throw new Error('Authorization header required');
+    if (!userId) {
+      throw new Error('User ID is required');
     }
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    
-    if (userError || !user) {
-      throw new Error('Invalid user token');
-    }
+    console.log(`📝 Executing Docs action: ${action} for user: ${userId}`);
 
-    const googleToken = await getGoogleToken(user.id, supabase);
+    // Get Google token using userId from request body (consistent with Google Drive)
+    const googleToken = await getGoogleToken(userId, supabase);
     let result;
-
-    console.log(`📝 Executing Docs action: ${action}`);
 
     switch (action) {
       case 'get_document': {
