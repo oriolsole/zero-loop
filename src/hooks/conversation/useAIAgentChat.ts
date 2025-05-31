@@ -85,6 +85,12 @@ export const useAIAgentChat = () => {
       return;
     }
 
+    // Validate input
+    if (!message || !message.trim()) {
+      toast.error('Please enter a message');
+      return;
+    }
+
     // Validate session before proceeding
     const isSessionValid = await validateSession();
     if (!isSessionValid) {
@@ -104,19 +110,21 @@ export const useAIAgentChat = () => {
       }
 
       console.log('🔑 Using fresh session token for AI agent call');
-
-      // Add user message immediately with proper user data and required properties
-      await addMessage({
-        id: crypto.randomUUID(),
-        role: 'user',
-        content: message,
-        messageType: 'response',
-        timestamp: new Date()
+      console.log('📤 Sending request body:', {
+        message: message.trim(),
+        userId: user.id,
+        sessionId: currentSessionId,
+        streaming: false,
+        modelSettings,
+        loopEnabled,
+        agentId: currentAgent?.id || null,
+        customSystemPrompt: currentAgent?.system_prompt || null
       });
 
+      // DO NOT add user message here - let the backend handle it to avoid duplication
       const response = await supabase.functions.invoke('ai-agent', {
         body: {
-          message,
+          message: message.trim(),
           userId: user.id,
           sessionId: currentSessionId,
           streaming: false,
@@ -130,6 +138,8 @@ export const useAIAgentChat = () => {
           'Content-Type': 'application/json'
         }
       });
+
+      console.log('📥 AI agent response:', response);
 
       if (response.error) {
         console.error('AI agent error:', response.error);
