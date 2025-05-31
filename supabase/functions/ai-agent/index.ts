@@ -32,7 +32,8 @@ serve(async (req) => {
       testMode = false, 
       loopEnabled = false,
       agentId,
-      customSystemPrompt
+      customSystemPrompt,
+      skipOrchestration = false
     } = await req.json();
     
     if (!message) {
@@ -49,7 +50,8 @@ serve(async (req) => {
       testMode,
       loopEnabled,
       agentId,
-      hasCustomPrompt: !!customSystemPrompt
+      hasCustomPrompt: !!customSystemPrompt,
+      skipOrchestration
     });
 
     // In test mode, return basic response for validation
@@ -66,57 +68,137 @@ serve(async (req) => {
       );
     }
 
+    // For skipOrchestration requests, call the unified handler directly
+    if (skipOrchestration) {
+      console.log('🔄 Calling unified query handler directly');
+      
+      const { data: handlerData, error: handlerError } = await supabase.functions.invoke('unified-query-handler', {
+        body: {
+          message,
+          conversationHistory,
+          userId,
+          sessionId,
+          streaming,
+          modelSettings,
+          loopEnabled,
+          agentId,
+          customSystemPrompt,
+          skipOrchestration: true
+        }
+      });
+
+      if (handlerError) {
+        throw new Error(`Unified handler error: ${handlerError.message}`);
+      }
+
+      return new Response(
+        JSON.stringify(handlerData),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log('🎯 Starting unified query handler with orchestration detection');
   
     // Detect if we should use orchestration
     const orchestrationContext = detectOrchestrationNeeds(message);
     console.log('🎼 Orchestration detection result:', orchestrationContext);
 
-    // If orchestration is needed, return orchestration plan instead of executing directly
+    // If orchestration is needed, execute the plan directly instead of returning it
     if (orchestrationContext.shouldUseOrchestration && orchestrationContext.suggestedTools.length > 1) {
-      console.log('🚀 Creating multi-tool plan');
+      console.log('🚀 Executing multi-tool orchestration');
       
-      const planId = `plan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const executions = orchestrationContext.suggestedTools.map((tool, index) => ({
-        id: `${planId}-exec-${index + 1}`,
-        tool: `execute_${tool}`,
-        description: getToolDescription(tool, message),
-        status: 'pending' as const,
-        parameters: getToolParameters(tool, message),
-        dependencies: [],
-        canRunInParallel: true,
-        priority: index,
-        estimatedDuration: getEstimatedDuration(tool)
-      }));
-
-      const totalEstimatedTime = executions.reduce((sum, exec) => sum + exec.estimatedDuration, 0);
-
+      // Execute tools sequentially for better error handling
+      const toolResults = [];
+      const toolsUsed = [];
+      
+      for (const tool of orchestrationContext.suggestedTools) {
+        try {
+          console.log(`🔧 Executing tool: ${tool}`);
+          
+          // Prepare parameters for each tool
+          let toolParameters;
+          if (tool === 'knowledge-search-v2') {
+            toolParameters = {
+              query: message,
+              limit: 5,
+              includeNodes: true,
+              matchThreshold: 0.3,
+              useEmbeddings: true
+            };
+          } else if (tool === 'web-search') {
+            toolParameters = {
+              query: message,
+              numResults: 5
+            };
+          } else {
+            toolParameters = { query: message };
+          }
+          
+          // Execute the tool
+          const { data: toolData, error: toolError } = await supabase.functions.invoke(tool.replace('_', '-'), {
+            body: toolParameters
+          });
+          
+          if (toolError) {
+            console.error(`Tool ${tool} error:`, toolError);
+            toolsUsed.push({
+              name: tool,
+              success: false,
+              result: { error: toolError.message }
+            });
+          } else {
+            console.log(`✅ Tool ${tool} completed successfully`);
+            toolResults.push(toolData);
+            toolsUsed.push({
+              name: tool,
+              success: true,
+              result: toolData
+            });
+          }
+        } catch (error) {
+          console.error(`Tool ${tool} execution failed:`, error);
+          toolsUsed.push({
+            name: tool,
+            success: false,
+            result: { error: error.message }
+          });
+        }
+      }
+      
+      // Generate a synthesized response based on tool results
+      let synthesizedResponse = `I've executed ${orchestrationContext.suggestedTools.length} tools to provide comprehensive information:\n\n`;
+      
+      toolResults.forEach((result, index) => {
+        const toolName = orchestrationContext.suggestedTools[index];
+        synthesizedResponse += `**${toolName.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}:**\n`;
+        
+        if (typeof result === 'string') {
+          synthesizedResponse += result + '\n\n';
+        } else if (result && typeof result === 'object') {
+          if (result.data) {
+            synthesizedResponse += JSON.stringify(result.data, null, 2) + '\n\n';
+          } else {
+            synthesizedResponse += JSON.stringify(result, null, 2) + '\n\n';
+          }
+        }
+      });
+      
       return new Response(
         JSON.stringify({
           success: true,
-          message: `I'll execute a coordinated plan using ${orchestrationContext.suggestedTools.length} tools to comprehensively address your request.`,
-          orchestrationPlan: {
-            id: planId,
-            title: `Multi-Tool Analysis: ${orchestrationContext.suggestedTools.length} tools`,
-            description: `Coordinated execution of ${orchestrationContext.suggestedTools.join(', ')} for comprehensive results`,
-            executions,
-            executionGroups: [executions], // Simple grouping for now
-            status: 'pending',
-            currentExecutionIndex: 0,
-            currentGroupIndex: 0,
-            totalEstimatedTime,
-            optimizationApplied: false
-          },
-          requiresOrchestration: true,
-          toolsUsed: [],
-          availableToolsCount: orchestrationContext.suggestedTools.length
+          message: synthesizedResponse,
+          toolsUsed,
+          orchestrationUsed: true,
+          toolsExecuted: orchestrationContext.suggestedTools.length
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // For single tool or simple queries, call the unified query handler
-    const { data: handlerData, error: handlerError } = await supabase.functions.invoke('ai-agent', {
+    console.log('🔧 Using single-tool execution');
+    
+    const { data: handlerData, error: handlerError } = await supabase.functions.invoke('unified-query-handler', {
       body: {
         message,
         conversationHistory,
@@ -127,12 +209,12 @@ serve(async (req) => {
         loopEnabled,
         agentId,
         customSystemPrompt,
-        skipOrchestration: true // Flag to prevent recursion
+        skipOrchestration: true
       }
     });
 
     if (handlerError) {
-      throw new Error(handlerError.message);
+      throw new Error(`Unified handler error: ${handlerError.message}`);
     }
 
     console.log('✅ Query completed successfully for agent:', agentId);
@@ -158,42 +240,3 @@ serve(async (req) => {
     );
   }
 });
-
-function getToolDescription(tool: string, query: string): string {
-  const descriptions = {
-    'web-search': `Search the web for: ${query}`,
-    'web-scraper': 'Extract detailed content from search results',
-    'knowledge-search-v2': 'Search knowledge base for relevant information',
-    'github-tools': 'Analyze GitHub repository',
-    'jira-tools': 'Access Jira project information',
-    'gmail-tools': 'Access Gmail data'
-  };
-  
-  return descriptions[tool as keyof typeof descriptions] || `Execute ${tool}`;
-}
-
-function getToolParameters(tool: string, query: string): Record<string, any> {
-  const parameters = {
-    'web-search': { query },
-    'web-scraper': { url: '', extract_content: true },
-    'knowledge-search-v2': { query, limit: 5 },
-    'github-tools': { action: 'get_repository' },
-    'jira-tools': { action: 'list_projects' },
-    'gmail-tools': { action: 'list_emails', maxResults: 5 }
-  };
-  
-  return parameters[tool as keyof typeof parameters] || { query };
-}
-
-function getEstimatedDuration(tool: string): number {
-  const durations = {
-    'web-search': 4,
-    'web-scraper': 8,
-    'knowledge-search-v2': 3,
-    'github-tools': 5,
-    'jira-tools': 4,
-    'gmail-tools': 3
-  };
-  
-  return durations[tool as keyof typeof durations] || 5;
-}
