@@ -6,24 +6,14 @@ interface GoogleIconProps {
 }
 
 export const GoogleDriveIcon: React.FC<GoogleIconProps> = ({ size = 24, className = "" }) => (
-  <img 
-    src="https://logo.clearbit.com/drive.google.com"
-    alt="Google Drive" 
-    width={size} 
-    height={size} 
-    className={className}
-    style={{ objectFit: 'contain' }}
-    onError={(e) => {
-      // Fallback to a simple folder icon if Clearbit fails
-      const target = e.target as HTMLImageElement;
-      target.style.display = 'none';
-      target.insertAdjacentHTML('afterend', `
-        <svg width="${size}" height="${size}" viewBox="0 0 24 24" class="${className}" fill="currentColor">
-          <path d="M10 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2h-8l-2-2z"/>
-        </svg>
-      `);
-    }}
-  />
+  <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
+    {/* Blue triangle (left) */}
+    <path fill="#4285F4" d="M7.71 4.87L2.4 14.43h5.31L13 4.87H7.71z"/>
+    {/* Green triangle (right) */}
+    <path fill="#34A853" d="M16.29 4.87L11 14.43h10.6l5.31-9.56H16.29z"/>
+    {/* Yellow triangle (bottom) */}
+    <path fill="#FBBC04" d="M2.4 14.43L7.71 24h8.58l-5.31-9.57H2.4z"/>
+  </svg>
 );
 
 export const GmailIcon: React.FC<GoogleIconProps> = ({ size = 24, className = "" }) => (
@@ -34,7 +24,7 @@ export const GmailIcon: React.FC<GoogleIconProps> = ({ size = 24, className = ""
 
 export const GoogleCalendarIcon: React.FC<GoogleIconProps> = ({ size = 24, className = "" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-    <path fill="#4285F4" d="M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/>
+    <path fill="#4285F4" d="M19 3h-1V1h-2v2H8V1H6v2H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.89 2-2V5c0-1.1-.9-2-2-2h-8l-2-2z"/>
     <path fill="#34A853" d="M7 10h5v5H7z"/>
   </svg>
 );
