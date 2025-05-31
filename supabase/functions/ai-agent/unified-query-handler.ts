@@ -1,3 +1,4 @@
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
@@ -379,7 +380,7 @@ export async function handleUnifiedQuery(
       console.log(`✅ LLM responded directly without tools (loop ${loopIteration})`);
     }
 
-    // 8. Store current iteration response (now contains synthesized result)
+    // 8. Store current iteration response ONLY AFTER synthesis is complete
     const responseMessageType = loopIteration === 0 ? 'response' : 'loop-enhancement';
     await insertMessage(
       finalResponse,
