@@ -5,23 +5,36 @@ import JiraIcon from '@/components/icons/JiraIcon';
 export const getToolIcon = (toolName: string) => {
   const toolLower = toolName.toLowerCase();
   
+  // Most specific matches first - exact tool names
+  if (toolLower === 'knowledge-search-v2' || toolLower === 'knowledge_search' || toolLower === 'knowledge_retrieval') {
+    return Database;
+  }
+  
+  if (toolLower === 'github-search' || toolLower === 'github_search') {
+    return Github;
+  }
+  
+  if (toolLower === 'jira-search' || toolLower === 'jira_search') {
+    return JiraIcon;
+  }
+  
   // Google Drive specific tools
   if (toolLower.includes('google-drive') || toolLower.includes('drive')) {
     return HardDrive;
   }
   
-  // Search tools
-  if (toolLower.includes('search') || toolLower.includes('google') || toolLower.includes('web search')) {
-    return Search;
-  }
-  
-  // GitHub tools
+  // GitHub tools (broader match after specific search)
   if (toolLower.includes('github')) {
     return Github;
   }
   
+  // Jira tools (broader match after specific search)
+  if (toolLower.includes('jira')) {
+    return JiraIcon;
+  }
+  
   // Knowledge and database tools - use Database for better distinction
-  if (toolLower.includes('knowledge') || toolLower.includes('database') || toolLower.includes('knowledge-search')) {
+  if (toolLower.includes('knowledge') || toolLower.includes('database')) {
     return Database;
   }
   
@@ -30,24 +43,24 @@ export const getToolIcon = (toolName: string) => {
     return Library;
   }
   
+  // AI and reasoning tools
+  if (toolLower.includes('ai') || toolLower.includes('reasoning') || toolLower.includes('agent') || toolLower.includes('learning')) {
+    return Brain;
+  }
+  
   // Code analysis tools
   if (toolLower.includes('code') || toolLower.includes('analysis')) {
     return Code;
   }
   
   // Web scraping tools
-  if (toolLower.includes('web') || toolLower.includes('scraper') || toolLower.includes('scraping')) {
+  if (toolLower.includes('scraper') || toolLower.includes('scraping')) {
     return Globe;
   }
   
-  // Jira tools
-  if (toolLower.includes('jira')) {
-    return JiraIcon;
-  }
-  
-  // AI and reasoning tools
-  if (toolLower.includes('ai') || toolLower.includes('reasoning') || toolLower.includes('agent') || toolLower.includes('learning')) {
-    return Brain;
+  // Pure web search tools (more restrictive - only for actual web search)
+  if (toolLower === 'web_search' || toolLower === 'google_search' || toolLower === 'web search' || toolLower === 'google search') {
+    return Search;
   }
   
   // Terminal and command tools
