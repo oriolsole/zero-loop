@@ -2,12 +2,30 @@
 import { useCallback } from 'react';
 import { ToolExecution, ToolDependency } from '@/types/orchestrator';
 
+interface BaseDependencyPattern {
+  canRunInParallel: boolean;
+  providesContext?: string[];
+}
+
+interface IndependentToolPattern extends BaseDependencyPattern {
+  canRunInParallel: true;
+  providesContext: string[];
+}
+
+interface DependentToolPattern extends BaseDependencyPattern {
+  dependsOn: string[];
+  canRunInParallel: false;
+  needsInput: string[];
+}
+
+type DependencyPattern = IndependentToolPattern | DependentToolPattern;
+
 export const useToolDependencies = () => {
   const detectDependencies = useCallback((executions: ToolExecution[]): ToolExecution[] => {
     const updatedExecutions = [...executions];
     
-    // Define tool dependency patterns
-    const dependencyPatterns = {
+    // Define tool dependency patterns with proper typing
+    const dependencyPatterns: Record<string, DependencyPattern> = {
       'execute_web-search': {
         canRunInParallel: true,
         providesContext: ['searchResults', 'urls', 'content']
@@ -35,20 +53,25 @@ export const useToolDependencies = () => {
       }
     };
 
+    // Helper function to check if pattern has dependencies
+    const hasDependencies = (pattern: DependencyPattern): pattern is DependentToolPattern => {
+      return 'dependsOn' in pattern;
+    };
+
     // Detect dependencies between tools
     updatedExecutions.forEach((execution, index) => {
-      const pattern = dependencyPatterns[execution.tool as keyof typeof dependencyPatterns];
+      const pattern = dependencyPatterns[execution.tool];
       
       if (pattern) {
-        execution.canRunInParallel = pattern.canRunInParallel ?? true;
+        execution.canRunInParallel = pattern.canRunInParallel;
         execution.priority = index;
         execution.dependencies = execution.dependencies || [];
 
         // Check if this tool needs input from previous tools
-        if (pattern.dependsOn) {
+        if (hasDependencies(pattern)) {
           pattern.dependsOn.forEach(dependencyTool => {
             const dependencyExecution = updatedExecutions.find(e => e.tool === dependencyTool);
-            if (dependencyExecution && pattern.needsInput) {
+            if (dependencyExecution) {
               pattern.needsInput.forEach(inputParam => {
                 execution.dependencies.push({
                   toolId: dependencyExecution.id,
