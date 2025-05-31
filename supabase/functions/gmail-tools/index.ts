@@ -8,7 +8,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Simple decryption function (matches google-oauth-callback)
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+
+// Simple encryption/decryption using Web Crypto API
 async function getEncryptionKey(): Promise<CryptoKey> {
   const keyMaterial = Deno.env.get('GOOGLE_OAUTH_ENCRYPTION_KEY') || 'default-key-material-change-in-production';
   const encoder = new TextEncoder();
@@ -44,18 +46,134 @@ async function decryptToken(encryptedToken: string): Promise<string> {
   return decoder.decode(decrypted);
 }
 
-async function getGoogleToken(userId: string, supabase: any): Promise<string> {
-  const { data, error } = await supabase
+async function encryptToken(token: string): Promise<string> {
+  if (!token) return '';
+  
+  const key = await getEncryptionKey();
+  const encoder = new TextEncoder();
+  const data = encoder.encode(token);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    data
+  );
+  
+  // Combine IV and encrypted data
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  
+  // Convert to base64
+  return btoa(String.fromCharCode(...combined));
+}
+
+// Cache for access tokens per user
+const tokenCache = new Map<string, { token: string; expires: number }>();
+
+async function getValidAccessToken(userId: string, supabase: any): Promise<string> {
+  // Check cache first
+  const cached = tokenCache.get(userId);
+  if (cached && cached.expires > Date.now()) {
+    return cached.token;
+  }
+
+  console.log('Getting OAuth token for user:', userId);
+
+  // Get stored OAuth tokens
+  const { data: tokenData, error } = await supabase
     .from('google_oauth_tokens')
-    .select('access_token')
+    .select('*')
     .eq('user_id', userId)
     .single();
 
-  if (error || !data) {
-    throw new Error('Google OAuth token not found. Please connect your Google account first.');
+  if (error || !tokenData) {
+    throw new Error('Gmail not connected. Please connect your Google account in the Tools section first.');
   }
 
-  return await decryptToken(data.access_token);
+  // Decrypt the stored tokens
+  console.log('🔐 Decrypting stored tokens...');
+  const decryptedAccessToken = await decryptToken(tokenData.access_token);
+  const decryptedRefreshToken = tokenData.refresh_token ? await decryptToken(tokenData.refresh_token) : null;
+
+  // Check if token is still valid
+  const expiresAt = new Date(tokenData.expires_at);
+  const now = new Date();
+
+  if (expiresAt > now) {
+    // Token is still valid, cache and return
+    tokenCache.set(userId, {
+      token: decryptedAccessToken,
+      expires: expiresAt.getTime()
+    });
+    console.log('✅ Using existing valid OAuth token');
+    return decryptedAccessToken;
+  }
+
+  // Token expired, refresh it
+  if (!decryptedRefreshToken) {
+    throw new Error('Gmail connection expired. Please reconnect your account in the Tools section.');
+  }
+
+  console.log('🔄 Refreshing expired OAuth token for user:', userId);
+
+  const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
+  const clientSecret = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET');
+
+  if (!clientId || !clientSecret) {
+    throw new Error('Google OAuth credentials not configured');
+  }
+
+  // Refresh the token
+  const refreshResponse = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: decryptedRefreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+
+  if (!refreshResponse.ok) {
+    const errorText = await refreshResponse.text();
+    console.error('Token refresh failed:', errorText);
+    throw new Error('Failed to refresh Gmail access. Please reconnect your account in the Tools section.');
+  }
+
+  const refreshData = await refreshResponse.json();
+  const newExpiresAt = new Date(Date.now() + (refreshData.expires_in * 1000));
+
+  // Encrypt the new access token
+  const encryptedNewAccessToken = await encryptToken(refreshData.access_token);
+
+  // Update stored tokens
+  const { error: updateError } = await supabase
+    .from('google_oauth_tokens')
+    .update({
+      access_token: encryptedNewAccessToken,
+      expires_at: newExpiresAt.toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('user_id', userId);
+
+  if (updateError) {
+    console.error('Failed to update refreshed tokens:', updateError);
+    throw new Error('Failed to update authentication tokens');
+  }
+
+  // Cache the new token
+  tokenCache.set(userId, {
+    token: refreshData.access_token,
+    expires: newExpiresAt.getTime()
+  });
+
+  console.log('✅ Successfully refreshed OAuth token for user:', userId);
+  return refreshData.access_token;
 }
 
 async function callGmailAPI(endpoint: string, token: string, options: any = {}) {
@@ -85,29 +203,32 @@ serve(async (req) => {
   }
 
   try {
+    const {
+      action,
+      userId,
+      ...parameters
+    } = await req.json();
+
+    console.log('Gmail action:', action, 'for user:', userId);
+
+    if (!action) {
+      throw new Error('Action parameter is required');
+    }
+
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    // Initialize Supabase client
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { action, ...parameters } = await req.json();
-    const authHeader = req.headers.get('Authorization');
-    
-    if (!authHeader) {
-      throw new Error('Authorization header required');
-    }
+    // Get valid access token (handles refresh and decryption if needed)
+    const accessToken = await getValidAccessToken(userId, supabase);
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    
-    if (userError || !user) {
-      throw new Error('Invalid user token');
-    }
-
-    const googleToken = await getGoogleToken(user.id, supabase);
     let result;
-
-    console.log(`📧 Executing Gmail action: ${action}`);
 
     switch (action) {
       case 'list_emails': {
@@ -118,13 +239,13 @@ serve(async (req) => {
           ...(labelIds.length > 0 && { labelIds: labelIds.join(',') })
         });
         
-        result = await callGmailAPI(`/users/me/messages?${queryParams}`, googleToken);
+        result = await callGmailAPI(`/users/me/messages?${queryParams}`, accessToken);
         
         // Get email details for each message
         if (result.messages) {
           const emails = await Promise.all(
             result.messages.slice(0, 5).map(async (msg: any) => {
-              const details = await callGmailAPI(`/users/me/messages/${msg.id}`, googleToken);
+              const details = await callGmailAPI(`/users/me/messages/${msg.id}`, accessToken);
               return {
                 id: details.id,
                 threadId: details.threadId,
@@ -145,7 +266,7 @@ serve(async (req) => {
         const { messageId } = parameters;
         if (!messageId) throw new Error('Message ID is required');
         
-        result = await callGmailAPI(`/users/me/messages/${messageId}`, googleToken);
+        result = await callGmailAPI(`/users/me/messages/${messageId}`, accessToken);
         break;
       }
 
@@ -164,7 +285,7 @@ serve(async (req) => {
         
         const encodedEmail = btoa(emailContent).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         
-        result = await callGmailAPI('/users/me/messages/send', googleToken, {
+        result = await callGmailAPI('/users/me/messages/send', accessToken, {
           method: 'POST',
           body: { raw: encodedEmail }
         });
@@ -175,7 +296,7 @@ serve(async (req) => {
         const { query } = parameters;
         if (!query) throw new Error('Search query is required');
         
-        result = await callGmailAPI(`/users/me/messages?q=${encodeURIComponent(query)}`, googleToken);
+        result = await callGmailAPI(`/users/me/messages?q=${encodeURIComponent(query)}`, accessToken);
         break;
       }
 
@@ -183,7 +304,7 @@ serve(async (req) => {
         const { messageId } = parameters;
         if (!messageId) throw new Error('Message ID is required');
         
-        result = await callGmailAPI(`/users/me/messages/${messageId}/modify`, googleToken, {
+        result = await callGmailAPI(`/users/me/messages/${messageId}/modify`, accessToken, {
           method: 'POST',
           body: { removeLabelIds: ['UNREAD'] }
         });
@@ -194,7 +315,7 @@ serve(async (req) => {
         const { messageId } = parameters;
         if (!messageId) throw new Error('Message ID is required');
         
-        result = await callGmailAPI(`/users/me/messages/${messageId}/trash`, googleToken, {
+        result = await callGmailAPI(`/users/me/messages/${messageId}/trash`, accessToken, {
           method: 'POST'
         });
         break;
@@ -209,7 +330,9 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        data: result
+        data: result,
+        action: action,
+        authentication_method: 'oauth'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -220,11 +343,14 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message
+        error: error.message,
+        details: error.message.includes('not connected') ? 
+          'Connect your Google account in the Tools page' : 
+          'Check your Gmail connection'
       }),
       { 
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
   }
