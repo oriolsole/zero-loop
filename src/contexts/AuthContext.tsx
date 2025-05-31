@@ -4,7 +4,7 @@ import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 import { enhancedProfileService, EnhancedUserProfile } from '@/services/enhancedProfileService';
-import { getRequiredScopes } from '@/types/googleScopes';
+import { getAllScopes } from '@/types/googleScopes';
 
 interface AuthContextProps {
   session: Session | null;
@@ -132,9 +132,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(true);
       const redirectUrl = `${window.location.origin}/`;
       
-      // Use only essential scopes for basic authentication
-      const essentialScopes = getRequiredScopes();
-      const scopesString = essentialScopes.join(' ');
+      // Request ALL Google scopes for comprehensive access
+      const allScopes = getAllScopes();
+      const scopesString = allScopes.join(' ');
+      
+      console.log('🔄 Requesting Google OAuth with all scopes:', allScopes);
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',

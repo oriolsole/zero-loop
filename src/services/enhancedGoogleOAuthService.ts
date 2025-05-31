@@ -77,7 +77,8 @@ class EnhancedGoogleOAuthService {
 
       console.log('📅 Token expiration calculated:', {
         expiresInSeconds,
-        expiresAt: expiresAt.toISOString()
+        expiresAt: expiresAt.toISOString(),
+        grantedScopes: tokens.scope
       });
 
       const tokenPayload = {
@@ -114,6 +115,8 @@ class EnhancedGoogleOAuthService {
 
       // Update profile with connected services
       const grantedScopes = tokens.scope ? tokens.scope.split(' ') : [];
+      console.log('🔄 Updating profile with granted scopes:', grantedScopes);
+      
       await enhancedProfileService.updateGoogleServices(grantedScopes);
 
       console.log('✅ OAuth tokens saved and profile updated successfully');

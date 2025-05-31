@@ -17,6 +17,9 @@ const UserProfile: React.FC = () => {
     return name.split(' ').map(n => n.charAt(0)).join('').toUpperCase();
   };
 
+  const connectedServicesCount = profile.google_services_connected?.length || 0;
+  const totalGoogleServices = 9; // Total number of Google services we support
+
   return (
     <div className="flex items-center gap-3">
       <Avatar className="h-8 w-8">
@@ -30,15 +33,15 @@ const UserProfile: React.FC = () => {
         </span>
         
         <div className="flex items-center gap-2">
-          {profile.google_drive_connected ? (
+          {connectedServicesCount > 0 ? (
             <Badge variant="secondary" className="text-xs">
               <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
-              Drive Connected
+              {connectedServicesCount}/{totalGoogleServices} Google Services
             </Badge>
           ) : (
             <Badge variant="outline" className="text-xs">
               <XCircle className="h-3 w-3 mr-1 text-gray-400" />
-              Drive Not Connected
+              No Google Services
             </Badge>
           )}
         </div>
