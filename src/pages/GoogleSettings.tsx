@@ -2,7 +2,6 @@
 import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import GoogleServicesStatus from '@/components/GoogleServicesStatus';
-import GoogleServicesConnection from '@/components/GoogleServicesConnection';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -43,7 +42,6 @@ const GoogleSettingsPage: React.FC = () => {
       </div>
 
       <div className="space-y-6">
-        <GoogleServicesConnection />
         <GoogleServicesStatus />
         
         <Card>
@@ -54,15 +52,6 @@ const GoogleSettingsPage: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <h4 className="font-medium">Why Two Connection Types?</h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• <strong>Google Authentication:</strong> Used for secure login to ZeroLoop</li>
-                <li>• <strong>Google Services Connection:</strong> Enables API access to Google services</li>
-                <li>• Both can work independently - you can use email/password and still connect Google services</li>
-              </ul>
-            </div>
-            
             <div className="space-y-2">
               <h4 className="font-medium">Available Services:</h4>
               <ul className="text-sm text-muted-foreground space-y-1">
@@ -83,7 +72,6 @@ const GoogleSettingsPage: React.FC = () => {
                 <li>• You control which services to connect</li>
                 <li>• You can disconnect services at any time</li>
                 <li>• Tokens are automatically refreshed when needed</li>
-                <li>• Separate from your login authentication for added security</li>
               </ul>
             </div>
           </CardContent>

@@ -5,7 +5,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 import { enhancedProfileService, EnhancedUserProfile } from '@/services/enhancedProfileService';
 import { getAllScopes } from '@/types/googleScopes';
-import { enhancedGoogleOAuthService } from '@/services/enhancedGoogleOAuthService';
 
 interface AuthContextProps {
   session: Session | null;
@@ -13,14 +12,11 @@ interface AuthContextProps {
   profile: EnhancedUserProfile | null;
   isLoading: boolean;
   isInitialized: boolean;
-  hasGoogleTokens: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  connectGoogleServices: () => Promise<void>;
-  checkGoogleTokens: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
@@ -31,21 +27,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<EnhancedUserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [hasGoogleTokens, setHasGoogleTokens] = useState(false);
-
-  const checkGoogleTokens = async () => {
-    if (user) {
-      const status = await enhancedGoogleOAuthService.getConnectionStatus();
-      setHasGoogleTokens(status.connected);
-      
-      // If user is logged in with Google but no API tokens, show helpful message
-      if (user.app_metadata?.provider === 'google' && !status.connected) {
-        console.log('Google auth detected but no API tokens found');
-      }
-    } else {
-      setHasGoogleTokens(false);
-    }
-  };
 
   const refreshProfile = async () => {
     if (user) {
@@ -53,21 +34,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setProfile(userProfile);
     } else {
       setProfile(null);
-    }
-  };
-
-  const connectGoogleServices = async () => {
-    try {
-      setIsLoading(true);
-      await enhancedGoogleOAuthService.connectWithPopup();
-      await refreshProfile();
-      await checkGoogleTokens();
-      toast.success('Google services connected successfully!');
-    } catch (error: any) {
-      console.error('Failed to connect Google services:', error);
-      toast.error(`Failed to connect Google services: ${error.message}`);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -79,15 +45,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
         
-        // Load profile and check Google tokens when user signs in
+        // Load profile when user signs in
         if (newSession?.user) {
           setTimeout(async () => {
             await refreshProfile();
-            await checkGoogleTokens();
           }, 0);
         } else {
           setProfile(null);
-          setHasGoogleTokens(false);
         }
         
         if (event === 'SIGNED_IN') {
@@ -106,7 +70,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (currentSession?.user) {
         console.log('User authenticated on init:', currentSession.user.id);
         await refreshProfile();
-        await checkGoogleTokens();
       } else {
         console.log('No user authenticated on init');
       }
@@ -169,11 +132,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(true);
       const redirectUrl = `${window.location.origin}/`;
       
-      // Request basic Google scopes for authentication only
-      const basicScopes = ['openid', 'email', 'profile'];
-      const scopesString = basicScopes.join(' ');
+      // Request ALL Google scopes for comprehensive access
+      const allScopes = getAllScopes();
+      const scopesString = allScopes.join(' ');
       
-      console.log('🔄 Requesting Google OAuth for authentication only:', basicScopes);
+      console.log('🔄 Requesting Google OAuth with all scopes:', allScopes);
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -213,14 +176,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     profile,
     isLoading,
     isInitialized,
-    hasGoogleTokens,
     signIn,
     signUp,
     signInWithGoogle,
     signOut,
-    refreshProfile,
-    connectGoogleServices,
-    checkGoogleTokens
+    refreshProfile
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -3,10 +3,10 @@ import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle } from 'lucide-react';
 
 const UserProfile: React.FC = () => {
-  const { user, profile, hasGoogleTokens } = useAuth();
+  const { user, profile } = useAuth();
 
   if (!user || !profile) {
     return null;
@@ -19,7 +19,6 @@ const UserProfile: React.FC = () => {
 
   const connectedServicesCount = profile.google_services_connected?.length || 0;
   const totalGoogleServices = 9; // Total number of Google services we support
-  const isGoogleUser = user.app_metadata?.provider === 'google';
 
   return (
     <div className="flex items-center gap-3">
@@ -34,15 +33,10 @@ const UserProfile: React.FC = () => {
         </span>
         
         <div className="flex items-center gap-2">
-          {hasGoogleTokens ? (
+          {connectedServicesCount > 0 ? (
             <Badge variant="secondary" className="text-xs">
               <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
               {connectedServicesCount}/{totalGoogleServices} Google Services
-            </Badge>
-          ) : isGoogleUser ? (
-            <Badge variant="outline" className="text-xs">
-              <AlertTriangle className="h-3 w-3 mr-1 text-yellow-500" />
-              Google Auth • No API Access
             </Badge>
           ) : (
             <Badge variant="outline" className="text-xs">
