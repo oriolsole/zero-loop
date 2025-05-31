@@ -53,29 +53,48 @@ async function callLLMWithTools(
 ): Promise<any> {
   const openAI = new OpenAI({ apiKey: modelSettings.openAiApiKey });
 
-  const tools = mcpTools.map((tool: any) => ({
-    type: 'function',
-    function: {
-      name: `execute_${tool.default_key}`,
-      description: tool.description,
-      parameters: {
-        type: 'object',
-        properties: tool.parameters.reduce((acc: any, param: any) => {
-          acc[param.name] = {
-            type: param.type,
-            description: param.description,
-          };
-          if (param.enum) {
-            acc[param.name].enum = param.enum;
-          }
-          return acc;
-        }, {}),
-        required: tool.parameters
-          .filter((param: any) => param.required)
-          .map((param: any) => param.name),
+  const tools = mcpTools.map((tool: any) => {
+    // Parse parameters if it's a JSON string
+    let parameters = tool.parameters;
+    if (typeof parameters === 'string') {
+      try {
+        parameters = JSON.parse(parameters);
+      } catch (e) {
+        console.error('Failed to parse tool parameters JSON:', e);
+        parameters = [];
+      }
+    }
+    
+    // Ensure parameters is an array
+    if (!Array.isArray(parameters)) {
+      console.error('Tool parameters is not an array:', typeof parameters);
+      parameters = [];
+    }
+
+    return {
+      type: 'function',
+      function: {
+        name: `execute_${tool.default_key}`,
+        description: tool.description,
+        parameters: {
+          type: 'object',
+          properties: parameters.reduce((acc: any, param: any) => {
+            acc[param.name] = {
+              type: param.type,
+              description: param.description,
+            };
+            if (param.enum) {
+              acc[param.name].enum = param.enum;
+            }
+            return acc;
+          }, {}),
+          required: parameters
+            .filter((param: any) => param.required)
+            .map((param: any) => param.name),
+        },
       },
-    },
-  }));
+    };
+  });
 
   const model = modelSettings.selectedModel || 'gpt-3.5-turbo-1106';
 
