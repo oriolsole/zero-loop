@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { enhancedGoogleOAuthService } from '@/services/enhancedGoogleOAuthService';
 import { GOOGLE_SERVICES } from '@/types/googleScopes';
 import { toast } from '@/components/ui/sonner';
-import { Loader2, CheckCircle, XCircle, RefreshCw, ExternalLink } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, RefreshCw, ExternalLink, AlertTriangle } from 'lucide-react';
 
 interface GoogleAPIConnectionProps {
   onConnectionChange?: (connected: boolean) => void;
@@ -18,10 +18,13 @@ const GoogleAPIConnection: React.FC<GoogleAPIConnectionProps> = ({
   const [status, setStatus] = useState<any>({ connected: false });
   const [isLoading, setIsLoading] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
 
   const checkConnectionStatus = async () => {
     try {
       const connectionStatus = await enhancedGoogleOAuthService.getConnectionStatus();
+      console.log('📊 GoogleAPIConnection status:', connectionStatus);
       setStatus(connectionStatus);
       onConnectionChange?.(connectionStatus.connected);
     } catch (error) {
@@ -29,6 +32,21 @@ const GoogleAPIConnection: React.FC<GoogleAPIConnectionProps> = ({
       toast.error('Failed to check Google API connection');
     } finally {
       setIsChecking(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      console.log('🔄 Starting manual sync from GoogleAPIConnection...');
+      await enhancedGoogleOAuthService.syncProfileFromTokens();
+      await checkConnectionStatus();
+      toast.success('Google services synced successfully');
+    } catch (error) {
+      console.error('Sync failed:', error);
+      toast.error('Failed to sync Google services');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -80,6 +98,7 @@ const GoogleAPIConnection: React.FC<GoogleAPIConnectionProps> = ({
 
   const connectedServices = status.connectedServices || [];
   const totalServices = GOOGLE_SERVICES.length;
+  const hasDataMismatch = status.connected && connectedServices.length === 0;
 
   return (
     <Card>
@@ -95,10 +114,18 @@ const GoogleAPIConnection: React.FC<GoogleAPIConnectionProps> = ({
             <span>Google Services</span>
           </div>
           {status.connected ? (
-            <Badge variant="default" className="bg-green-500">
-              <CheckCircle className="h-3 w-3 mr-1" />
-              Connected ({connectedServices.length}/{totalServices})
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="default" className="bg-green-500">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Connected ({connectedServices.length}/{totalServices})
+              </Badge>
+              {hasDataMismatch && (
+                <Badge variant="destructive">
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  Sync Issue
+                </Badge>
+              )}
+            </div>
           ) : (
             <Badge variant="secondary">
               <XCircle className="h-3 w-3 mr-1" />
@@ -108,13 +135,27 @@ const GoogleAPIConnection: React.FC<GoogleAPIConnectionProps> = ({
         </CardTitle>
         <CardDescription>
           {status.connected
-            ? 'Your Google services are connected and ready for MCP tools'
+            ? hasDataMismatch 
+              ? 'Connection detected but services need sync'
+              : 'Your Google services are connected and ready for MCP tools'
             : 'Connect Google services to enable advanced MCP integrations'
           }
         </CardDescription>
       </CardHeader>
       
       <CardContent className="space-y-4">
+        {hasDataMismatch && (
+          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg dark:bg-yellow-950 dark:border-yellow-800">
+            <div className="flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-200">
+              <AlertTriangle className="h-4 w-4" />
+              <span className="font-medium">Data Sync Issue Detected</span>
+            </div>
+            <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+              Google tokens exist but profile data is not synced. Click "Sync Services" to fix this.
+            </p>
+          </div>
+        )}
+
         {status.connected && status.expires_at && (
           <div className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-lg">
             <strong>Access expires:</strong> {new Date(status.expires_at).toLocaleString()}
@@ -148,14 +189,24 @@ const GoogleAPIConnection: React.FC<GoogleAPIConnectionProps> = ({
         
         <div className="flex space-x-2">
           {status.connected ? (
-            <Button 
-              variant="outline" 
-              onClick={handleDisconnect}
-              disabled={isLoading}
-            >
-              {isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Disconnect
-            </Button>
+            <>
+              <Button 
+                variant="outline" 
+                onClick={handleDisconnect}
+                disabled={isLoading}
+              >
+                {isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Disconnect
+              </Button>
+              <Button 
+                variant="secondary" 
+                onClick={handleSync}
+                disabled={isSyncing}
+              >
+                {isSyncing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Sync Services
+              </Button>
+            </>
           ) : (
             <Button 
               onClick={handleConnect}
@@ -175,7 +226,24 @@ const GoogleAPIConnection: React.FC<GoogleAPIConnectionProps> = ({
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
+
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowDebug(!showDebug)}
+          >
+            Debug
+          </Button>
         </div>
+
+        {showDebug && (
+          <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg text-xs">
+            <div className="font-medium mb-2">Debug Information:</div>
+            <pre className="whitespace-pre-wrap overflow-auto max-h-40">
+              {JSON.stringify(status, null, 2)}
+            </pre>
+          </div>
+        )}
         
         {!status.connected && (
           <div className="text-xs text-muted-foreground space-y-2">

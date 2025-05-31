@@ -6,7 +6,7 @@ import { GOOGLE_SERVICES } from '@/types/googleScopes';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, RefreshCw, Unlink, ExternalLink } from 'lucide-react';
+import { CheckCircle, XCircle, RefreshCw, Unlink, ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 
 interface GoogleConnectionStatus {
@@ -20,6 +20,7 @@ const GoogleServicesStatus: React.FC = () => {
   const { user, profile, refreshProfile } = useAuth();
   const [connectionStatus, setConnectionStatus] = useState<GoogleConnectionStatus>({ connected: false });
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const checkConnectionStatus = async () => {
     if (!user) return;
@@ -28,11 +29,31 @@ const GoogleServicesStatus: React.FC = () => {
     try {
       const status = await enhancedGoogleOAuthService.getConnectionStatus();
       setConnectionStatus(status);
+      console.log('📊 Connection status updated:', status);
     } catch (error) {
       console.error('Error checking connection status:', error);
       toast.error('Failed to check Google connection status');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    if (!user) return;
+    
+    setIsSyncing(true);
+    try {
+      console.log('🔄 Starting manual sync...');
+      await enhancedGoogleOAuthService.syncProfileFromTokens();
+      await refreshProfile();
+      await checkConnectionStatus();
+      toast.success('Google services synced successfully');
+      console.log('✅ Manual sync completed');
+    } catch (error) {
+      console.error('Error syncing Google services:', error);
+      toast.error('Failed to sync Google services');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -109,8 +130,28 @@ const GoogleServicesStatus: React.FC = () => {
               onClick={checkConnectionStatus}
               disabled={isLoading}
             >
-              <RefreshCw className="h-4 w-4" />
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
             </Button>
+            {connectionStatus.connected && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                title="Sync services from stored tokens"
+              >
+                {isSyncing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Sync
+              </Button>
+            )}
             {connectionStatus.connected ? (
               <Button
                 variant="destructive"

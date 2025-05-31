@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -291,34 +290,55 @@ serve(async (req) => {
           });
         }
 
+        console.log('✅ Tokens stored successfully');
+
         // Update user profile with connected services
         console.log('🔄 Updating user profile with connected services...');
         const grantedScopes = (tokenData.scope || '').split(' ').filter(Boolean);
         const connectedServices = mapScopesToServiceIds(grantedScopes);
         
-        console.log('📊 Mapped services:', {
+        console.log('📊 Scope mapping details:', {
           grantedScopes,
-          connectedServices
+          connectedServices,
+          scopeString: tokenData.scope
         });
+
+        const profileUpdateData = {
+          google_services_connected: connectedServices,
+          google_scopes_granted: grantedScopes,
+          google_drive_connected: grantedScopes.includes('https://www.googleapis.com/auth/drive'),
+          updated_at: new Date().toISOString()
+        };
+
+        console.log('📝 Profile update data:', profileUpdateData);
 
         const { error: profileUpdateError } = await supabase
           .from('profiles')
-          .update({
-            google_services_connected: connectedServices,
-            google_scopes_granted: grantedScopes,
-            google_drive_connected: grantedScopes.includes('https://www.googleapis.com/auth/drive'),
-            updated_at: new Date().toISOString()
-          })
+          .update(profileUpdateData)
           .eq('id', finalUserId);
 
         if (profileUpdateError) {
-          console.error('⚠️ Failed to update profile, but tokens stored:', profileUpdateError);
-          // Don't fail the whole flow, just log the error
+          console.error('❌ Failed to update profile:', profileUpdateError);
+          // Don't fail the whole flow, but log the error prominently
+          console.error('🚨 PROFILE UPDATE FAILED - This will cause UI display issues!');
         } else {
-          console.log('✅ Profile updated successfully');
+          console.log('✅ Profile updated successfully with connected services');
         }
 
-        console.log('✅ Tokens stored successfully, redirecting to tools page');
+        // Verify the profile was updated correctly
+        const { data: updatedProfile, error: verifyError } = await supabase
+          .from('profiles')
+          .select('google_services_connected, google_scopes_granted, google_drive_connected')
+          .eq('id', finalUserId)
+          .single();
+
+        if (verifyError) {
+          console.error('❌ Failed to verify profile update:', verifyError);
+        } else {
+          console.log('✅ Profile verification result:', updatedProfile);
+        }
+
+        console.log('✅ OAuth flow completed successfully, redirecting to tools page');
         console.log('🔗 Redirecting to:', `${appUrl}/tools?success=google_connected`);
         
         // Redirect back to tools page with success
@@ -331,7 +351,7 @@ serve(async (req) => {
         });
 
       } catch (error) {
-        console.error('❌ Error storing tokens:', error);
+        console.error('❌ Error in OAuth processing:', error);
         return new Response(null, {
           status: 302,
           headers: { 
