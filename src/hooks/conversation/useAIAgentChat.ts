@@ -8,6 +8,7 @@ import { useConversationContext } from '@/contexts/ConversationContext';
 import { useMessageManager } from '@/hooks/conversation/useMessageManager';
 import { useAgentManagement } from '@/hooks/useAgentManagement';
 import { Agent } from '@/services/agentService';
+import { useMultiToolOrchestrator } from '@/hooks/useMultiToolOrchestrator';
 
 export const useAIAgentChat = () => {
   const { user } = useAuth();
@@ -94,6 +95,14 @@ export const useAIAgentChat = () => {
     }
   };
 
+  const {
+    currentPlan,
+    isExecuting: isOrchestrating,
+    executePlan,
+    shouldUseToolsForQuery,
+    detectGitHubRequest
+  } = useMultiToolOrchestrator();
+
   const processMessage = async (message: string, existingMessageId?: string) => {
     if (!user || !currentSessionId) {
       console.error('❌ Cannot process message - missing user or session');
@@ -175,27 +184,87 @@ export const useAIAgentChat = () => {
 
       console.log('✅ AI agent response received');
 
-      const aiResponse = data.message || data.response;
-      
-      if (aiResponse) {
-        const assistantMessageId = generateMessageId(aiResponse, 'assistant', currentSessionId);
+      // Check if we received an orchestration plan
+      if (data.requiresOrchestration && data.orchestrationPlan) {
+        console.log('🎼 Received orchestration plan, executing...');
         
-        const assistantMessage: ConversationMessage = {
-          id: assistantMessageId,
+        // Add initial response message
+        const planMessageId = generateMessageId(data.message, 'assistant', currentSessionId);
+        const planMessage: ConversationMessage = {
+          id: planMessageId,
           role: 'assistant',
-          content: aiResponse,
+          content: data.message,
           timestamp: new Date(),
-          messageType: 'response',
-          loopIteration: data.loopIteration || 0,
-          toolsUsed: data.toolsUsed || undefined,
-          improvementReasoning: data.improvementReasoning || undefined
+          messageType: 'response'
         };
-
-        console.log(`🤖 Adding assistant response to context: ${assistantMessageId}`);
         
-        addMessage(assistantMessage);
-        const persistResult = await persistMessage(assistantMessage);
-        console.log(`${persistResult ? '✅' : '❌'} Assistant message persistence ${persistResult ? 'succeeded' : 'failed'}`);
+        addMessage(planMessage);
+        await persistMessage(planMessage);
+
+        // Execute the orchestration plan
+        await executePlan(
+          data.orchestrationPlan,
+          (execution) => {
+            // Update UI with tool execution progress
+            console.log(`🔧 Tool ${execution.tool} status: ${execution.status}`);
+            
+            // You could add a message for each tool execution or update a progress indicator
+            if (execution.status === 'completed' && execution.result) {
+              const toolResultId = generateMessageId(`Tool result: ${execution.tool}`, 'assistant', currentSessionId);
+              const toolMessage: ConversationMessage = {
+                id: toolResultId,
+                role: 'assistant',
+                content: `✅ ${execution.description}: ${typeof execution.result === 'string' ? execution.result : JSON.stringify(execution.result)}`,
+                timestamp: new Date(),
+                messageType: 'tool-result',
+                toolsUsed: [{ name: execution.tool, success: true, result: execution.result }]
+              };
+              
+              addMessage(toolMessage);
+              persistMessage(toolMessage);
+            }
+          },
+          (finalResult, completedPlan) => {
+            // Plan execution completed
+            console.log('🎯 Orchestration plan completed');
+            
+            const finalMessageId = generateMessageId(finalResult, 'assistant', currentSessionId);
+            const finalMessage: ConversationMessage = {
+              id: finalMessageId,
+              role: 'assistant',
+              content: `## Summary\n\n${finalResult}`,
+              timestamp: new Date(),
+              messageType: 'response'
+            };
+            
+            addMessage(finalMessage);
+            persistMessage(finalMessage);
+          }
+        );
+      } else {
+        // Handle regular single-tool response
+        const aiResponse = data.message || data.response;
+        
+        if (aiResponse) {
+          const assistantMessageId = generateMessageId(aiResponse, 'assistant', currentSessionId);
+          
+          const assistantMessage: ConversationMessage = {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: aiResponse,
+            timestamp: new Date(),
+            messageType: 'response',
+            loopIteration: data.loopIteration || 0,
+            toolsUsed: data.toolsUsed || undefined,
+            improvementReasoning: data.improvementReasoning || undefined
+          };
+
+          console.log(`🤖 Adding assistant response to context: ${assistantMessageId}`);
+          
+          addMessage(assistantMessage);
+          const persistResult = await persistMessage(assistantMessage);
+          console.log(`${persistResult ? '✅' : '❌'} Assistant message persistence ${persistResult ? 'succeeded' : 'failed'}`);
+        }
       }
       
       if (data.toolsUsed && data.toolsUsed.length > 0) {
@@ -236,6 +305,8 @@ export const useAIAgentChat = () => {
     handleToggleLoop,
     handleAgentChange,
     processMessage,
-    currentAgent
+    currentAgent,
+    currentPlan,
+    isOrchestrating
   };
 };

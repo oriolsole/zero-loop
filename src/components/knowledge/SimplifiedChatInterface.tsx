@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -30,7 +29,7 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
   onFollowUpAction
 }) => {
   // Use context as single source of truth
-  const { messages, activeTool } = useConversationContext();
+  const { messages, activeTool, currentPlan, isOrchestrating } = useConversationContext();
 
   // Debug logging
   useEffect(() => {
@@ -133,6 +132,38 @@ const SimplifiedChatInterface: React.FC<SimplifiedChatInterfaceProps> = ({
               />
             ))}
           </div>
+          
+          {/* Show orchestration progress if active */}
+          {isOrchestrating && currentPlan && (
+            <div className="mt-6 animate-in fade-in duration-200">
+              <div className="text-sm font-medium text-muted-foreground mb-3">
+                Orchestration Plan Progress:
+              </div>
+              <div className="bg-muted/30 p-4 rounded-lg border border-muted-foreground/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{currentPlan.title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {currentPlan.executions.filter((e: any) => e.status === 'completed').length} / {currentPlan.executions.length} completed
+                  </span>
+                </div>
+                
+                <div className="space-y-2">
+                  {currentPlan.executions.map((execution: any) => (
+                    <div key={execution.id} className="flex items-center gap-3 text-sm">
+                      <div className={`w-2 h-2 rounded-full ${
+                        execution.status === 'completed' ? 'bg-green-500' :
+                        execution.status === 'executing' ? 'bg-blue-500 animate-pulse' :
+                        execution.status === 'failed' ? 'bg-red-500' :
+                        'bg-gray-300'
+                      }`}></div>
+                      <span className="flex-1">{execution.description}</span>
+                      <span className="text-xs text-muted-foreground">{execution.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           
           {/* Show active tool if present */}
           {activeTool && (
