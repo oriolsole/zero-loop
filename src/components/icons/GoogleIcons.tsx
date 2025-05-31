@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface GoogleIconProps {
@@ -7,7 +8,7 @@ interface GoogleIconProps {
 
 export const GoogleDriveIcon: React.FC<GoogleIconProps> = ({ size = 24, className = "" }) => (
   <img 
-    src="/icons/google-drive-logo.png"
+    src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Google_Drive_icon_%282020%29.svg/640px-Google_Drive_icon_%282020%29.svg.png"
     alt="Google Drive" 
     width={size} 
     height={size} 
