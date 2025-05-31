@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { MCP, MCPExecution, ExecuteMCPParams, MCPExecutionResult, MCPParameter } from '@/types/mcp';
 import { defaultMCPs } from '@/constants/defaultMCPs';
@@ -155,12 +154,6 @@ export const mcpService = {
       }
 
       console.log('Found MCP:', mcp.title, 'endpoint:', mcp.endpoint);
-
-      // Get current user for token-based MCPs
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('Authentication required');
-      }
 
       // Log the execution attempt
       const { data: execution, error: executionError } = await supabase
