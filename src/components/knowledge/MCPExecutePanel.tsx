@@ -5,13 +5,13 @@ import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { MCP } from '@/types/mcp';
 import { mcpService } from '@/services/mcpService';
-import { userSecretService } from '@/services/userSecretService';
-import { useQuery } from '@tanstack/react-query';
+import { mcpCredentialService, CredentialValidationResult } from '@/services/mcpCredentialService';
 import { toast } from '@/components/ui/sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import MCPAuthStatus from './MCPAuthStatus';
 import MCPParameterForm from './MCPParameterForm';
 import MCPExecutionResults from './MCPExecutionResults';
+import MCPAuthModal from './MCPAuthModal';
 
 interface MCPExecutePanelProps {
   mcp: MCP;
@@ -21,106 +21,46 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
   const [result, setResult] = useState<Record<string, any> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [authMissing, setAuthMissing] = useState(false);
   const [requestInfo, setRequestInfo] = useState<string | null>(null);
-  const [googleDriveConnected, setGoogleDriveConnected] = useState(false);
+  const [validationResult, setValidationResult] = useState<CredentialValidationResult | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     setIsAuthenticated(!!user);
   }, [user]);
 
-  // Enhanced Google Drive OAuth connection check with comprehensive debugging
+  // Validate credentials when component mounts or when authentication changes
   useEffect(() => {
-    const checkGoogleDriveConnection = () => {
-      if (mcp.endpoint === 'google-drive-tools' && profile) {
-        console.log('🔍 COMPREHENSIVE Google Drive connection check for profile:', profile);
-        console.log('🔍 Profile keys available:', Object.keys(profile || {}));
-        console.log('🔍 All profile data:', JSON.stringify(profile, null, 2));
-        
-        // Method 1: Check explicit google_drive_connected flag
-        const hasGoogleDriveFlag = profile.google_drive_connected;
-        console.log('🔍 Method 1 - google_drive_connected flag:', hasGoogleDriveFlag);
-        
-        // Method 2: Check google_services_connected array for variations
-        const googleServices = profile.google_services_connected || [];
-        console.log('🔍 Method 2 - google_services_connected array:', googleServices);
-        const hasGoogleDriveService = googleServices.some((service: string) => 
-          service && (
-            service.toLowerCase().includes('drive') ||
-            service.toLowerCase().includes('google-drive') ||
-            service === 'google-drive-tools'
-          )
-        );
-        console.log('🔍 Method 2 - service array contains drive:', hasGoogleDriveService);
-        
-        // Method 3: Check google_scopes_granted for Drive-related scopes
-        const googleScopes = profile.google_scopes_granted || [];
-        console.log('🔍 Method 3 - google_scopes_granted array:', googleScopes);
-        const hasDriveScopes = googleScopes.some((scope: string) => 
-          scope && scope.includes('drive')
-        );
-        console.log('🔍 Method 3 - scopes contain drive:', hasDriveScopes);
-        
-        // Method 4: Check for any OAuth tokens in profile
-        const profileData = profile as any;
-        const hasGoogleAccessToken = !!(
-          profileData.google_access_token || 
-          profileData.google_refresh_token ||
-          profileData.oauth_tokens?.google
-        );
-        console.log('🔍 Method 4 - has Google OAuth tokens:', hasGoogleAccessToken);
-        
-        // Method 5: Check if user has Google ID (signed in with Google)
-        const hasGoogleId = !!(profile.google_id || profileData.google_id);
-        console.log('🔍 Method 5 - has Google ID:', hasGoogleId);
-        
-        // Method 6: Check all profile properties for any Google-related data
-        const profileString = JSON.stringify(profile).toLowerCase();
-        const hasAnyGoogleData = profileString.includes('google') && profileString.includes('drive');
-        console.log('🔍 Method 6 - profile contains Google+Drive data:', hasAnyGoogleData);
-        
-        // Final determination - if ANY method indicates connection, consider it connected
-        const isConnected = hasGoogleDriveFlag || 
-                           hasGoogleDriveService || 
-                           hasDriveScopes || 
-                           hasGoogleAccessToken ||
-                           (hasGoogleId && hasAnyGoogleData);
-        
-        console.log('🔍 FINAL DETERMINATION:', {
-          hasGoogleDriveFlag,
-          hasGoogleDriveService,
-          hasDriveScopes,
-          hasGoogleAccessToken,
-          hasGoogleId,
-          hasAnyGoogleData,
-          finalResult: isConnected
-        });
-        
-        setGoogleDriveConnected(isConnected);
-        
-        if (isConnected) {
-          console.log('✅ Google Drive detected as CONNECTED');
-        } else {
-          console.log('❌ Google Drive detected as NOT CONNECTED');
-        }
-      }
-    };
+    if (isAuthenticated) {
+      validateCredentials();
+    } else {
+      setValidationResult(null);
+    }
+  }, [isAuthenticated, mcp.endpoint, mcp.requirestoken]);
 
-    checkGoogleDriveConnection();
-  }, [mcp.endpoint, profile]);
-
-  // Check if required API key is available for this MCP
-  const { data: userSecrets, isLoading: secretsLoading } = useQuery({
-    queryKey: ['userSecrets', mcp.requirestoken],
-    queryFn: async () => {
-      if (!mcp.requirestoken) return [];
-      return await userSecretService.fetchSecretsByProvider(mcp.requirestoken);
-    },
-    enabled: !!mcp.requirestoken && isAuthenticated && !googleDriveConnected,
-  });
+  const validateCredentials = async () => {
+    if (!isAuthenticated) return;
+    
+    setIsValidating(true);
+    try {
+      const result = await mcpCredentialService.validateCredentials(mcp.endpoint, mcp.requirestoken);
+      setValidationResult(result);
+      console.log(`🔍 Validation result for ${mcp.endpoint}:`, result);
+    } catch (error) {
+      console.error('Failed to validate credentials:', error);
+      setValidationResult({
+        valid: false,
+        service: mcp.endpoint,
+        error: 'Failed to validate credentials'
+      });
+    } finally {
+      setIsValidating(false);
+    }
+  };
 
   // Create a dynamic form schema based on the MCP parameters
   const generateFormSchema = () => {
@@ -172,29 +112,25 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     defaultValues: getDefaultValues(),
   });
 
-  // Updated auth missing check - for Google Drive, only require token if OAuth is not connected
-  useEffect(() => {
-    if (mcp.endpoint === 'google-drive-tools') {
-      // For Google Drive tools, only require token if OAuth is not connected
-      const missingAuth = !googleDriveConnected;
-      console.log('🔑 Google Drive auth missing check:', { 
-        googleDriveConnected, 
-        missingAuth,
-        mcpEndpoint: mcp.endpoint 
-      });
-      setAuthMissing(missingAuth);
-    } else if (mcp.requirestoken && userSecrets && userSecrets.length === 0 && !secretsLoading) {
-      setAuthMissing(true);
-    } else {
-      setAuthMissing(false);
-    }
-  }, [mcp.requirestoken, mcp.endpoint, userSecrets, secretsLoading, googleDriveConnected]);
-
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     if (!isAuthenticated) {
       toast.error("Authentication required", {
         description: "You must be logged in to execute MCPs"
       });
+      return;
+    }
+
+    // Final credential validation before execution
+    setIsValidating(true);
+    const finalValidation = await mcpCredentialService.forceRevalidate(mcp.endpoint, mcp.requirestoken);
+    setValidationResult(finalValidation);
+    setIsValidating(false);
+
+    if (!finalValidation.valid) {
+      toast.error("Authentication required", {
+        description: finalValidation.error || "Invalid credentials"
+      });
+      setShowAuthModal(true);
       return;
     }
     
@@ -208,7 +144,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
       endpoint: mcp.endpoint,
       parameters: values,
       requiresToken: mcp.requirestoken,
-      googleDriveConnected: googleDriveConnected
+      validationResult: finalValidation
     };
     setRequestInfo(JSON.stringify(debugInfo, null, 2));
     
@@ -244,8 +180,17 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     }
   };
 
+  const handleAuthSuccess = () => {
+    // Clear cache and revalidate
+    mcpCredentialService.clearCache(mcp.endpoint);
+    validateCredentials();
+    toast.success("Authentication successful", {
+      description: "You can now execute this tool"
+    });
+  };
+
   const handleAuthCancel = () => {
-    // Handle auth manager cancellation if needed
+    setShowAuthModal(false);
   };
 
   return (
@@ -253,16 +198,17 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
       <MCPAuthStatus
         mcp={mcp}
         isAuthenticated={isAuthenticated}
-        googleDriveConnected={googleDriveConnected}
-        authMissing={authMissing}
-        onAuthCancel={handleAuthCancel}
+        validationResult={validationResult}
+        isValidating={isValidating}
+        onRetryValidation={validateCredentials}
+        onShowAuthModal={() => setShowAuthModal(true)}
       />
       
       <MCPParameterForm
         mcp={mcp}
         form={form}
-        isLoading={isLoading}
-        authMissing={authMissing}
+        isLoading={isLoading || isValidating}
+        validationResult={validationResult}
         isAuthenticated={isAuthenticated}
         onSubmit={onSubmit}
       />
@@ -271,6 +217,14 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
         requestInfo={requestInfo}
         result={result}
         error={error}
+      />
+
+      <MCPAuthModal
+        mcp={mcp}
+        isOpen={showAuthModal}
+        onClose={handleAuthCancel}
+        onAuthSuccess={handleAuthSuccess}
+        validationError={validationResult?.error}
       />
     </div>
   );

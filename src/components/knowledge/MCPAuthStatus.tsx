@@ -1,26 +1,29 @@
 
 import React from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, CheckCircle, Key } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Key, Loader2, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
-import MCPAuthManager from './MCPAuthManager';
 import { MCP } from '@/types/mcp';
+import { CredentialValidationResult } from '@/services/mcpCredentialService';
 
 interface MCPAuthStatusProps {
   mcp: MCP;
   isAuthenticated: boolean;
-  googleDriveConnected: boolean;
-  authMissing: boolean;
-  onAuthCancel: () => void;
+  validationResult: CredentialValidationResult | null;
+  isValidating: boolean;
+  onRetryValidation: () => void;
+  onShowAuthModal: () => void;
 }
 
 const MCPAuthStatus: React.FC<MCPAuthStatusProps> = ({
   mcp,
   isAuthenticated,
-  googleDriveConnected,
-  authMissing,
-  onAuthCancel
+  validationResult,
+  isValidating,
+  onRetryValidation,
+  onShowAuthModal
 }) => {
   const getEndpointInfo = () => {
     let endpoint = mcp.endpoint;
@@ -43,13 +46,9 @@ const MCPAuthStatus: React.FC<MCPAuthStatusProps> = ({
     );
   };
 
-  return (
-    <div className="space-y-4">
-      {/* Endpoint info */}
-      {getEndpointInfo()}
-      
-      {/* Authentication warning */}
-      {!isAuthenticated && (
+  const renderValidationStatus = () => {
+    if (!isAuthenticated) {
+      return (
         <Alert variant="warning">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Authentication required</AlertTitle>
@@ -57,50 +56,119 @@ const MCPAuthStatus: React.FC<MCPAuthStatusProps> = ({
             You need to be signed in to execute this MCP and store execution history.
           </AlertDescription>
         </Alert>
-      )}
+      );
+    }
 
-      {/* Google Drive OAuth Status */}
-      {mcp.endpoint === 'google-drive-tools' && isAuthenticated && (
-        <Alert variant={googleDriveConnected ? "default" : "warning"}>
-          {googleDriveConnected ? (
-            <>
-              <CheckCircle className="h-4 w-4" />
-              <AlertTitle>Google Drive Connected</AlertTitle>
-              <AlertDescription>
-                Using your existing Google Drive OAuth connection. No additional setup needed.
-              </AlertDescription>
-            </>
-          ) : (
-            <>
-              <Key className="h-4 w-4" />
-              <AlertTitle>Google Drive Connection Required</AlertTitle>
-              <AlertDescription className="space-y-2">
-                <p>This tool requires Google Drive access. Please connect your Google Drive account first.</p>
-                <p className="text-sm text-muted-foreground">
-                  Go to the Tools page and connect your Google Drive account via OAuth.
-                </p>
-              </AlertDescription>
-            </>
-          )}
-        </Alert>
-      )}
-      
-      {/* API Key warning for non-Google Drive tools */}
-      {authMissing && mcp.endpoint !== 'google-drive-tools' && (
-        <Alert variant="warning">
-          <Key className="h-4 w-4" />
-          <AlertTitle>API Key Required</AlertTitle>
-          <AlertDescription className="space-y-2">
-            <p>This MCP requires a {mcp.requirestoken} API key.</p>
-            <MCPAuthManager 
-              provider={mcp.requirestoken} 
-              onCancel={onAuthCancel} 
-              authKeyName={mcp.requirestoken} 
-              authType="api_key" 
-            />
+    if (isValidating) {
+      return (
+        <Alert>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <AlertTitle>Checking credentials...</AlertTitle>
+          <AlertDescription>
+            Validating your authentication status for this tool.
           </AlertDescription>
         </Alert>
-      )}
+      );
+    }
+
+    if (!validationResult) {
+      return (
+        <Alert variant="warning">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Credential status unknown</AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p>Unable to determine authentication status.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRetryValidation}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Check Status
+            </Button>
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    if (validationResult.valid) {
+      const getSuccessMessage = () => {
+        if (mcp.endpoint === 'google-drive-tools') {
+          return 'Google Drive OAuth connection is active and verified.';
+        } else if (mcp.requirestoken) {
+          return `${mcp.requirestoken} API key is configured and ready.`;
+        } else {
+          return 'No additional authentication required for this tool.';
+        }
+      };
+
+      return (
+        <Alert variant="default" className="border-green-200 bg-green-50">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertTitle className="text-green-800">Credentials Verified</AlertTitle>
+          <AlertDescription className="text-green-700">
+            {getSuccessMessage()}
+            {validationResult.details?.message && (
+              <div className="text-xs text-green-600 mt-1">
+                {validationResult.details.message}
+              </div>
+            )}
+          </AlertDescription>
+        </Alert>
+      );
+    } else {
+      const getErrorMessage = () => {
+        if (mcp.endpoint === 'google-drive-tools') {
+          return 'Google Drive connection is required but not found or invalid.';
+        } else if (mcp.requirestoken) {
+          return `${mcp.requirestoken} API key is required but not configured or invalid.`;
+        } else {
+          return 'Authentication is required but not properly configured.';
+        }
+      };
+
+      return (
+        <Alert variant="warning">
+          <Key className="h-4 w-4" />
+          <AlertTitle>Authentication Required</AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p>{getErrorMessage()}</p>
+            {validationResult.error && (
+              <div className="text-sm text-muted-foreground">
+                Error: {validationResult.error}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onShowAuthModal}
+                className="flex items-center gap-2"
+              >
+                <Key className="h-3 w-3" />
+                Setup Authentication
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRetryValidation}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Retry
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      );
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {getEndpointInfo()}
+      {renderValidationStatus()}
     </div>
   );
 };

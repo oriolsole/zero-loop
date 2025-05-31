@@ -2,6 +2,7 @@
 import React from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { MCP } from '@/types/mcp';
+import { CredentialValidationResult } from '@/services/mcpCredentialService';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
@@ -15,7 +16,7 @@ interface MCPParameterFormProps {
   mcp: MCP;
   form: UseFormReturn<any>;
   isLoading: boolean;
-  authMissing: boolean;
+  validationResult: CredentialValidationResult | null;
   isAuthenticated: boolean;
   onSubmit: (values: any) => void;
 }
@@ -24,10 +25,36 @@ const MCPParameterForm: React.FC<MCPParameterFormProps> = ({
   mcp,
   form,
   isLoading,
-  authMissing,
+  validationResult,
   isAuthenticated,
   onSubmit
 }) => {
+  const isExecuteDisabled = () => {
+    if (!isAuthenticated) return true;
+    if (isLoading) return true;
+    
+    // If we need authentication but validation failed
+    if (mcp.requirestoken || mcp.endpoint === 'google-drive-tools') {
+      return !validationResult?.valid;
+    }
+    
+    return false;
+  };
+
+  const getButtonText = () => {
+    if (isLoading) return 'Executing...';
+    if (!isAuthenticated) return 'Sign in required';
+    if (validationResult && !validationResult.valid) {
+      if (mcp.endpoint === 'google-drive-tools') {
+        return 'Connect Google Drive first';
+      } else if (mcp.requirestoken) {
+        return `Configure ${mcp.requirestoken} key first`;
+      }
+      return 'Setup authentication first';
+    }
+    return 'Execute';
+  };
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -106,7 +133,7 @@ const MCPParameterForm: React.FC<MCPParameterFormProps> = ({
         
         <Button 
           type="submit" 
-          disabled={isLoading || (authMissing && mcp.endpoint !== 'google-drive-tools') || !isAuthenticated}
+          disabled={isExecuteDisabled()}
           className="w-full"
         >
           {isLoading ? (
@@ -115,7 +142,7 @@ const MCPParameterForm: React.FC<MCPParameterFormProps> = ({
               Executing...
             </>
           ) : (
-            'Execute'
+            getButtonText()
           )}
         </Button>
       </form>
