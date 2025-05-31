@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,10 +44,8 @@ const GoogleAPIConnection: React.FC<GoogleAPIConnectionProps> = ({
         category.scopes.map(scope => scope.scope)
       );
       
-      const { authUrl } = await enhancedGoogleOAuthService.initiateOAuth(allScopes);
-      
-      // Simple redirect - no popup
-      window.location.href = authUrl;
+      // Use the new redirect-only flow
+      await enhancedGoogleOAuthService.connectWithRedirect(allScopes);
     } catch (error) {
       console.error('OAuth connection failed:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to connect Google APIs');

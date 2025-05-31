@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { getAllScopes, getRequiredScopes } from '@/types/googleScopes';
 import { enhancedProfileService } from './enhancedProfileService';
@@ -20,19 +19,30 @@ export interface GoogleOAuthStatus {
 
 class EnhancedGoogleOAuthService {
   /**
-   * Initiate Google OAuth flow with custom scopes
+   * Initiate Google OAuth flow with custom scopes and user context
    */
   async initiateOAuth(selectedScopes: string[] = []): Promise<{ authUrl: string; state: string }> {
     console.log('🔄 Initiating OAuth flow with scopes:', selectedScopes);
+    
+    // Get current user for context
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      throw new Error('User must be authenticated to connect Google APIs');
+    }
     
     // Combine required scopes with selected optional scopes
     const requiredScopes = getRequiredScopes();
     const allScopes = [...new Set([...requiredScopes, ...selectedScopes])];
     
     console.log('📋 Final scopes to request:', allScopes);
+    console.log('👤 User context:', user.id);
     
     const response = await supabase.functions.invoke('google-oauth-initiate', {
-      body: { scopes: allScopes }
+      body: { 
+        scopes: allScopes,
+        userId: user.id  // Pass user ID for state tracking
+      }
     });
     
     if (response.error) {
@@ -217,158 +227,27 @@ class EnhancedGoogleOAuthService {
   }
 
   /**
-   * Enhanced popup OAuth flow with scope selection
+   * Enhanced redirect-only OAuth flow (no popups)
    */
+  async connectWithRedirect(selectedScopes: string[] = []): Promise<void> {
+    console.log('🔄 Starting redirect-only OAuth flow...');
+    
+    try {
+      const { authUrl } = await this.initiateOAuth(selectedScopes);
+      
+      console.log('🔗 Redirecting to Google OAuth...');
+      // Simple redirect - no popup
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error('❌ Error in connectWithRedirect:', error);
+      throw error;
+    }
+  }
+
+  // Keep connectWithPopup for backward compatibility but deprecate it
   async connectWithPopup(selectedScopes: string[] = []): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        console.log('🔄 Starting enhanced popup OAuth flow...');
-        
-        const { authUrl } = await this.initiateOAuth(selectedScopes);
-        
-        console.log('🪟 Opening popup window...');
-        const popup = window.open(
-          authUrl,
-          'google-oauth',
-          'width=500,height=600,scrollbars=yes,resizable=yes'
-        );
-
-        if (!popup) {
-          reject(new Error('Failed to open popup window. Please check if popups are blocked.'));
-          return;
-        }
-
-        let isCompleted = false;
-        let pollAttempts = 0;
-        const maxPollAttempts = 10;
-        let pollInterval: number | undefined;
-
-        // Simplified message handler
-        const messageHandler = async (event: MessageEvent) => {
-          console.log('📨 Received message:', event.data);
-
-          // Skip if already completed
-          if (isCompleted) {
-            return;
-          }
-
-          // Check for valid message structure
-          if (!event.data || typeof event.data !== 'object') {
-            console.log('⚠️ Invalid message structure:', event.data);
-            return;
-          }
-
-          const { type, tokens, error: messageError } = event.data;
-
-          if (type === 'google-oauth-success' && tokens) {
-            try {
-              console.log('✅ Received OAuth success message');
-              isCompleted = true;
-              
-              // Clear the polling interval
-              if (pollInterval !== undefined) {
-                clearInterval(pollInterval);
-                pollInterval = undefined;
-              }
-              
-              // Complete the OAuth flow with enhanced handling
-              await this.completeOAuth(tokens);
-              
-              // Clean up
-              window.removeEventListener('message', messageHandler);
-              
-              // Close popup
-              if (!popup.closed) {
-                popup.close();
-              }
-              
-              resolve();
-            } catch (error) {
-              console.error('❌ Error completing OAuth:', error);
-              isCompleted = true;
-              
-              if (pollInterval !== undefined) {
-                clearInterval(pollInterval);
-                pollInterval = undefined;
-              }
-              window.removeEventListener('message', messageHandler);
-              
-              if (!popup.closed) {
-                popup.close();
-              }
-              
-              reject(error);
-            }
-          } else if (type === 'google-oauth-error') {
-            console.error('❌ OAuth error from popup:', messageError);
-            isCompleted = true;
-            
-            if (pollInterval !== undefined) {
-              clearInterval(pollInterval);
-              pollInterval = undefined;
-            }
-            window.removeEventListener('message', messageHandler);
-            
-            if (!popup.closed) {
-              popup.close();
-            }
-            
-            reject(new Error(`OAuth error: ${messageError}`));
-          }
-        };
-
-        // Set up message listener
-        console.log('👂 Setting up message listener...');
-        window.addEventListener('message', messageHandler);
-
-        // Simplified polling with lower frequency
-        const pollForCompletion = () => {
-          pollAttempts++;
-          console.log(`🔄 Polling attempt ${pollAttempts}/${maxPollAttempts}`);
-          
-          if (pollAttempts >= maxPollAttempts) {
-            console.log('⏰ Polling timeout');
-            isCompleted = true;
-            
-            if (pollInterval !== undefined) {
-              clearInterval(pollInterval);
-              pollInterval = undefined;
-            }
-            window.removeEventListener('message', messageHandler);
-            
-            if (!popup.closed) {
-              popup.close();
-            }
-            
-            reject(new Error('OAuth flow timed out'));
-            return;
-          }
-          
-          if (popup.closed && !isCompleted) {
-            console.log('⚠️ Popup closed manually');
-            isCompleted = true;
-            
-            if (pollInterval !== undefined) {
-              clearInterval(pollInterval);
-              pollInterval = undefined;
-            }
-            window.removeEventListener('message', messageHandler);
-            
-            reject(new Error('OAuth popup was closed'));
-            return;
-          }
-        };
-
-        // Start polling every 1 second
-        pollInterval = window.setInterval(pollForCompletion, 1000);
-
-        console.log('✅ Enhanced popup OAuth setup complete');
-
-      } catch (error) {
-        console.error('❌ Error in connectWithPopup:', error);
-        reject(error);
-      }
-    });
+    console.warn('⚠️ connectWithPopup is deprecated, using redirect flow instead');
+    return this.connectWithRedirect(selectedScopes);
   }
 }
 

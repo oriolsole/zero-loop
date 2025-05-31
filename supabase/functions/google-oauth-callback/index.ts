@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
@@ -45,6 +46,24 @@ async function encryptToken(token: string): Promise<string> {
   return btoa(String.fromCharCode(...combined));
 }
 
+function getAppUrl(): string {
+  // Determine the correct app URL based on environment
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+  
+  // For development, use localhost
+  if (supabaseUrl.includes('localhost') || supabaseUrl.includes('127.0.0.1')) {
+    return 'http://localhost:5173';
+  }
+  
+  // For production, convert Supabase URL to Lovable project URL
+  if (supabaseUrl.includes('.supabase.co')) {
+    return supabaseUrl.replace('.supabase.co', '.lovableproject.com');
+  }
+  
+  // Fallback
+  return 'http://localhost:5173';
+}
+
 serve(async (req) => {
   console.log(`📥 ${req.method} request to google-oauth-callback`);
 
@@ -71,14 +90,15 @@ serve(async (req) => {
         error
       });
 
+      const appUrl = getAppUrl();
+      console.log('🏠 App URL determined as:', appUrl);
+
       if (error) {
         console.error('❌ OAuth error:', error);
-        // Redirect back to tools page with error
-        const redirectUrl = `${Deno.env.get('SUPABASE_URL')?.replace('supabase.co', 'lovableproject.com') || 'http://localhost:5173'}/tools?error=${encodeURIComponent(error)}`;
         return new Response(null, {
           status: 302,
           headers: { 
-            'Location': redirectUrl,
+            'Location': `${appUrl}/tools?error=${encodeURIComponent(error)}`,
             ...corsHeaders 
           }
         });
@@ -86,14 +106,25 @@ serve(async (req) => {
 
       if (!code) {
         console.error('❌ No authorization code received');
-        const redirectUrl = `${Deno.env.get('SUPABASE_URL')?.replace('supabase.co', 'lovableproject.com') || 'http://localhost:5173'}/tools?error=no_code`;
         return new Response(null, {
           status: 302,
           headers: { 
-            'Location': redirectUrl,
+            'Location': `${appUrl}/tools?error=no_code`,
             ...corsHeaders 
           }
         });
+      }
+
+      // Parse state to get user ID
+      let userId = null;
+      if (state) {
+        try {
+          const stateData = JSON.parse(atob(state));
+          userId = stateData.userId;
+          console.log('👤 User ID from state:', userId);
+        } catch (e) {
+          console.error('❌ Failed to parse state:', e);
+        }
       }
 
       const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
@@ -101,11 +132,10 @@ serve(async (req) => {
       
       if (!clientId || !clientSecret) {
         console.error('❌ Google OAuth credentials not configured');
-        const redirectUrl = `${Deno.env.get('SUPABASE_URL')?.replace('supabase.co', 'lovableproject.com') || 'http://localhost:5173'}/tools?error=config_error`;
         return new Response(null, {
           status: 302,
           headers: { 
-            'Location': redirectUrl,
+            'Location': `${appUrl}/tools?error=config_error`,
             ...corsHeaders 
           }
         });
@@ -131,11 +161,10 @@ serve(async (req) => {
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
         console.error('❌ Token exchange failed:', errorText);
-        const redirectUrl = `${Deno.env.get('SUPABASE_URL')?.replace('supabase.co', 'lovableproject.com') || 'http://localhost:5173'}/tools?error=token_exchange_failed`;
         return new Response(null, {
           status: 302,
           headers: { 
-            'Location': redirectUrl,
+            'Location': `${appUrl}/tools?error=token_exchange_failed`,
             ...corsHeaders 
           }
         });
@@ -150,8 +179,6 @@ serve(async (req) => {
         scope: tokenData.scope
       });
 
-      // We need to get the user ID - for now, we'll redirect with tokens in URL params
-      // In a real implementation, you'd want to maintain state to associate with the correct user
       try {
         // Create Supabase client
         const supabase = createClient(
@@ -159,27 +186,32 @@ serve(async (req) => {
           Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         );
 
-        // For now, we'll assume the user is the most recently authenticated user
-        // In production, you'd want to maintain proper state linking
-        const { data: profiles, error: profileError } = await supabase
-          .from('profiles')
-          .select('id')
-          .order('created_at', { ascending: false })
-          .limit(1);
+        // Use the user ID from state if available, otherwise find the most recent user
+        let finalUserId = userId;
+        
+        if (!finalUserId) {
+          console.log('⚠️ No user ID in state, finding most recent user...');
+          const { data: profiles, error: profileError } = await supabase
+            .from('profiles')
+            .select('id')
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-        if (profileError || !profiles || profiles.length === 0) {
-          console.error('❌ Could not find user profile:', profileError);
-          const redirectUrl = `${Deno.env.get('SUPABASE_URL')?.replace('supabase.co', 'lovableproject.com') || 'http://localhost:5173'}/tools?error=user_not_found`;
-          return new Response(null, {
-            status: 302,
-            headers: { 
-              'Location': redirectUrl,
-              ...corsHeaders 
-            }
-          });
+          if (profileError || !profiles || profiles.length === 0) {
+            console.error('❌ Could not find user profile:', profileError);
+            return new Response(null, {
+              status: 302,
+              headers: { 
+                'Location': `${appUrl}/tools?error=user_not_found`,
+                ...corsHeaders 
+              }
+            });
+          }
+
+          finalUserId = profiles[0].id;
         }
 
-        const userId = profiles[0].id;
+        console.log('👤 Final user ID:', finalUserId);
 
         // Calculate expiration time
         const expiresInSeconds = tokenData.expires_in || 3600;
@@ -195,7 +227,7 @@ serve(async (req) => {
         const { data, error: upsertError } = await supabase
           .from('google_oauth_tokens')
           .upsert({
-            user_id: userId,
+            user_id: finalUserId,
             access_token: encryptedAccessToken,
             refresh_token: encryptedRefreshToken,
             expires_at: expiresAt,
@@ -208,11 +240,10 @@ serve(async (req) => {
 
         if (upsertError) {
           console.error('❌ Failed to store tokens:', upsertError);
-          const redirectUrl = `${Deno.env.get('SUPABASE_URL')?.replace('supabase.co', 'lovableproject.com') || 'http://localhost:5173'}/tools?error=storage_failed`;
           return new Response(null, {
             status: 302,
             headers: { 
-              'Location': redirectUrl,
+              'Location': `${appUrl}/tools?error=storage_failed`,
               ...corsHeaders 
             }
           });
@@ -221,22 +252,20 @@ serve(async (req) => {
         console.log('✅ Tokens stored successfully, redirecting to tools page');
         
         // Redirect back to tools page with success
-        const redirectUrl = `${Deno.env.get('SUPABASE_URL')?.replace('supabase.co', 'lovableproject.com') || 'http://localhost:5173'}/tools?success=google_connected`;
         return new Response(null, {
           status: 302,
           headers: { 
-            'Location': redirectUrl,
+            'Location': `${appUrl}/tools?success=google_connected`,
             ...corsHeaders 
           }
         });
 
       } catch (error) {
         console.error('❌ Error storing tokens:', error);
-        const redirectUrl = `${Deno.env.get('SUPABASE_URL')?.replace('supabase.co', 'lovableproject.com') || 'http://localhost:5173'}/tools?error=processing_failed`;
         return new Response(null, {
           status: 302,
           headers: { 
-            'Location': redirectUrl,
+            'Location': `${appUrl}/tools?error=processing_failed`,
             ...corsHeaders 
           }
         });

@@ -8,6 +8,8 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  console.log('📥 Initiating Google OAuth...');
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -17,11 +19,13 @@ serve(async (req) => {
     const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
     
     if (!clientId) {
+      console.error('❌ Google OAuth client ID not configured');
       throw new Error('Google OAuth client ID not configured');
     }
 
-    // Parse request body to get custom scopes
-    let requestedScopes = ['https://www.googleapis.com/auth/drive']; // Default scope
+    // Parse request body to get custom scopes and user ID
+    let requestedScopes = ['https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile']; // Default scopes
+    let userId = null;
     
     if (req.method === 'POST') {
       try {
@@ -30,17 +34,27 @@ serve(async (req) => {
           requestedScopes = body.scopes;
           console.log('🔄 Custom scopes requested:', requestedScopes);
         }
+        if (body.userId) {
+          userId = body.userId;
+          console.log('👤 User ID provided:', userId);
+        }
       } catch (e) {
-        console.log('📋 No custom scopes provided, using defaults');
+        console.log('📋 Using default scopes and no user ID');
       }
     }
 
-    // Generate state parameter for security
-    const state = crypto.randomUUID();
+    // Generate state parameter with user ID for security
+    const stateData = {
+      random: crypto.randomUUID(),
+      userId: userId,
+      timestamp: Date.now()
+    };
+    const state = btoa(JSON.stringify(stateData));
     
     // Join scopes with spaces for Google OAuth
     const scopeString = requestedScopes.join(' ');
     console.log('🔗 Final scope string:', scopeString);
+    console.log('🔐 State with user context:', stateData);
     
     // Google OAuth 2.0 authorization URL
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -52,7 +66,7 @@ serve(async (req) => {
     authUrl.searchParams.set('prompt', 'consent');
     authUrl.searchParams.set('state', state);
 
-    console.log('✅ OAuth URL generated with scopes:', scopeString);
+    console.log('✅ OAuth URL generated with user context');
 
     return new Response(
       JSON.stringify({
@@ -70,7 +84,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Google OAuth initiate error:', error);
+    console.error('❌ Google OAuth initiate error:', error);
     
     return new Response(
       JSON.stringify({
