@@ -29,7 +29,7 @@ export function detectOrchestrationNeeds(query: string): OrchestrationContext {
       (lowerQuery.includes('search') && lowerQuery.includes('analyze'))) {
     return {
       shouldUseOrchestration: true,
-      suggestedTools: ['web-search', 'knowledge-search-v2'],
+      suggestedTools: ['google-search', 'knowledge-search'],
       dependencies: {},
       planType: 'comprehensive-search'
     };
@@ -51,8 +51,8 @@ export function detectOrchestrationNeeds(query: string): OrchestrationContext {
   if (lowerQuery.includes('search') && (lowerQuery.includes('scrape') || lowerQuery.includes('extract'))) {
     return {
       shouldUseOrchestration: true,
-      suggestedTools: ['web-search', 'web-scraper'],
-      dependencies: { 'web-scraper': ['web-search'] },
+      suggestedTools: ['google-search', 'web-scraper'],
+      dependencies: { 'web-scraper': ['google-search'] },
       planType: 'comprehensive-search'
     };
   }
@@ -62,7 +62,7 @@ export function detectOrchestrationNeeds(query: string): OrchestrationContext {
       (lowerQuery.includes('news') && (lowerQuery.includes('today') || lowerQuery.includes('recent')))) {
     return {
       shouldUseOrchestration: true,
-      suggestedTools: ['web-search', 'knowledge-search-v2'],
+      suggestedTools: ['google-search', 'knowledge-search'],
       dependencies: {},
       planType: 'news-search'
     };
@@ -70,9 +70,9 @@ export function detectOrchestrationNeeds(query: string): OrchestrationContext {
 
   // Check for multi-tool indicators
   const toolIndicators = [
-    { pattern: /search.*knowledge|knowledge.*search/i, tools: ['web-search', 'knowledge-search-v2'] },
-    { pattern: /github.*search|search.*github/i, tools: ['github-tools', 'web-search'] },
-    { pattern: /jira.*search|search.*jira/i, tools: ['jira-tools', 'web-search'] }
+    { pattern: /search.*knowledge|knowledge.*search/i, tools: ['google-search', 'knowledge-search'] },
+    { pattern: /github.*search|search.*github/i, tools: ['github-tools', 'google-search'] },
+    { pattern: /jira.*search|search.*jira/i, tools: ['jira-tools', 'google-search'] }
   ];
 
   for (const indicator of toolIndicators) {
@@ -89,8 +89,8 @@ export function detectOrchestrationNeeds(query: string): OrchestrationContext {
   // Single tool queries
   const singleToolPatterns = [
     { pattern: /github|repository|repo/i, tool: 'github-tools' },
-    { pattern: /knowledge|documents|my files/i, tool: 'knowledge-search-v2' },
-    { pattern: /search|find|look up/i, tool: 'web-search' },
+    { pattern: /knowledge|documents|my files/i, tool: 'knowledge-search' },
+    { pattern: /search|find|look up/i, tool: 'google-search' },
     { pattern: /jira|issues|tickets/i, tool: 'jira-tools' }
   ];
 

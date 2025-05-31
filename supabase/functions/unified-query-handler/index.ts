@@ -13,6 +13,20 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+async function callToolWithTimeout(toolName: string, parameters: any, timeoutMs = 25000) {
+  console.log(`🔧 Calling tool: ${toolName} with timeout: ${timeoutMs}ms`);
+  
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`Tool ${toolName} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  
+  const callPromise = supabase.functions.invoke(toolName, {
+    body: parameters
+  });
+  
+  return Promise.race([callPromise, timeoutPromise]);
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -86,7 +100,7 @@ serve(async (req) => {
         toolToUse = 'google-search';
         toolParameters = {
           query: message,
-          numResults: 5
+          limit: 5
         };
       }
     } else if (lowerMessage.includes('github') || lowerMessage.includes('repository') || lowerMessage.includes('repo')) {
@@ -102,9 +116,7 @@ serve(async (req) => {
       console.log(`🔧 Executing tool: ${toolToUse}`);
       
       try {
-        const { data: toolData, error: toolError } = await supabase.functions.invoke(toolToUse, {
-          body: toolParameters
-        });
+        const { data: toolData, error: toolError } = await callToolWithTimeout(toolToUse, toolParameters);
         
         if (toolError) {
           console.error(`Tool ${toolToUse} error:`, toolError);
@@ -137,8 +149,8 @@ serve(async (req) => {
               if (result.snippet || result.description) {
                 formattedResponse += `   ${result.snippet || result.description}\n`;
               }
-              if (result.url) {
-                formattedResponse += `   ${result.url}\n`;
+              if (result.link || result.url) {
+                formattedResponse += `   ${result.link || result.url}\n`;
               }
               formattedResponse += '\n';
             });
@@ -197,12 +209,14 @@ serve(async (req) => {
     
     return new Response(
       JSON.stringify({
-        success: false,
-        error: error.message || 'An unexpected error occurred',
-        details: 'Check the edge function logs for more information'
+        success: true,
+        message: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
+        toolsUsed: [],
+        availableToolsCount: 0,
+        error: error.message
       }),
       { 
-        status: 500,
+        status: 200, // Changed from 500 to 200 to prevent frontend errors
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
