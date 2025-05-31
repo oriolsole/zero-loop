@@ -5,14 +5,7 @@ import { useConversationContext } from '@/contexts/ConversationContext';
 import { agentService, Agent } from '@/services/agentService';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
-
-export type ModelProvider = 'openai' | 'anthropic' | 'local' | 'npaw';
-
-export interface ModelSettings {
-  provider: ModelProvider;
-  selectedModel: string;
-  localModelUrl?: string;
-}
+import { ModelProvider, ModelSettings } from '@/services/modelProviderService';
 
 export const useAIAgentChat = () => {
   const { user, session } = useAuth();
@@ -116,7 +109,7 @@ export const useAIAgentChat = () => {
       await addMessage({
         role: 'user',
         content: message,
-        messageType: 'message',
+        messageType: 'response',
         agent_id: currentAgent?.id || null
       });
 
