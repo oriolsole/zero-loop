@@ -142,12 +142,7 @@ export async function synthesizeFinalResponse(
            - Mention when results may be incomplete due to tool issues
            - Suggest alternative approaches when primary tools fail
 
-        6. **Completeness**:
-           - Include ALL relevant information from successful tool executions
-           - Don't truncate or summarize excessively - provide full details
-           - Organize information clearly with proper formatting
-
-        Provide a helpful, accurate response that acknowledges tool execution context and includes complete information.`
+        Provide a helpful, accurate response that acknowledges tool execution context.`
       },
       {
         role: 'user',
@@ -159,7 +154,7 @@ export async function synthesizeFinalResponse(
       body: {
         messages: synthesisMessages,
         temperature: 0.7,
-        max_tokens: 3000  // Increased to handle larger responses
+        max_tokens: 2000
       }
     });
 
@@ -287,11 +282,7 @@ function prepareSynthesisContext(
         context += `   Has Data: ${hasData}\n`;
         
         if (hasData) {
-          // Include more result data for better synthesis
-          const resultString = typeof tool.result === 'string' 
-            ? tool.result 
-            : JSON.stringify(tool.result, null, 2);
-          context += `   Result: ${resultString}\n`;
+          context += `   Result: ${JSON.stringify(tool.result, null, 2)}\n`;
         } else {
           context += `   Result: Empty or no data returned\n`;
         }
@@ -325,9 +316,7 @@ function prepareSynthesisContext(
 2. Differentiates between "no data found" and "no data exists"
 3. Uses available knowledge appropriately
 4. Is transparent about limitations
-5. Includes ALL relevant details from successful tool executions
-6. Suggests next steps if tools failed or returned empty results
-7. Formats the information clearly and completely`;
+5. Suggests next steps if tools failed or returned empty results`;
 
   return context;
 }

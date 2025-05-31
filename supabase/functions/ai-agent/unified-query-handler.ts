@@ -1,4 +1,3 @@
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
@@ -359,7 +358,7 @@ export async function handleUnifiedQuery(
         }
       }
       
-      // 7. Synthesize tool results BEFORE storing response
+      // 7. Synthesize tool results
       if (toolsUsed.length > 0) {
         console.log(`🔄 Synthesizing tool results (loop ${loopIteration})`);
         const synthesizedResponse = await synthesizeResults(
@@ -372,25 +371,14 @@ export async function handleUnifiedQuery(
         );
         
         if (synthesizedResponse && synthesizedResponse.trim()) {
-          console.log(`🔬 Synthesis complete: ${synthesizedResponse.length} chars`);
           finalResponse = synthesizedResponse;
-        } else {
-          console.log(`⚠️ Synthesis failed, using original response`);
         }
       }
     } else {
       console.log(`✅ LLM responded directly without tools (loop ${loopIteration})`);
     }
 
-    // Validate response completeness before storing
-    if (!finalResponse || !finalResponse.trim()) {
-      finalResponse = createFallbackResponse(message, allToolsUsed);
-      console.log(`⚠️ Empty response detected, using fallback: ${finalResponse.length} chars`);
-    } else {
-      console.log(`✅ Valid response ready for storage: ${finalResponse.length} chars`);
-    }
-
-    // 8. Store current iteration response (moved after synthesis)
+    // 8. Store current iteration response
     const responseMessageType = loopIteration === 0 ? 'response' : 'loop-enhancement';
     await insertMessage(
       finalResponse,
@@ -472,6 +460,11 @@ export async function handleUnifiedQuery(
       } catch (error) {
         console.warn('Failed to persist insights:', error);
       }
+    }
+
+    // 12. Validate response
+    if (!finalResponse || !finalResponse.trim()) {
+      finalResponse = createFallbackResponse(message, allToolsUsed);
     }
 
     console.log(`🛠️ Tools available: ${mcps.length}`);
@@ -592,7 +585,7 @@ Remember: You have comprehensive knowledge. Tools are available when needed, not
 }
 
 /**
- * Synthesize results from tools and knowledge with better validation
+ * Synthesize results from tools and knowledge
  */
 async function synthesizeResults(
   originalMessage: string,
@@ -603,17 +596,15 @@ async function synthesizeResults(
   supabase: any
 ): Promise<string | null> {
   try {
-    console.log(`🔬 Starting synthesis with ${toolsUsed.length} tools`);
-    
     const toolResultsSummary = toolsUsed.map(tool => {
       if (tool.success && tool.result) {
         const resultPreview = typeof tool.result === 'string' 
-          ? tool.result.substring(0, 1000) + (tool.result.length > 1000 ? '...' : '')
-          : JSON.stringify(tool.result).substring(0, 1000);
+          ? tool.result.substring(0, 500) + (tool.result.length > 500 ? '...' : '')
+          : JSON.stringify(tool.result).substring(0, 500);
         return `${tool.name}: ${resultPreview}`;
       }
       return `${tool.name}: Failed`;
-    }).join('\n\n');
+    }).join('\n');
 
     const synthesisMessages = [
       {
@@ -625,7 +616,7 @@ User asked: "${originalMessage}"
 Tool results:
 ${toolResultsSummary}
 
-Create a clear, helpful response that integrates this information naturally. Format appropriately for readability. Ensure you include all relevant details from the tool results.`
+Create a clear, helpful response that integrates this information naturally. Format appropriately for readability.`
       },
       {
         role: 'user',
@@ -633,13 +624,11 @@ Create a clear, helpful response that integrates this information naturally. For
       }
     ];
 
-    console.log(`🔄 Calling synthesis with ${synthesisMessages.length} messages`);
-
     const synthesisResponse = await supabase.functions.invoke('ai-model-proxy', {
       body: {
         messages: synthesisMessages,
         temperature: 0.3,
-        max_tokens: 2000,
+        max_tokens: 1000,
         ...(modelSettings && {
           provider: modelSettings.provider,
           model: modelSettings.selectedModel,
@@ -649,22 +638,14 @@ Create a clear, helpful response that integrates this information naturally. For
     });
     
     if (synthesisResponse.error) {
-      console.error('❌ Synthesis failed:', synthesisResponse.error);
+      console.error('Synthesis failed:', synthesisResponse.error);
       return null;
     }
     
-    const synthesizedResponse = extractAssistantMessage(synthesisResponse.data);
-    
-    if (!synthesizedResponse || !synthesizedResponse.trim()) {
-      console.error('❌ Synthesis returned empty response');
-      return null;
-    }
-    
-    console.log(`✅ Synthesis successful: ${synthesizedResponse.length} chars`);
-    return synthesizedResponse;
+    return extractAssistantMessage(synthesisResponse.data);
     
   } catch (error) {
-    console.error('❌ Error in synthesis:', error);
+    console.error('Error in synthesis:', error);
     return null;
   }
 }
