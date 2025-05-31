@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { getAllScopes, getRequiredScopes, GOOGLE_SERVICES } from '@/types/googleScopes';
 import { enhancedProfileService } from './enhancedProfileService';
@@ -18,7 +17,7 @@ export interface GoogleOAuthStatus {
   grantedScopes?: string[];
 }
 
-// Helper function to map scopes to service IDs (same as in callback)
+// Enhanced helper function to map scopes to service IDs with better fallback logic
 function mapScopesToServiceIds(scopes: string[]): string[] {
   const scopeToServiceMap: Record<string, string> = {
     'https://www.googleapis.com/auth/userinfo.email': 'google-account',
@@ -33,7 +32,9 @@ function mapScopesToServiceIds(scopes: string[]): string[] {
     'https://www.googleapis.com/auth/calendar.readonly': 'google-calendar',
     'https://www.googleapis.com/auth/spreadsheets': 'google-sheets',
     'https://www.googleapis.com/auth/documents': 'google-docs',
+    // Fix contacts scope mapping to handle both variants
     'https://www.googleapis.com/auth/contacts': 'google-contacts',
+    'https://www.googleapis.com/auth/contacts.readonly': 'google-contacts',
     'https://www.googleapis.com/auth/photoslibrary.readonly': 'google-photos',
     'https://www.googleapis.com/auth/youtube.readonly': 'youtube'
   };
@@ -46,6 +47,12 @@ function mapScopesToServiceIds(scopes: string[]): string[] {
       serviceIds.add(serviceId);
     }
   });
+
+  // Always include google-account if we have any Google scopes
+  // This ensures basic account connection is recognized
+  if (scopes.length > 0 && scopes.some(scope => scope.includes('googleapis.com'))) {
+    serviceIds.add('google-account');
+  }
 
   return Array.from(serviceIds);
 }
@@ -86,7 +93,7 @@ class EnhancedGoogleOAuthService {
 
     console.log('📊 Found stored tokens with scope:', tokenData.scope);
 
-    // Parse scopes and map to services
+    // Parse scopes and map to services with enhanced logic
     const grantedScopes = (tokenData.scope || '').split(' ').filter(Boolean);
     const connectedServices = mapScopesToServiceIds(grantedScopes);
 
@@ -127,9 +134,15 @@ class EnhancedGoogleOAuthService {
       throw new Error('User must be authenticated to connect Google APIs');
     }
     
-    // Combine required scopes with selected optional scopes
+    // Always include basic Google Account scopes
+    const basicScopes = [
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile'
+    ];
+    
+    // Combine required scopes with selected optional scopes and basic scopes
     const requiredScopes = getRequiredScopes();
-    const allScopes = [...new Set([...requiredScopes, ...selectedScopes])];
+    const allScopes = [...new Set([...basicScopes, ...requiredScopes, ...selectedScopes])];
     
     console.log('📋 Final scopes to request:', allScopes);
     console.log('👤 User context:', user.id);
@@ -219,7 +232,7 @@ class EnhancedGoogleOAuthService {
         throw new Error('Unexpected response from OAuth callback');
       }
 
-      // Update profile with connected services
+      // Update profile with connected services using enhanced mapping
       const grantedScopes = tokens.scope ? tokens.scope.split(' ') : [];
       console.log('🔄 Updating profile with granted scopes:', grantedScopes);
       

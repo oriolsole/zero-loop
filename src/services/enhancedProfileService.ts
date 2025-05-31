@@ -72,7 +72,7 @@ class EnhancedProfileService {
   }
 
   /**
-   * Update user's profile with Google services information
+   * Update user's profile with Google services information using enhanced mapping
    */
   async updateGoogleServices(scopes: string[]): Promise<void> {
     const { data: { user } } = await supabase.auth.getUser();
@@ -81,15 +81,53 @@ class EnhancedProfileService {
       throw new Error('User not authenticated');
     }
 
-    // Map scopes to service IDs
-    const connectedServices = GOOGLE_SCOPES
-      .filter(scopeInfo => scopes.includes(scopeInfo.scope))
-      .map(scopeInfo => scopeInfo.id);
+    // Enhanced mapping logic to handle scope variations
+    const scopeToServiceMap: Record<string, string> = {
+      'https://www.googleapis.com/auth/userinfo.email': 'google-account',
+      'https://www.googleapis.com/auth/userinfo.profile': 'google-account',
+      'https://www.googleapis.com/auth/drive': 'google-drive',
+      'https://www.googleapis.com/auth/drive.file': 'google-drive',
+      'https://www.googleapis.com/auth/drive.readonly': 'google-drive',
+      'https://www.googleapis.com/auth/gmail.readonly': 'gmail',
+      'https://www.googleapis.com/auth/gmail.modify': 'gmail',
+      'https://www.googleapis.com/auth/gmail.send': 'gmail',
+      'https://www.googleapis.com/auth/calendar': 'google-calendar',
+      'https://www.googleapis.com/auth/calendar.readonly': 'google-calendar',
+      'https://www.googleapis.com/auth/spreadsheets': 'google-sheets',
+      'https://www.googleapis.com/auth/documents': 'google-docs',
+      // Handle both contacts scope variants
+      'https://www.googleapis.com/auth/contacts': 'google-contacts',
+      'https://www.googleapis.com/auth/contacts.readonly': 'google-contacts',
+      'https://www.googleapis.com/auth/photoslibrary.readonly': 'google-photos',
+      'https://www.googleapis.com/auth/youtube.readonly': 'youtube'
+    };
+
+    const connectedServices = new Set<string>();
+    
+    // Map scopes to services
+    scopes.forEach(scope => {
+      const serviceId = scopeToServiceMap[scope];
+      if (serviceId) {
+        connectedServices.add(serviceId);
+      }
+    });
+
+    // Always include google-account if we have any Google scopes
+    if (scopes.length > 0 && scopes.some(scope => scope.includes('googleapis.com'))) {
+      connectedServices.add('google-account');
+    }
+
+    const connectedServicesArray = Array.from(connectedServices);
+
+    console.log('🔄 Enhanced service mapping:', {
+      originalScopes: scopes,
+      mappedServices: connectedServicesArray
+    });
 
     const { error } = await supabase
       .from('profiles')
       .update({
-        google_services_connected: connectedServices,
+        google_services_connected: connectedServicesArray,
         google_scopes_granted: scopes,
         google_drive_connected: scopes.includes('https://www.googleapis.com/auth/drive'),
         updated_at: new Date().toISOString()
@@ -100,6 +138,8 @@ class EnhancedProfileService {
       console.error('Error updating Google services:', error);
       throw new Error(`Failed to update Google services: ${error.message}`);
     }
+
+    console.log('✅ Profile updated with enhanced service mapping');
   }
 
   /**

@@ -1,3 +1,4 @@
+
 export interface GoogleScope {
   id: string;
   name: string;
@@ -16,76 +17,79 @@ export interface GoogleScopeCategory {
 }
 
 export const GOOGLE_SCOPES: GoogleScope[] = [
+  // Account - Essential for basic authentication
+  {
+    id: 'google-account',
+    name: 'Google Account',
+    description: 'Basic profile and email access',
+    scope: 'https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+    icon: 'googleAccount',
+    category: 'communication',
+    required: true
+  },
+  
   // Storage & Files
   {
-    id: 'drive',
+    id: 'google-drive',
     name: 'Google Drive',
     description: 'Access and manage your Google Drive files',
     scope: 'https://www.googleapis.com/auth/drive',
-    icon: 'HardDrive',
+    icon: 'googleDrive',
     category: 'storage',
     required: true
   },
   
   // Communication
   {
-    id: 'gmail-read',
-    name: 'Gmail (Read)',
-    description: 'Read your Gmail messages',
-    scope: 'https://www.googleapis.com/auth/gmail.readonly',
-    icon: 'Mail',
+    id: 'gmail',
+    name: 'Gmail',
+    description: 'Read and send Gmail messages',
+    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send',
+    icon: 'googleGmail',
     category: 'communication'
   },
   {
-    id: 'gmail-send',
-    name: 'Gmail (Send)',
-    description: 'Send emails on your behalf',
-    scope: 'https://www.googleapis.com/auth/gmail.send',
-    icon: 'Send',
-    category: 'communication'
-  },
-  {
-    id: 'contacts',
+    id: 'google-contacts',
     name: 'Contacts',
     description: 'Access your Google contacts',
     scope: 'https://www.googleapis.com/auth/contacts.readonly',
-    icon: 'Users',
+    icon: 'googleContacts',
     category: 'communication'
   },
   
   // Productivity
   {
-    id: 'calendar',
+    id: 'google-calendar',
     name: 'Google Calendar',
     description: 'Access and manage your calendar events',
     scope: 'https://www.googleapis.com/auth/calendar',
-    icon: 'Calendar',
+    icon: 'googleCalendar',
     category: 'productivity'
   },
   {
-    id: 'sheets',
+    id: 'google-sheets',
     name: 'Google Sheets',
     description: 'Access and edit your spreadsheets',
     scope: 'https://www.googleapis.com/auth/spreadsheets',
-    icon: 'Sheet',
+    icon: 'googleSheets',
     category: 'productivity'
   },
   {
-    id: 'docs',
+    id: 'google-docs',
     name: 'Google Docs',
     description: 'Access and edit your documents',
     scope: 'https://www.googleapis.com/auth/documents',
-    icon: 'FileText',
+    icon: 'googleDocs',
     category: 'productivity'
   },
   
   // Media
   {
-    id: 'photos',
+    id: 'google-photos',
     name: 'Google Photos',
     description: 'Access your Google Photos library',
     scope: 'https://www.googleapis.com/auth/photoslibrary.readonly',
-    icon: 'Image',
+    icon: 'googlePhotos',
     category: 'media'
   },
   {
@@ -93,7 +97,7 @@ export const GOOGLE_SCOPES: GoogleScope[] = [
     name: 'YouTube',
     description: 'Access your YouTube data',
     scope: 'https://www.googleapis.com/auth/youtube.readonly',
-    icon: 'Video',
+    icon: 'googleYoutube',
     category: 'media'
   }
 ];
@@ -192,7 +196,7 @@ export const GOOGLE_SERVICES = [
     description: 'Access your contact information',
     icon: 'googleContacts',
     color: 'bg-orange-500',
-    scopes: ['https://www.googleapis.com/auth/contacts']
+    scopes: ['https://www.googleapis.com/auth/contacts.readonly']
   },
   {
     id: 'google-photos',
@@ -212,15 +216,17 @@ export const GOOGLE_SERVICES = [
   }
 ] as const;
 
-// Essential scopes for basic authentication - only the most necessary ones
+// Essential scopes for basic authentication - include Google Account scopes
 export const getRequiredScopes = (): string[] => {
   return [
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/drive', // Essential for file access
   ];
 };
 
 export const getAllScopes = (): string[] => {
-  return GOOGLE_SCOPES.map(scope => scope.scope);
+  return GOOGLE_SCOPES.flatMap(scope => scope.scope.split(' '));
 };
 
 export const getScopesByCategory = (category: string): GoogleScope[] => {
