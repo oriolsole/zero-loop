@@ -8,8 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, AlertCircle } from 'lucide-react';
-import { enhancedGoogleOAuthService } from '@/services/enhancedGoogleOAuthService';
-import { getRequiredScopes } from '@/types/googleScopes';
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -25,9 +23,8 @@ const EnhancedAuthForm = () => {
   const [password, setPassword] = useState('');
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [error, setError] = useState<string | null>(null);
-  const [isGoogleAuthLoading, setIsGoogleAuthLoading] = useState(false);
   
-  const { signIn, signUp, isLoading } = useAuth();
+  const { signIn, signUp, signInWithGoogle, isLoading } = useAuth();
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,17 +44,12 @@ const EnhancedAuthForm = () => {
 
   const handleGoogleSignIn = async () => {
     setError(null);
-    setIsGoogleAuthLoading(true);
     
     try {
-      // Use essential scopes for basic authentication
-      const essentialScopes = getRequiredScopes();
-      await enhancedGoogleOAuthService.connectWithPopup(essentialScopes);
+      await signInWithGoogle();
     } catch (error: any) {
       console.error('Google auth error:', error);
       setError(error.message || 'Google authentication failed');
-    } finally {
-      setIsGoogleAuthLoading(false);
     }
   };
   
@@ -90,10 +82,10 @@ const EnhancedAuthForm = () => {
                 type="button"
                 variant="outline"
                 onClick={handleGoogleSignIn}
-                disabled={isLoading || isGoogleAuthLoading}
+                disabled={isLoading}
                 className="w-full"
               >
-                {isGoogleAuthLoading ? (
+                {isLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <GoogleIcon />
@@ -159,10 +151,10 @@ const EnhancedAuthForm = () => {
                 type="button"
                 variant="outline"
                 onClick={handleGoogleSignIn}
-                disabled={isLoading || isGoogleAuthLoading}
+                disabled={isLoading}
                 className="w-full"
               >
-                {isGoogleAuthLoading ? (
+                {isLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <GoogleIcon />

@@ -4,6 +4,7 @@ import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 import { enhancedProfileService, EnhancedUserProfile } from '@/services/enhancedProfileService';
+import { getRequiredScopes } from '@/types/googleScopes';
 
 interface AuthContextProps {
   session: Session | null;
@@ -131,11 +132,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(true);
       const redirectUrl = `${window.location.origin}/`;
       
+      // Use only essential scopes for basic authentication
+      const essentialScopes = getRequiredScopes();
+      const scopesString = essentialScopes.join(' ');
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
-          scopes: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/documents'
+          scopes: scopesString
         }
       });
       
@@ -145,6 +150,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error('Google sign in error:', error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
