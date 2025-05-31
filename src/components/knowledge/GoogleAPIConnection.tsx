@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,7 +40,7 @@ const GoogleAPIConnection: React.FC<GoogleAPIConnectionProps> = ({
     try {
       // Get all scopes for comprehensive access
       const allScopes = GOOGLE_SCOPE_CATEGORIES.flatMap(category => 
-        category.scopes.map(scope => scope.url)
+        category.scopes.map(scope => scope.scope)
       );
       
       const { authUrl } = await enhancedGoogleOAuthService.initiateOAuth(allScopes);
