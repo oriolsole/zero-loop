@@ -109,8 +109,7 @@ export const useAIAgentChat = () => {
       await addMessage({
         role: 'user',
         content: message,
-        messageType: 'response',
-        agent_id: currentAgent?.id || null
+        messageType: 'response'
       });
 
       const response = await supabase.functions.invoke('ai-agent', {
