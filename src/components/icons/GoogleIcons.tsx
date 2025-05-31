@@ -6,14 +6,13 @@ interface GoogleIconProps {
 }
 
 export const GoogleDriveIcon: React.FC<GoogleIconProps> = ({ size = 24, className = "" }) => (
-  <img 
-    src="/google-drive-icon.png" 
-    alt="Google Drive" 
-    width={size} 
-    height={size} 
-    className={className}
-    style={{ objectFit: 'contain' }}
-  />
+  <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
+    <path fill="#4285F4" d="M7.71 4.87L2.4 14.43h5.31L13 4.87H7.71z"/>
+    <path fill="#0F9D58" d="M16.29 4.87L11 14.43h10.6l5.31-9.56H16.29z"/>
+    <path fill="#EA4335" d="M2.4 14.43L7.71 24h8.58l-5.31-9.57H2.4z"/>
+    <path fill="#FBBC04" d="M13 4.87l5.29 9.56h5.31L18.29 4.87H13z"/>
+    <path fill="#34A853" d="M7.71 4.87H13l5.29 9.56H11L7.71 4.87z"/>
+  </svg>
 );
 
 export const GmailIcon: React.FC<GoogleIconProps> = ({ size = 24, className = "" }) => (
