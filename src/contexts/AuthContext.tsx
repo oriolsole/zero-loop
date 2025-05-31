@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,6 +15,8 @@ interface AuthContextProps {
   signUp: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -170,6 +171,48 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const resetPassword = async (email: string) => {
+    try {
+      setIsLoading(true);
+      const redirectUrl = `${window.location.origin}/reset-password`;
+      
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl
+      });
+      
+      if (error) {
+        toast.error(`Password reset failed: ${error.message}`);
+        throw error;
+      }
+      
+      toast.success('Password reset email sent! Please check your inbox.');
+    } catch (error) {
+      console.error('Password reset error:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updatePassword = async (password: string) => {
+    try {
+      setIsLoading(true);
+      const { error } = await supabase.auth.updateUser({ password });
+      
+      if (error) {
+        toast.error(`Password update failed: ${error.message}`);
+        throw error;
+      }
+      
+      toast.success('Password updated successfully!');
+    } catch (error) {
+      console.error('Password update error:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const value = {
     session,
     user,
@@ -180,6 +223,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     signUp,
     signInWithGoogle,
     signOut,
+    resetPassword,
+    updatePassword,
     refreshProfile
   };
 

@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -127,6 +128,15 @@ const EnhancedAuthForm = () => {
                   required
                   disabled={isLoading}
                 />
+              </div>
+              
+              <div className="text-center">
+                <Link 
+                  to="/forgot-password" 
+                  className="text-sm text-primary hover:underline"
+                >
+                  Forgot your password?
+                </Link>
               </div>
             </CardContent>
           </TabsContent>
