@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, CheckCircle, Key, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Key, Loader2, RefreshCw, LogIn } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
@@ -50,10 +50,10 @@ const MCPAuthStatus: React.FC<MCPAuthStatusProps> = ({
     if (!isAuthenticated) {
       return (
         <Alert variant="warning">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Authentication required</AlertTitle>
+          <LogIn className="h-4 w-4" />
+          <AlertTitle>Sign in required</AlertTitle>
           <AlertDescription>
-            You need to be signed in to execute this MCP and store execution history.
+            Please sign in to execute this tool and validate your credentials.
           </AlertDescription>
         </Alert>
       );

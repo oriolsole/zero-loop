@@ -33,7 +33,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     setIsAuthenticated(!!user);
   }, [user]);
 
-  // Validate credentials when component mounts or when authentication changes
+  // Validate credentials when component mounts AND when authentication changes
   useEffect(() => {
     if (isAuthenticated) {
       validateCredentials();
@@ -43,7 +43,10 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
   }, [isAuthenticated, mcp.endpoint, mcp.requirestoken]);
 
   const validateCredentials = async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      setValidationResult(null);
+      return;
+    }
     
     setIsValidating(true);
     try {
@@ -120,15 +123,18 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
       return;
     }
 
-    // Final credential validation before execution
-    setIsValidating(true);
-    const finalValidation = await mcpCredentialService.forceRevalidate(mcp.endpoint, mcp.requirestoken);
-    setValidationResult(finalValidation);
-    setIsValidating(false);
+    // Check if we already have validation result - if not, validate first
+    let currentValidationResult = validationResult;
+    if (!currentValidationResult) {
+      setIsValidating(true);
+      currentValidationResult = await mcpCredentialService.forceRevalidate(mcp.endpoint, mcp.requirestoken);
+      setValidationResult(currentValidationResult);
+      setIsValidating(false);
+    }
 
-    if (!finalValidation.valid) {
+    if (!currentValidationResult.valid) {
       toast.error("Authentication required", {
-        description: finalValidation.error || "Invalid credentials"
+        description: currentValidationResult.error || "Invalid credentials"
       });
       setShowAuthModal(true);
       return;
@@ -144,7 +150,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
       endpoint: mcp.endpoint,
       parameters: values,
       requiresToken: mcp.requirestoken,
-      validationResult: finalValidation
+      validationResult: currentValidationResult
     };
     setRequestInfo(JSON.stringify(debugInfo, null, 2));
     
