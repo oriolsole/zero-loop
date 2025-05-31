@@ -18,8 +18,6 @@ export const useMessagePolling = ({
 }: UseMessagePollingProps) => {
   const { loadConversationFromDatabase } = useMessageManager();
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const retryCountRef = useRef(0);
-  const maxRetries = 3;
 
   const pollMessages = useCallback(async () => {
     if (!sessionId) return;
@@ -34,46 +32,27 @@ export const useMessagePolling = ({
       if (messages.length > 0) {
         console.log(`📥 [POLLING] Found ${messages.length} new/updated messages`);
         onMessagesReceived(messages);
-        retryCountRef.current = 0; // Reset retry count on success
       }
     } catch (error) {
       console.error('❌ [POLLING] Error polling messages:', error);
-      retryCountRef.current++;
-      
-      // Stop polling if we've had too many consecutive errors
-      if (retryCountRef.current >= maxRetries) {
-        console.log('🛑 [POLLING] Too many errors, stopping polling');
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
-        }
-      }
     }
   }, [sessionId, loadConversationFromDatabase, onMessagesReceived, lastMessageTimestamp]);
 
   // Start/stop polling based on loading state
   useEffect(() => {
-    // Only poll when we have a session and are NOT loading (to avoid infinite loops)
-    if (sessionId && !isLoading) {
-      console.log('🟢 [POLLING] Starting message polling (conversation idle)');
+    if (isLoading && sessionId) {
+      console.log('🟢 [POLLING] Starting message polling (conversation active)');
       
-      // Poll immediately, then every 3 seconds (increased from 2s to reduce load)
+      // Poll immediately, then every 2 seconds
       pollMessages();
-      pollingIntervalRef.current = setInterval(pollMessages, 3000);
+      pollingIntervalRef.current = setInterval(pollMessages, 2000);
     } else {
-      console.log('🔴 [POLLING] Stopping message polling', { 
-        hasSession: !!sessionId, 
-        isLoading, 
-        reason: !sessionId ? 'no session' : 'loading in progress' 
-      });
+      console.log('🔴 [POLLING] Stopping message polling');
       
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
       }
-      
-      // Reset retry count when polling stops
-      retryCountRef.current = 0;
     }
 
     return () => {
@@ -82,7 +61,7 @@ export const useMessagePolling = ({
         pollingIntervalRef.current = null;
       }
     };
-  }, [sessionId, isLoading, pollMessages]);
+  }, [isLoading, sessionId, pollMessages]);
 
   return { pollMessages };
 };

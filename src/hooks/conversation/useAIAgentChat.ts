@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
@@ -132,7 +131,17 @@ export const useAIAgentChat = () => {
 
       console.log(`📞 Calling AI agent with ${conversationHistory.length} history messages, agent: ${currentAgent.name}, loop enabled: ${loopEnabled}`);
 
-      const requestBody = {
+      const requestBody: {
+        message: string;
+        conversationHistory: { role: "user" | "assistant"; content: string; }[];
+        userId: string;
+        sessionId: string;
+        streaming: boolean;
+        modelSettings: typeof modelSettings;
+        loopEnabled: boolean;
+        agentId: string;
+        customSystemPrompt?: string;
+      } = {
         message,
         conversationHistory,
         userId: user.id,
@@ -143,9 +152,12 @@ export const useAIAgentChat = () => {
           selectedModel: currentAgent.model
         },
         loopEnabled: currentAgent.loop_enabled || loopEnabled,
-        agentId: currentAgent.id,
-        ...(currentAgent.system_prompt && { customSystemPrompt: currentAgent.system_prompt })
+        agentId: currentAgent.id
       };
+
+      if (currentAgent.system_prompt) {
+        requestBody.customSystemPrompt = currentAgent.system_prompt;
+      }
 
       const { data, error } = await supabase.functions.invoke('ai-agent', {
         body: requestBody
@@ -163,7 +175,6 @@ export const useAIAgentChat = () => {
 
       console.log('✅ AI agent response received');
 
-      // Handle regular response
       const aiResponse = data.message || data.response;
       
       if (aiResponse) {
@@ -225,8 +236,6 @@ export const useAIAgentChat = () => {
     handleToggleLoop,
     handleAgentChange,
     processMessage,
-    currentAgent,
-    currentPlan: null, // Removed orchestration plan state
-    isOrchestrating: false // Removed orchestration state
+    currentAgent
   };
 };

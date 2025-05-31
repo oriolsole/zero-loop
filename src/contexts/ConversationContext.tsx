@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { ConversationMessage, ConversationSession } from '@/hooks/useAgentConversation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -42,10 +43,6 @@ interface ConversationContextType {
   persistMessage: (message: ConversationMessage) => Promise<boolean>;
   loadConversation: (sessionId: string) => Promise<void>;
   updateSessionTitle: (sessionId: string, title: string) => void;
-  
-  // Add orchestration state
-  currentPlan: any | null;
-  isOrchestrating: boolean;
 }
 
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);
@@ -60,8 +57,6 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [input, setInput] = useState('');
   const [activeTool, setActiveTool] = useState<ToolProgressItem | null>(null);
-  const [currentPlan, setCurrentPlan] = useState<any | null>(null);
-  const [isOrchestrating, setIsOrchestrating] = useState(false);
   const { user } = useAuth();
   const { persistMessageToDatabase, loadConversationFromDatabase } = useMessageManager();
 
@@ -297,7 +292,7 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [loadConversationFromDatabase, clearMessages, updateOrAddMessage]);
 
-  const value: ConversationContextType = {
+  const contextValue: ConversationContextType = {
     messages,
     addMessage,
     clearMessages,
@@ -321,13 +316,11 @@ export const ConversationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     setActiveTool,
     persistMessage,
     loadConversation,
-    updateSessionTitle,
-    currentPlan,
-    isOrchestrating
+    updateSessionTitle
   };
 
   return (
-    <ConversationContext.Provider value={value}>
+    <ConversationContext.Provider value={contextValue}>
       {children}
     </ConversationContext.Provider>
   );

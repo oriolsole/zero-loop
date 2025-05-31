@@ -1,6 +1,6 @@
 
 import { useState, useCallback } from 'react';
-import { MultiToolPlan, ToolExecution, ToolPlanningContext } from '@/types/orchestrator';
+import { MultiToolPlan, ToolExecution } from '@/types/orchestrator';
 import { usePlanCreation } from './orchestrator/usePlanCreation';
 import { usePlanExecution } from './orchestrator/usePlanExecution';
 import { usePlanDetection } from './orchestrator/usePlanDetection';
@@ -9,7 +9,7 @@ export const useMultiToolOrchestrator = () => {
   const [currentPlan, setCurrentPlan] = useState<MultiToolPlan | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
 
-  const { createPlan, createAdvancedPlan } = usePlanCreation();
+  const { createPlan } = usePlanCreation();
   const { executePlan: executeInternalPlan } = usePlanExecution();
   const { shouldUseToolsForQuery, detectGitHubRequest } = usePlanDetection();
 
@@ -64,10 +64,6 @@ export const useMultiToolOrchestrator = () => {
     }
   }, [executeInternalPlan]);
 
-  const createAdvancedPlanFromContext = useCallback((context: ToolPlanningContext) => {
-    return createAdvancedPlan(context);
-  }, [createAdvancedPlan]);
-
   const cancelPlan = useCallback(() => {
     if (currentPlan) {
       setCurrentPlan({
@@ -80,25 +76,19 @@ export const useMultiToolOrchestrator = () => {
   }, [currentPlan]);
 
   const getProgress = useCallback(() => {
-    if (!currentPlan) return { current: 0, total: 0, percentage: 0, groupProgress: { current: 0, total: 0 } };
+    if (!currentPlan) return { current: 0, total: 0, percentage: 0 };
     
     const completed = currentPlan.executions.filter(exec => exec.status === 'completed').length;
     const total = currentPlan.executions.length;
     const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
     
-    const groupProgress = {
-      current: currentPlan.currentGroupIndex + 1,
-      total: currentPlan.executionGroups.length
-    };
-    
-    return { current: completed, total, percentage, groupProgress };
+    return { current: completed, total, percentage };
   }, [currentPlan]);
 
   return {
     currentPlan,
     isExecuting,
     createPlan,
-    createAdvancedPlanFromContext,
     executePlan,
     cancelPlan,
     getProgress,
@@ -108,4 +98,4 @@ export const useMultiToolOrchestrator = () => {
 };
 
 // Re-export types for backward compatibility
-export type { ToolExecution, MultiToolPlan, ToolPlanningContext } from '@/types/orchestrator';
+export type { ToolExecution, MultiToolPlan } from '@/types/orchestrator';
