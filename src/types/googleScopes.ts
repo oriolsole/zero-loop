@@ -125,13 +125,13 @@ export const GOOGLE_SCOPE_CATEGORIES: GoogleScopeCategory[] = [
   }
 ];
 
-// Enhanced Google Services with proper branding
+// Enhanced Google Services with proper branding and icon components
 export const GOOGLE_SERVICES = [
   {
     id: 'google-account',
     name: 'Google Account',
     description: 'Basic profile and email access',
-    icon: 'user-circle',
+    icon: 'googleAccount',
     color: 'bg-blue-500',
     scopes: ['https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile']
   },
@@ -139,7 +139,7 @@ export const GOOGLE_SERVICES = [
     id: 'gmail',
     name: 'Gmail',
     description: 'Read, send, and manage emails',
-    icon: 'mail',
+    icon: 'googleGmail',
     color: 'bg-red-500',
     scopes: [
       'https://www.googleapis.com/auth/gmail.readonly',
@@ -151,7 +151,7 @@ export const GOOGLE_SERVICES = [
     id: 'google-drive',
     name: 'Google Drive',
     description: 'Access and manage your files',
-    icon: 'hard-drive',
+    icon: 'googleDrive',
     color: 'bg-blue-600',
     scopes: [
       'https://www.googleapis.com/auth/drive',
@@ -163,7 +163,7 @@ export const GOOGLE_SERVICES = [
     id: 'google-calendar',
     name: 'Google Calendar',
     description: 'Manage events and schedules',
-    icon: 'calendar',
+    icon: 'googleCalendar',
     color: 'bg-blue-700',
     scopes: [
       'https://www.googleapis.com/auth/calendar',
@@ -174,7 +174,7 @@ export const GOOGLE_SERVICES = [
     id: 'google-sheets',
     name: 'Google Sheets',
     description: 'Create and edit spreadsheets',
-    icon: 'table',
+    icon: 'googleSheets',
     color: 'bg-green-600',
     scopes: ['https://www.googleapis.com/auth/spreadsheets']
   },
@@ -182,7 +182,7 @@ export const GOOGLE_SERVICES = [
     id: 'google-docs',
     name: 'Google Docs',
     description: 'Create and edit documents',
-    icon: 'file-text',
+    icon: 'googleDocs',
     color: 'bg-blue-800',
     scopes: ['https://www.googleapis.com/auth/documents']
   },
@@ -190,7 +190,7 @@ export const GOOGLE_SERVICES = [
     id: 'google-contacts',
     name: 'Google Contacts',
     description: 'Access your contact information',
-    icon: 'users',
+    icon: 'googleContacts',
     color: 'bg-orange-500',
     scopes: ['https://www.googleapis.com/auth/contacts']
   },
@@ -198,7 +198,7 @@ export const GOOGLE_SERVICES = [
     id: 'google-photos',
     name: 'Google Photos',
     description: 'Access your photo library',
-    icon: 'camera',
+    icon: 'googlePhotos',
     color: 'bg-yellow-500',
     scopes: ['https://www.googleapis.com/auth/photoslibrary.readonly']
   },
@@ -206,7 +206,7 @@ export const GOOGLE_SERVICES = [
     id: 'youtube',
     name: 'YouTube',
     description: 'Access your YouTube data',
-    icon: 'youtube',
+    icon: 'googleYoutube',
     color: 'bg-red-600',
     scopes: ['https://www.googleapis.com/auth/youtube.readonly']
   }

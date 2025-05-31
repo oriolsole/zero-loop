@@ -48,6 +48,17 @@ import {
 } from "lucide-react";
 
 import JiraIcon from "./icons/JiraIcon";
+import { 
+  GoogleAccountIcon, 
+  GmailIcon, 
+  GoogleDriveIcon, 
+  GoogleCalendarIcon, 
+  GoogleSheetsIcon, 
+  GoogleDocsIcon, 
+  GoogleContactsIcon, 
+  GooglePhotosIcon, 
+  YouTubeIcon 
+} from "./icons/GoogleIcons";
 
 export const Icons = {
   arrowRight: ArrowRight,
@@ -96,4 +107,15 @@ export const Icons = {
   users: Users,
   zap: Zap,
   "kanban-square": KanbanSquare,
+  
+  // Google service icons
+  googleAccount: GoogleAccountIcon,
+  googleGmail: GmailIcon,
+  googleDrive: GoogleDriveIcon,
+  googleCalendar: GoogleCalendarIcon,
+  googleSheets: GoogleSheetsIcon,
+  googleDocs: GoogleDocsIcon,
+  googleContacts: GoogleContactsIcon,
+  googlePhotos: GooglePhotosIcon,
+  googleYoutube: YouTubeIcon,
 };

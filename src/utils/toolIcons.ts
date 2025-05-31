@@ -1,9 +1,34 @@
-
 import { Search, Github, Code, Wrench, Globe, FileText, Terminal, FileSearch, Book, Brain, Database, HardDrive, FolderOpen, Library } from 'lucide-react';
 import JiraIcon from '@/components/icons/JiraIcon';
+import { GoogleDriveIcon, GmailIcon, GoogleCalendarIcon, GoogleSheetsIcon, GoogleDocsIcon, GoogleContactsIcon } from '@/components/icons/GoogleIcons';
 
 export const getToolIcon = (toolName: string) => {
   const toolLower = toolName.toLowerCase();
+  
+  // Google-specific tool icons
+  if (toolLower.includes('gmail') || toolLower === 'google-mail') {
+    return GmailIcon;
+  }
+  
+  if (toolLower.includes('google-drive') || toolLower.includes('drive')) {
+    return GoogleDriveIcon;
+  }
+  
+  if (toolLower.includes('google-calendar') || toolLower.includes('calendar')) {
+    return GoogleCalendarIcon;
+  }
+  
+  if (toolLower.includes('google-sheets') || toolLower.includes('sheets')) {
+    return GoogleSheetsIcon;
+  }
+  
+  if (toolLower.includes('google-docs') || toolLower.includes('docs')) {
+    return GoogleDocsIcon;
+  }
+  
+  if (toolLower.includes('google-contacts') || toolLower.includes('contacts')) {
+    return GoogleContactsIcon;
+  }
   
   // Most specific matches first - exact tool names
   if (toolLower === 'knowledge-search-v2' || toolLower === 'knowledge_search' || toolLower === 'knowledge_retrieval') {
@@ -16,11 +41,6 @@ export const getToolIcon = (toolName: string) => {
   
   if (toolLower === 'jira-search' || toolLower === 'jira_search') {
     return JiraIcon;
-  }
-  
-  // Google Drive specific tools
-  if (toolLower.includes('google-drive') || toolLower.includes('drive')) {
-    return HardDrive;
   }
   
   // GitHub tools (broader match after specific search)
@@ -107,9 +127,29 @@ export const getToolDisplayName = (toolName: string): string => {
 export const getToolColor = (toolName: string): string => {
   const toolLower = toolName.toLowerCase();
   
-  // Google Drive specific styling
+  // Google service specific colors
+  if (toolLower.includes('gmail') || toolLower === 'google-mail') {
+    return 'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950/20 dark:border-red-800/30';
+  }
+  
   if (toolLower.includes('google-drive') || toolLower.includes('drive')) {
-    return 'text-yellow-600 bg-yellow-50 border-yellow-200 dark:text-yellow-400 dark:bg-yellow-950/20 dark:border-yellow-800/30';
+    return 'text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/20 dark:border-blue-800/30';
+  }
+  
+  if (toolLower.includes('google-calendar') || toolLower.includes('calendar')) {
+    return 'text-blue-700 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/20 dark:border-blue-800/30';
+  }
+  
+  if (toolLower.includes('google-sheets') || toolLower.includes('sheets')) {
+    return 'text-green-600 bg-green-50 border-green-200 dark:text-green-400 dark:bg-green-950/20 dark:border-green-800/30';
+  }
+  
+  if (toolLower.includes('google-docs') || toolLower.includes('docs')) {
+    return 'text-blue-800 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/20 dark:border-blue-800/30';
+  }
+  
+  if (toolLower.includes('google-contacts') || toolLower.includes('contacts')) {
+    return 'text-orange-600 bg-orange-50 border-orange-200 dark:text-orange-400 dark:bg-orange-950/20 dark:border-orange-800/30';
   }
   
   if (toolLower.includes('search') || toolLower.includes('google') || toolLower.includes('web search')) {
