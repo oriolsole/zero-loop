@@ -126,7 +126,7 @@ export async function executeTools(
           useEmbeddings: parameters.useEmbeddings !== false
         };
       } else {
-        // For ALL other tools (including Google tools), add userId
+        // For other tools, add userId if available
         toolParameters.userId = userId;
       }
       
@@ -137,12 +137,21 @@ export async function executeTools(
         toolProgress[progressIndex].progress = 50;
       }
       
-      // All tools now use userId in body - no special Authorization header handling needed
-      const invokeOptions: any = {
+      // Determine if this is a Google service that needs Authorization header
+      const isGoogleService = targetMcp.endpoint.includes('google-') && 
+                             !targetMcp.endpoint.includes('google-drive-tools'); // Drive tools work differently
+      
+      let invokeOptions: any = {
         body: toolParameters
       };
       
-      console.log(`🔐 Calling ${targetMcp.endpoint} with userId in body`);
+      // Add Authorization header for Google services (except Drive which uses userId)
+      if (isGoogleService && userAuthToken) {
+        invokeOptions.headers = {
+          'Authorization': `Bearer ${userAuthToken}`
+        };
+        console.log(`🔐 Added Authorization header for Google service: ${targetMcp.endpoint}`);
+      }
       
       const { data: edgeResult, error: edgeError } = await supabase.functions.invoke(targetMcp.endpoint, invokeOptions);
       
@@ -151,7 +160,8 @@ export async function executeTools(
         success: edgeResult?.success, 
         error: edgeError, 
         dataKeys: edgeResult ? Object.keys(edgeResult) : [],
-        resultCount: edgeResult?.data?.length || edgeResult?.results?.length || 0
+        resultCount: edgeResult?.data?.length || edgeResult?.results?.length || 0,
+        hasAuthHeader: !!invokeOptions.headers?.Authorization
       });
       
       if (edgeError) {

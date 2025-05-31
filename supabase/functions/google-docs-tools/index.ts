@@ -45,8 +45,6 @@ async function decryptToken(encryptedToken: string): Promise<string> {
 }
 
 async function getGoogleToken(userId: string, supabase: any): Promise<string> {
-  console.log('🔐 Getting Google OAuth token for user:', userId);
-  
   const { data, error } = await supabase
     .from('google_oauth_tokens')
     .select('access_token')
@@ -54,20 +52,13 @@ async function getGoogleToken(userId: string, supabase: any): Promise<string> {
     .single();
 
   if (error || !data) {
-    console.error('❌ Google OAuth token not found for user:', userId, error);
     throw new Error('Google OAuth token not found. Please connect your Google account first.');
   }
 
-  console.log('✅ Found encrypted token for user:', userId);
-  const decryptedToken = await decryptToken(data.access_token);
-  console.log('✅ Successfully decrypted token for user:', userId);
-  
-  return decryptedToken;
+  return await decryptToken(data.access_token);
 }
 
 async function callDocsAPI(endpoint: string, token: string, options: any = {}) {
-  console.log(`📝 Calling Docs API: ${endpoint}`);
-  
   const response = await fetch(`https://docs.googleapis.com/v1${endpoint}`, {
     method: options.method || 'GET',
     headers: {
@@ -80,7 +71,6 @@ async function callDocsAPI(endpoint: string, token: string, options: any = {}) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`❌ Docs API error: ${response.status} - ${errorText}`);
     throw new Error(`Docs API error: ${response.status} - ${errorText}`);
   }
 
@@ -100,16 +90,21 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { action, userId, ...parameters } = await req.json();
+    const { action, ...parameters } = await req.json();
+    const authHeader = req.headers.get('Authorization');
     
-    console.log('📝 Request details:', { action, userId, parametersKeys: Object.keys(parameters) });
-    
-    if (!userId) {
-      console.error('❌ No userId provided in request body');
-      throw new Error('User ID is required');
+    if (!authHeader) {
+      throw new Error('Authorization header required');
     }
 
-    const googleToken = await getGoogleToken(userId, supabase);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    
+    if (userError || !user) {
+      throw new Error('Invalid user token');
+    }
+
+    const googleToken = await getGoogleToken(user.id, supabase);
     let result;
 
     console.log(`📝 Executing Docs action: ${action}`);
