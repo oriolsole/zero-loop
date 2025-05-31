@@ -358,7 +358,7 @@ export async function handleUnifiedQuery(
         }
       }
       
-      // 7. Synthesize tool results
+      // 7. Synthesize tool results BEFORE storing response
       if (toolsUsed.length > 0) {
         console.log(`🔄 Synthesizing tool results (loop ${loopIteration})`);
         const synthesizedResponse = await synthesizeResults(
@@ -372,13 +372,14 @@ export async function handleUnifiedQuery(
         
         if (synthesizedResponse && synthesizedResponse.trim()) {
           finalResponse = synthesizedResponse;
+          console.log(`✅ Synthesis complete - updated final response (${finalResponse.length} chars)`);
         }
       }
     } else {
       console.log(`✅ LLM responded directly without tools (loop ${loopIteration})`);
     }
 
-    // 8. Store current iteration response
+    // 8. Store current iteration response (now contains synthesized result)
     const responseMessageType = loopIteration === 0 ? 'response' : 'loop-enhancement';
     await insertMessage(
       finalResponse,
