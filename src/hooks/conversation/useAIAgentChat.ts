@@ -159,8 +159,17 @@ export const useAIAgentChat = () => {
         requestBody.customSystemPrompt = currentAgent.system_prompt;
       }
 
+      // Get the current user session to pass auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token;
+
+      console.log(`🔐 Using auth token for AI agent call: ${authToken ? 'Present' : 'Missing'}`);
+
       const { data, error } = await supabase.functions.invoke('ai-agent', {
-        body: requestBody
+        body: requestBody,
+        headers: authToken ? {
+          'Authorization': `Bearer ${authToken}`
+        } : undefined
       });
 
       if (error) {

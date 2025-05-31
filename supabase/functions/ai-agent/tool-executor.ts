@@ -32,7 +32,8 @@ export async function executeTools(
   toolCalls: any[],
   mcps: any[],
   userId: string,
-  supabase: ReturnType<typeof createClient>
+  supabase: ReturnType<typeof createClient>,
+  userAuthToken?: string // Add user auth token parameter
 ): Promise<{ toolResults: any[], toolsUsed: ToolResult[], toolProgress: ToolProgress[] }> {
   console.log('Processing', toolCalls.length, 'tool calls');
   const toolResults = [];
@@ -136,16 +137,31 @@ export async function executeTools(
         toolProgress[progressIndex].progress = 50;
       }
       
-      const { data: edgeResult, error: edgeError } = await supabase.functions.invoke(targetMcp.endpoint, {
+      // Determine if this is a Google service that needs Authorization header
+      const isGoogleService = targetMcp.endpoint.includes('google-') && 
+                             !targetMcp.endpoint.includes('google-drive-tools'); // Drive tools work differently
+      
+      let invokeOptions: any = {
         body: toolParameters
-      });
+      };
+      
+      // Add Authorization header for Google services (except Drive which uses userId)
+      if (isGoogleService && userAuthToken) {
+        invokeOptions.headers = {
+          'Authorization': `Bearer ${userAuthToken}`
+        };
+        console.log(`🔐 Added Authorization header for Google service: ${targetMcp.endpoint}`);
+      }
+      
+      const { data: edgeResult, error: edgeError } = await supabase.functions.invoke(targetMcp.endpoint, invokeOptions);
       
       console.log('Edge function response:', { 
         endpoint: targetMcp.endpoint,
         success: edgeResult?.success, 
         error: edgeError, 
         dataKeys: edgeResult ? Object.keys(edgeResult) : [],
-        resultCount: edgeResult?.data?.length || edgeResult?.results?.length || 0
+        resultCount: edgeResult?.data?.length || edgeResult?.results?.length || 0,
+        hasAuthHeader: !!invokeOptions.headers?.Authorization
       });
       
       if (edgeError) {
