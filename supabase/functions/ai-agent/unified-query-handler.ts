@@ -2,7 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { convertMCPsToTools } from './mcp-tools.ts';
 import { generateSystemPrompt, createKnowledgeAwareMessages } from './system-prompts.ts';
-import { extractAssistantMessage } from './response-handler.ts';
+import { extractAssistantMessage } from './response-extractor.ts';
 import { persistInsightAsKnowledgeNode } from './knowledge-persistence.ts';
 import { shouldContinueLoop, MAX_LOOPS } from './loop-evaluator.ts';
 import { getAgentEnabledTools, setupDefaultToolsForAgent } from './agent-tool-fetcher.ts';

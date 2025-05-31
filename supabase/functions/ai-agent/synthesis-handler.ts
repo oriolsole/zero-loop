@@ -1,5 +1,5 @@
 
-import { extractAssistantMessage } from './response-handler.ts';
+import { extractAssistantMessage } from './response-extractor.ts';
 
 /**
  * Result synthesis utilities
