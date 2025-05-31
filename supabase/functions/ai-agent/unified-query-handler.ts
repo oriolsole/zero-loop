@@ -1,4 +1,3 @@
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.5";
 import { executeTools } from './tool-executor.ts';
 import { convertMCPsToTools } from './mcp-tools.ts';
@@ -380,8 +379,9 @@ export async function handleUnifiedQuery(
       console.log(`✅ LLM responded directly without tools (loop ${loopIteration})`);
     }
 
-    // 8. Store current iteration response ONLY AFTER synthesis is complete
+    // 8. Store final response ONLY AFTER all tool execution AND synthesis completes
     const responseMessageType = loopIteration === 0 ? 'response' : 'loop-enhancement';
+    console.log(`💾 Storing final response after all processing complete (${finalResponse.length} chars)`);
     await insertMessage(
       finalResponse,
       responseMessageType,
@@ -582,6 +582,8 @@ ${toolDescriptions}${loopGuidance}
 - Only use tools when they genuinely improve your answer
 - Integrate tool results naturally when used
 - Provide clear, actionable information
+- Use proper markdown formatting (avoid broken syntax like "!Name")
+- Structure information clearly with headers and lists
 
 Remember: You have comprehensive knowledge. Tools are available when needed, not required for every response.`;
 }
@@ -613,12 +615,20 @@ async function synthesizeResults(
         role: 'system',
         content: `Provide a comprehensive, well-structured answer based on the tool results.
 
+**IMPORTANT FORMATTING RULES:**
+- Use proper markdown syntax only
+- Do NOT use broken image syntax like "!Nike", "!Adidas" 
+- Use **bold** for emphasis, not broken image references
+- Structure content with clear headers (##, ###)
+- Use bullet points for lists
+- Ensure all markdown is valid and renders properly
+
 User asked: "${originalMessage}"
 
 Tool results:
 ${toolResultsSummary}
 
-Create a clear, helpful response that integrates this information naturally. Format appropriately for readability.`
+Create a clear, helpful response that integrates this information naturally. Format appropriately for readability with proper markdown only.`
       },
       {
         role: 'user',

@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 interface MarkdownRendererProps {
@@ -24,6 +25,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     if (!text) return text;
 
     let html = text;
+
+    // Step 0: Clean up broken image syntax (like !Nike, !Adidas)
+    html = html.replace(/^!([A-Za-z0-9\s]+)$/gm, '**$1**');
 
     // Step 1: Process headers
     html = html
@@ -111,3 +115,4 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 };
 
 export default MarkdownRenderer;
+
