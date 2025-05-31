@@ -6,8 +6,10 @@ import { agentService, Agent } from '@/services/agentService';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/sonner';
 
+export type ModelProvider = 'openai' | 'anthropic' | 'local' | 'npaw';
+
 export interface ModelSettings {
-  provider: string;
+  provider: ModelProvider;
   selectedModel: string;
   localModelUrl?: string;
 }
@@ -29,7 +31,7 @@ export const useAIAgentChat = () => {
       if (!user) return;
       
       try {
-        const agents = await agentService.getAgents();
+        const agents = await agentService.getUserAgents();
         if (agents.length > 0) {
           setCurrentAgent(agents[0]);
           setLoopEnabled(agents[0].loop_enabled || false);
@@ -114,7 +116,7 @@ export const useAIAgentChat = () => {
       await addMessage({
         role: 'user',
         content: message,
-        message_type: 'message',
+        messageType: 'message',
         agent_id: currentAgent?.id || null
       });
 
