@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -43,14 +42,38 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     setIsAuthenticated(!!user);
   }, [user]);
 
-  // Check for Google Drive OAuth connection
+  // Enhanced Google Drive OAuth connection check
   useEffect(() => {
     const checkGoogleDriveConnection = () => {
       if (mcp.endpoint === 'google-drive-tools' && profile) {
-        const hasGoogleDrive = profile.google_services_connected?.includes('google-drive') || 
-                               profile.google_drive_connected;
-        setGoogleDriveConnected(hasGoogleDrive);
-        console.log('Google Drive connection status:', hasGoogleDrive);
+        console.log('🔍 Checking Google Drive connection for profile:', profile);
+        
+        // Multiple ways to check for Google Drive connection
+        const hasGoogleDriveConnected = profile.google_drive_connected;
+        const hasGoogleServicesArray = profile.google_services_connected?.includes('google-drive');
+        const hasGoogleServicesArray2 = profile.google_services_connected?.includes('drive');
+        
+        // Check if any Google OAuth tokens exist
+        const hasGoogleOAuth = !!(profile as any).google_access_token || 
+                               !!(profile as any).google_refresh_token ||
+                               !!(profile as any).oauth_tokens?.google;
+        
+        const isConnected = hasGoogleDriveConnected || 
+                           hasGoogleServicesArray || 
+                           hasGoogleServicesArray2 || 
+                           hasGoogleOAuth;
+        
+        console.log('🔍 Google Drive connection checks:', {
+          hasGoogleDriveConnected,
+          hasGoogleServicesArray,
+          hasGoogleServicesArray2,
+          hasGoogleOAuth,
+          finalResult: isConnected,
+          profileKeys: Object.keys(profile || {}),
+          googleServicesConnected: profile.google_services_connected
+        });
+        
+        setGoogleDriveConnected(isConnected);
       }
     };
 
@@ -117,11 +140,13 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     defaultValues: getDefaultValues(),
   });
 
-  // Check if token is required for non-Google Drive tools or if Google Drive is not connected
+  // Updated auth missing check - for Google Drive, only require token if OAuth is not connected
   useEffect(() => {
     if (mcp.endpoint === 'google-drive-tools') {
       // For Google Drive tools, only require token if OAuth is not connected
-      setAuthMissing(!googleDriveConnected);
+      const missingAuth = !googleDriveConnected;
+      console.log('🔑 Google Drive auth missing check:', { googleDriveConnected, missingAuth });
+      setAuthMissing(missingAuth);
     } else if (mcp.requirestoken && userSecrets && userSecrets.length === 0 && !secretsLoading) {
       setAuthMissing(true);
     } else {
@@ -221,7 +246,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
         </Alert>
       )}
 
-      {/* Google Drive OAuth Status */}
+      {/* Google Drive OAuth Status - Updated logic */}
       {mcp.endpoint === 'google-drive-tools' && isAuthenticated && (
         <Alert variant={googleDriveConnected ? "default" : "warning"}>
           {googleDriveConnected ? (
@@ -229,7 +254,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
               <CheckCircle className="h-4 w-4" />
               <AlertTitle>Google Drive Connected</AlertTitle>
               <AlertDescription>
-                Using your existing Google Drive OAuth connection. No additional tokens needed.
+                Using your existing Google Drive OAuth connection. No additional setup needed.
               </AlertDescription>
             </>
           ) : (
@@ -342,7 +367,7 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
           
           <Button 
             type="submit" 
-            disabled={isLoading || authMissing || !isAuthenticated}
+            disabled={isLoading || (authMissing && mcp.endpoint !== 'google-drive-tools') || !isAuthenticated}
             className="w-full"
           >
             {isLoading ? (
