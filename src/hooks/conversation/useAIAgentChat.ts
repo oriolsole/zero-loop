@@ -105,11 +105,13 @@ export const useAIAgentChat = () => {
 
       console.log('🔑 Using fresh session token for AI agent call');
 
-      // Add user message immediately with proper user data
+      // Add user message immediately with proper user data and required properties
       await addMessage({
+        id: crypto.randomUUID(),
         role: 'user',
         content: message,
-        messageType: 'response'
+        messageType: 'response',
+        timestamp: new Date()
       });
 
       const response = await supabase.functions.invoke('ai-agent', {
