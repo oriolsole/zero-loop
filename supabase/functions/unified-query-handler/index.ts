@@ -13,14 +13,24 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// Tool name mapping for consistency
+const TOOL_NAME_MAP: Record<string, string> = {
+  'google-search': 'google-search',
+  'knowledge-search': 'query-knowledge-base',
+  'github-tools': 'github-tools',
+  'jira-tools': 'jira-tools',
+  'web-scraper': 'web-scraper'
+};
+
 async function callToolWithTimeout(toolName: string, parameters: any, timeoutMs = 25000) {
-  console.log(`🔧 Calling tool: ${toolName} with timeout: ${timeoutMs}ms`);
+  const actualFunctionName = TOOL_NAME_MAP[toolName] || toolName;
+  console.log(`🔧 Unified handler calling tool: ${toolName} -> ${actualFunctionName}`);
   
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => reject(new Error(`Tool ${toolName} timed out after ${timeoutMs}ms`)), timeoutMs);
   });
   
-  const callPromise = supabase.functions.invoke(toolName, {
+  const callPromise = supabase.functions.invoke(actualFunctionName, {
     body: parameters
   });
   
@@ -45,7 +55,9 @@ serve(async (req) => {
       loopEnabled = false,
       agentId,
       customSystemPrompt,
-      skipOrchestration = false
+      skipOrchestration = false,
+      toolName, // Specific tool to execute
+      toolParameters // Parameters for the tool
     } = await req.json();
     
     if (!message) {
@@ -63,7 +75,9 @@ serve(async (req) => {
       loopEnabled,
       agentId,
       hasCustomPrompt: !!customSystemPrompt,
-      skipOrchestration
+      skipOrchestration,
+      toolName,
+      hasToolParams: !!toolParameters
     });
 
     // In test mode, return basic response for validation
@@ -80,16 +94,98 @@ serve(async (req) => {
       );
     }
 
+    // If specific tool and parameters provided, execute directly
+    if (toolName && toolParameters) {
+      console.log(`🎯 Executing specific tool: ${toolName}`);
+      
+      try {
+        const { data: toolData, error: toolError } = await callToolWithTimeout(toolName, toolParameters);
+        
+        if (toolError) {
+          console.error(`Tool ${toolName} error:`, toolError);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: `I tried to execute ${toolName} but encountered an error: ${toolError.message}. Please try again.`,
+              toolsUsed: [{
+                name: toolName,
+                success: false,
+                result: { error: toolError.message }
+              }]
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        console.log(`✅ Tool ${toolName} completed successfully`);
+        
+        // Format the response based on the tool results
+        let formattedResponse = '';
+        if (typeof toolData === 'string') {
+          formattedResponse = toolData;
+        } else if (toolData && typeof toolData === 'object') {
+          if (toolData.results && Array.isArray(toolData.results)) {
+            formattedResponse = `Found ${toolData.results.length} results:\n\n`;
+            toolData.results.slice(0, 3).forEach((result: any, index: number) => {
+              formattedResponse += `${index + 1}. ${result.title || result.name || 'Result'}\n`;
+              if (result.snippet || result.description) {
+                formattedResponse += `   ${result.snippet || result.description}\n`;
+              }
+              if (result.link || result.url) {
+                formattedResponse += `   ${result.link || result.url}\n`;
+              }
+              formattedResponse += '\n';
+            });
+          } else if (toolData.data) {
+            formattedResponse = JSON.stringify(toolData.data, null, 2);
+          } else {
+            formattedResponse = JSON.stringify(toolData, null, 2);
+          }
+        }
+        
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: formattedResponse || 'Tool execution completed successfully.',
+            toolsUsed: [{
+              name: toolName,
+              success: true,
+              result: toolData
+            }]
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+        
+      } catch (error) {
+        console.error(`Tool ${toolName} execution failed:`, error);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: `I encountered an error while executing ${toolName}: ${error.message}. Please try again.`,
+            toolsUsed: [{
+              name: toolName,
+              success: false,
+              result: { error: error.message }
+            }]
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Legacy fallback: auto-detect tool from message
+    console.log('🔍 Auto-detecting tool from message');
+    
     // Determine which tool to use based on the message
     let toolToUse = null;
-    let toolParameters = {};
+    let autoToolParameters = {};
     
     const lowerMessage = message.toLowerCase();
     
     if (lowerMessage.includes('search') || lowerMessage.includes('find') || lowerMessage.includes('look up')) {
       if (lowerMessage.includes('knowledge') || lowerMessage.includes('my files') || lowerMessage.includes('documents')) {
-        toolToUse = 'query-knowledge-base';
-        toolParameters = {
+        toolToUse = 'knowledge-search';
+        autoToolParameters = {
           query: message,
           limit: 5,
           includeNodes: true,
@@ -98,14 +194,14 @@ serve(async (req) => {
         };
       } else {
         toolToUse = 'google-search';
-        toolParameters = {
+        autoToolParameters = {
           query: message,
           limit: 5
         };
       }
     } else if (lowerMessage.includes('github') || lowerMessage.includes('repository') || lowerMessage.includes('repo')) {
       toolToUse = 'github-tools';
-      toolParameters = {
+      autoToolParameters = {
         action: 'search_repositories',
         query: message
       };
@@ -113,10 +209,10 @@ serve(async (req) => {
     
     // If we identified a tool, execute it
     if (toolToUse) {
-      console.log(`🔧 Executing tool: ${toolToUse}`);
+      console.log(`🔧 Auto-executing tool: ${toolToUse}`);
       
       try {
-        const { data: toolData, error: toolError } = await callToolWithTimeout(toolToUse, toolParameters);
+        const { data: toolData, error: toolError } = await callToolWithTimeout(toolToUse, autoToolParameters);
         
         if (toolError) {
           console.error(`Tool ${toolToUse} error:`, toolError);
@@ -193,11 +289,11 @@ serve(async (req) => {
       }
     }
     
-    // If no tool was identified, return a helpful response
+    // If no tool was identified, return guidance
     return new Response(
       JSON.stringify({
         success: true,
-        message: `I understand you're asking about: "${message}". I can help you search the web, search through your knowledge base, or access GitHub repositories. Try asking me to "search for [your topic]" or "find information about [your topic]".`,
+        message: `I'd be happy to help with "${message}". Try asking me to search for something specific, or let me know which tool you'd like me to use.`,
         toolsUsed: [],
         availableToolsCount: 0
       }),
