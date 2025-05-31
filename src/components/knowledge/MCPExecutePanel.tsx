@@ -32,38 +32,80 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     setIsAuthenticated(!!user);
   }, [user]);
 
-  // Enhanced Google Drive OAuth connection check
+  // Enhanced Google Drive OAuth connection check with comprehensive debugging
   useEffect(() => {
     const checkGoogleDriveConnection = () => {
       if (mcp.endpoint === 'google-drive-tools' && profile) {
-        console.log('🔍 Checking Google Drive connection for profile:', profile);
+        console.log('🔍 COMPREHENSIVE Google Drive connection check for profile:', profile);
+        console.log('🔍 Profile keys available:', Object.keys(profile || {}));
+        console.log('🔍 All profile data:', JSON.stringify(profile, null, 2));
         
-        // Multiple ways to check for Google Drive connection
-        const hasGoogleDriveConnected = profile.google_drive_connected;
-        const hasGoogleServicesArray = profile.google_services_connected?.includes('google-drive');
-        const hasGoogleServicesArray2 = profile.google_services_connected?.includes('drive');
+        // Method 1: Check explicit google_drive_connected flag
+        const hasGoogleDriveFlag = profile.google_drive_connected;
+        console.log('🔍 Method 1 - google_drive_connected flag:', hasGoogleDriveFlag);
         
-        // Check if any Google OAuth tokens exist
-        const hasGoogleOAuth = !!(profile as any).google_access_token || 
-                               !!(profile as any).google_refresh_token ||
-                               !!(profile as any).oauth_tokens?.google;
+        // Method 2: Check google_services_connected array for variations
+        const googleServices = profile.google_services_connected || [];
+        console.log('🔍 Method 2 - google_services_connected array:', googleServices);
+        const hasGoogleDriveService = googleServices.some((service: string) => 
+          service && (
+            service.toLowerCase().includes('drive') ||
+            service.toLowerCase().includes('google-drive') ||
+            service === 'google-drive-tools'
+          )
+        );
+        console.log('🔍 Method 2 - service array contains drive:', hasGoogleDriveService);
         
-        const isConnected = hasGoogleDriveConnected || 
-                           hasGoogleServicesArray || 
-                           hasGoogleServicesArray2 || 
-                           hasGoogleOAuth;
+        // Method 3: Check google_scopes_granted for Drive-related scopes
+        const googleScopes = profile.google_scopes_granted || [];
+        console.log('🔍 Method 3 - google_scopes_granted array:', googleScopes);
+        const hasDriveScopes = googleScopes.some((scope: string) => 
+          scope && scope.includes('drive')
+        );
+        console.log('🔍 Method 3 - scopes contain drive:', hasDriveScopes);
         
-        console.log('🔍 Google Drive connection checks:', {
-          hasGoogleDriveConnected,
-          hasGoogleServicesArray,
-          hasGoogleServicesArray2,
-          hasGoogleOAuth,
-          finalResult: isConnected,
-          profileKeys: Object.keys(profile || {}),
-          googleServicesConnected: profile.google_services_connected
+        // Method 4: Check for any OAuth tokens in profile
+        const profileData = profile as any;
+        const hasGoogleAccessToken = !!(
+          profileData.google_access_token || 
+          profileData.google_refresh_token ||
+          profileData.oauth_tokens?.google
+        );
+        console.log('🔍 Method 4 - has Google OAuth tokens:', hasGoogleAccessToken);
+        
+        // Method 5: Check if user has Google ID (signed in with Google)
+        const hasGoogleId = !!(profile.google_id || profileData.google_id);
+        console.log('🔍 Method 5 - has Google ID:', hasGoogleId);
+        
+        // Method 6: Check all profile properties for any Google-related data
+        const profileString = JSON.stringify(profile).toLowerCase();
+        const hasAnyGoogleData = profileString.includes('google') && profileString.includes('drive');
+        console.log('🔍 Method 6 - profile contains Google+Drive data:', hasAnyGoogleData);
+        
+        // Final determination - if ANY method indicates connection, consider it connected
+        const isConnected = hasGoogleDriveFlag || 
+                           hasGoogleDriveService || 
+                           hasDriveScopes || 
+                           hasGoogleAccessToken ||
+                           (hasGoogleId && hasAnyGoogleData);
+        
+        console.log('🔍 FINAL DETERMINATION:', {
+          hasGoogleDriveFlag,
+          hasGoogleDriveService,
+          hasDriveScopes,
+          hasGoogleAccessToken,
+          hasGoogleId,
+          hasAnyGoogleData,
+          finalResult: isConnected
         });
         
         setGoogleDriveConnected(isConnected);
+        
+        if (isConnected) {
+          console.log('✅ Google Drive detected as CONNECTED');
+        } else {
+          console.log('❌ Google Drive detected as NOT CONNECTED');
+        }
       }
     };
 
@@ -135,7 +177,11 @@ const MCPExecutePanel: React.FC<MCPExecutePanelProps> = ({ mcp }) => {
     if (mcp.endpoint === 'google-drive-tools') {
       // For Google Drive tools, only require token if OAuth is not connected
       const missingAuth = !googleDriveConnected;
-      console.log('🔑 Google Drive auth missing check:', { googleDriveConnected, missingAuth });
+      console.log('🔑 Google Drive auth missing check:', { 
+        googleDriveConnected, 
+        missingAuth,
+        mcpEndpoint: mcp.endpoint 
+      });
       setAuthMissing(missingAuth);
     } else if (mcp.requirestoken && userSecrets && userSecrets.length === 0 && !secretsLoading) {
       setAuthMissing(true);

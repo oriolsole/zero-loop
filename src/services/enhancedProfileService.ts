@@ -63,12 +63,22 @@ class EnhancedProfileService {
       return null;
     }
 
+    // Enhanced debugging for Drive connection detection
+    console.log('📊 Enhanced Profile Service - Raw profile data:', data);
+    console.log('📊 Profile google_services_connected:', data?.google_services_connected);
+    console.log('📊 Profile google_scopes_granted:', data?.google_scopes_granted);
+    console.log('📊 Profile google_drive_connected:', data?.google_drive_connected);
+
     // Transform the profile to include enhanced fields with proper defaults
-    return {
+    const enhancedProfile = {
       ...data,
       google_services_connected: data.google_services_connected || [],
       google_scopes_granted: data.google_scopes_granted || []
     } as EnhancedUserProfile;
+
+    console.log('📊 Enhanced Profile Service - Final enhanced profile:', enhancedProfile);
+
+    return enhancedProfile;
   }
 
   /**
@@ -118,10 +128,12 @@ class EnhancedProfileService {
     }
 
     const connectedServicesArray = Array.from(connectedServices);
+    const hasDriveAccess = scopes.includes('https://www.googleapis.com/auth/drive');
 
     console.log('🔄 Enhanced service mapping:', {
       originalScopes: scopes,
-      mappedServices: connectedServicesArray
+      mappedServices: connectedServicesArray,
+      hasDriveAccess
     });
 
     const { error } = await supabase
@@ -129,7 +141,7 @@ class EnhancedProfileService {
       .update({
         google_services_connected: connectedServicesArray,
         google_scopes_granted: scopes,
-        google_drive_connected: scopes.includes('https://www.googleapis.com/auth/drive'),
+        google_drive_connected: hasDriveAccess,
         updated_at: new Date().toISOString()
       })
       .eq('id', user.id);
