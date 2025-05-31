@@ -47,21 +47,29 @@ async function encryptToken(token: string): Promise<string> {
 }
 
 function getAppUrl(): string {
-  // Determine the correct app URL based on environment
+  // Get the actual app URL from the request headers or environment
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+  
+  console.log('🔍 Supabase URL:', supabaseUrl);
+  
+  // For zero-loop project, use the correct lovable.app domain
+  if (supabaseUrl.includes('dwescgkujhhizyrokuiv.supabase.co')) {
+    return 'https://zero-loop.lovable.app';
+  }
   
   // For development, use localhost
   if (supabaseUrl.includes('localhost') || supabaseUrl.includes('127.0.0.1')) {
     return 'http://localhost:5173';
   }
   
-  // For production, convert Supabase URL to Lovable project URL
+  // For other Lovable projects, convert Supabase URL to correct domain
   if (supabaseUrl.includes('.supabase.co')) {
-    return supabaseUrl.replace('.supabase.co', '.lovableproject.com');
+    const projectId = supabaseUrl.split('//')[1].split('.')[0];
+    return `https://${projectId}.lovable.app`;
   }
   
   // Fallback
-  return 'http://localhost:5173';
+  return 'https://zero-loop.lovable.app';
 }
 
 serve(async (req) => {
@@ -87,14 +95,15 @@ serve(async (req) => {
       console.log('📊 OAuth redirect parameters:', {
         hasCode: !!code,
         hasState: !!state,
-        error
+        error,
+        fullUrl: req.url
       });
 
       const appUrl = getAppUrl();
       console.log('🏠 App URL determined as:', appUrl);
 
       if (error) {
-        console.error('❌ OAuth error:', error);
+        console.error('❌ OAuth error from Google:', error);
         return new Response(null, {
           status: 302,
           headers: { 
@@ -105,7 +114,7 @@ serve(async (req) => {
       }
 
       if (!code) {
-        console.error('❌ No authorization code received');
+        console.error('❌ No authorization code received from Google');
         return new Response(null, {
           status: 302,
           headers: { 
@@ -142,6 +151,7 @@ serve(async (req) => {
       }
 
       console.log('🔄 Exchanging code for tokens...');
+      console.log('🔗 Using redirect URI:', `${Deno.env.get('SUPABASE_URL')}/functions/v1/google-oauth-callback`);
 
       // Exchange code for tokens
       const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -250,6 +260,7 @@ serve(async (req) => {
         }
 
         console.log('✅ Tokens stored successfully, redirecting to tools page');
+        console.log('🔗 Redirecting to:', `${appUrl}/tools?success=google_connected`);
         
         // Redirect back to tools page with success
         return new Response(null, {

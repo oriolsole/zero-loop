@@ -56,10 +56,14 @@ serve(async (req) => {
     console.log('🔗 Final scope string:', scopeString);
     console.log('🔐 State with user context:', stateData);
     
+    // Get the correct redirect URI
+    const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/google-oauth-callback`;
+    console.log('🔗 Using redirect URI:', redirectUri);
+    
     // Google OAuth 2.0 authorization URL
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authUrl.searchParams.set('client_id', clientId);
-    authUrl.searchParams.set('redirect_uri', `${Deno.env.get('SUPABASE_URL')}/functions/v1/google-oauth-callback`);
+    authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('scope', scopeString);
     authUrl.searchParams.set('access_type', 'offline');
@@ -67,6 +71,7 @@ serve(async (req) => {
     authUrl.searchParams.set('state', state);
 
     console.log('✅ OAuth URL generated with user context');
+    console.log('🔗 Final OAuth URL:', authUrl.toString());
 
     return new Response(
       JSON.stringify({
