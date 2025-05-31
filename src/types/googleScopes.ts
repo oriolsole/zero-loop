@@ -1,234 +1,234 @@
 
+/**
+ * Google API scopes for different services
+ */
+
 export interface GoogleScope {
   id: string;
   name: string;
   description: string;
   scope: string;
-  icon: string;
-  category: 'productivity' | 'communication' | 'storage' | 'media';
-  required?: boolean;
-}
-
-export interface GoogleScopeCategory {
-  id: string;
-  name: string;
-  description: string;
-  scopes: GoogleScope[];
+  required: boolean;
 }
 
 export const GOOGLE_SCOPES: GoogleScope[] = [
-  // Account - Essential for basic authentication
+  // Basic Account Information (always required)
   {
-    id: 'google-account',
-    name: 'Google Account',
-    description: 'Basic profile and email access',
-    scope: 'https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
-    icon: 'googleAccount',
-    category: 'communication',
+    id: 'userinfo-email',
+    name: 'Email Address',
+    description: 'Access to your email address',
+    scope: 'https://www.googleapis.com/auth/userinfo.email',
+    required: true
+  },
+  {
+    id: 'userinfo-profile',
+    name: 'Basic Profile',
+    description: 'Access to your basic profile information',
+    scope: 'https://www.googleapis.com/auth/userinfo.profile',
     required: true
   },
   
-  // Storage & Files
+  // Google Drive
   {
-    id: 'google-drive',
+    id: 'drive',
     name: 'Google Drive',
-    description: 'Access and manage your Google Drive files',
+    description: 'Full access to Google Drive files and folders',
     scope: 'https://www.googleapis.com/auth/drive',
-    icon: 'googleDrive',
-    category: 'storage',
-    required: true
+    required: false
   },
   
-  // Communication
+  // Gmail
   {
     id: 'gmail',
     name: 'Gmail',
-    description: 'Read and send Gmail messages',
-    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send',
-    icon: 'googleGmail',
-    category: 'communication'
+    description: 'Full access to Gmail (read, send, modify emails)',
+    scope: 'https://www.googleapis.com/auth/gmail.modify',
+    required: false
   },
   {
-    id: 'google-contacts',
-    name: 'Contacts',
-    description: 'Access your Google contacts',
-    scope: 'https://www.googleapis.com/auth/contacts.readonly',
-    icon: 'googleContacts',
-    category: 'communication'
+    id: 'gmail-readonly',
+    name: 'Gmail (Read Only)',
+    description: 'Read-only access to Gmail',
+    scope: 'https://www.googleapis.com/auth/gmail.readonly',
+    required: false
+  },
+  {
+    id: 'gmail-send',
+    name: 'Gmail Send',
+    description: 'Permission to send emails via Gmail',
+    scope: 'https://www.googleapis.com/auth/gmail.send',
+    required: false
   },
   
-  // Productivity
+  // Google Calendar
   {
-    id: 'google-calendar',
+    id: 'calendar',
     name: 'Google Calendar',
-    description: 'Access and manage your calendar events',
+    description: 'Full access to Google Calendar',
     scope: 'https://www.googleapis.com/auth/calendar',
-    icon: 'googleCalendar',
-    category: 'productivity'
+    required: false
   },
   {
-    id: 'google-sheets',
-    name: 'Google Sheets',
-    description: 'Access and edit your spreadsheets',
-    scope: 'https://www.googleapis.com/auth/spreadsheets',
-    icon: 'googleSheets',
-    category: 'productivity'
-  },
-  {
-    id: 'google-docs',
-    name: 'Google Docs',
-    description: 'Access and edit your documents',
-    scope: 'https://www.googleapis.com/auth/documents',
-    icon: 'googleDocs',
-    category: 'productivity'
+    id: 'calendar-readonly',
+    name: 'Google Calendar (Read Only)',
+    description: 'Read-only access to Google Calendar',
+    scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    required: false
   },
   
-  // Media
+  // Google Sheets
   {
-    id: 'google-photos',
-    name: 'Google Photos',
-    description: 'Access your Google Photos library',
-    scope: 'https://www.googleapis.com/auth/photoslibrary.readonly',
-    icon: 'googlePhotos',
-    category: 'media'
-  },
-  {
-    id: 'youtube',
-    name: 'YouTube',
-    description: 'Access your YouTube data',
-    scope: 'https://www.googleapis.com/auth/youtube.readonly',
-    icon: 'googleYoutube',
-    category: 'media'
-  }
-];
-
-export const GOOGLE_SCOPE_CATEGORIES: GoogleScopeCategory[] = [
-  {
-    id: 'storage',
-    name: 'Storage & Files',
-    description: 'Access your files and documents',
-    scopes: GOOGLE_SCOPES.filter(s => s.category === 'storage')
-  },
-  {
-    id: 'productivity',
-    name: 'Productivity Tools',
-    description: 'Calendar, Sheets, Docs and more',
-    scopes: GOOGLE_SCOPES.filter(s => s.category === 'productivity')
-  },
-  {
-    id: 'communication',
-    name: 'Communication',
-    description: 'Email, contacts and messaging',
-    scopes: GOOGLE_SCOPES.filter(s => s.category === 'communication')
-  },
-  {
-    id: 'media',
-    name: 'Media & Entertainment',
-    description: 'Photos, videos and media content',
-    scopes: GOOGLE_SCOPES.filter(s => s.category === 'media')
-  }
-];
-
-// Enhanced Google Services with proper branding and icon components
-export const GOOGLE_SERVICES = [
-  {
-    id: 'google-account',
-    name: 'Google Account',
-    description: 'Basic profile and email access',
-    icon: 'googleAccount',
-    color: 'bg-blue-500',
-    scopes: ['https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile']
-  },
-  {
-    id: 'gmail',
-    name: 'Gmail',
-    description: 'Read, send, and manage emails',
-    icon: 'googleGmail',
-    color: 'bg-red-500',
-    scopes: [
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/gmail.modify',
-      'https://www.googleapis.com/auth/gmail.send'
-    ]
-  },
-  {
-    id: 'google-drive',
-    name: 'Google Drive',
-    description: 'Access and manage your files',
-    icon: 'googleDrive',
-    color: 'bg-blue-600',
-    scopes: [
-      'https://www.googleapis.com/auth/drive',
-      'https://www.googleapis.com/auth/drive.file',
-      'https://www.googleapis.com/auth/drive.readonly'
-    ]
-  },
-  {
-    id: 'google-calendar',
-    name: 'Google Calendar',
-    description: 'Manage events and schedules',
-    icon: 'googleCalendar',
-    color: 'bg-blue-700',
-    scopes: [
-      'https://www.googleapis.com/auth/calendar',
-      'https://www.googleapis.com/auth/calendar.readonly'
-    ]
-  },
-  {
-    id: 'google-sheets',
+    id: 'spreadsheets',
     name: 'Google Sheets',
-    description: 'Create and edit spreadsheets',
-    icon: 'googleSheets',
-    color: 'bg-green-600',
-    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    description: 'Full access to Google Sheets',
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    required: false
   },
+  
+  // Google Docs
   {
-    id: 'google-docs',
+    id: 'documents',
     name: 'Google Docs',
-    description: 'Create and edit documents',
-    icon: 'googleDocs',
-    color: 'bg-blue-800',
-    scopes: ['https://www.googleapis.com/auth/documents']
+    description: 'Full access to Google Docs',
+    scope: 'https://www.googleapis.com/auth/documents',
+    required: false
   },
+  
+  // Google Contacts
   {
-    id: 'google-contacts',
+    id: 'contacts',
     name: 'Google Contacts',
-    description: 'Access your contact information',
-    icon: 'googleContacts',
-    color: 'bg-orange-500',
-    scopes: ['https://www.googleapis.com/auth/contacts.readonly']
+    description: 'Full access to Google Contacts',
+    scope: 'https://www.googleapis.com/auth/contacts',
+    required: false
   },
   {
-    id: 'google-photos',
-    name: 'Google Photos',
-    description: 'Access your photo library',
-    icon: 'googlePhotos',
-    color: 'bg-yellow-500',
-    scopes: ['https://www.googleapis.com/auth/photoslibrary.readonly']
+    id: 'contacts-readonly',
+    name: 'Google Contacts (Read Only)',
+    description: 'Read-only access to Google Contacts',
+    scope: 'https://www.googleapis.com/auth/contacts.readonly',
+    required: false
   },
+  
+  // Google Photos
+  {
+    id: 'photoslibrary',
+    name: 'Google Photos',
+    description: 'Access to Google Photos library',
+    scope: 'https://www.googleapis.com/auth/photoslibrary.readonly',
+    required: false
+  },
+  
+  // YouTube
   {
     id: 'youtube',
     name: 'YouTube',
-    description: 'Access your YouTube data',
-    icon: 'googleYoutube',
-    color: 'bg-red-600',
-    scopes: ['https://www.googleapis.com/auth/youtube.readonly']
+    description: 'Read-only access to YouTube data',
+    scope: 'https://www.googleapis.com/auth/youtube.readonly',
+    required: false
   }
-] as const;
+];
 
-// Essential scopes for basic authentication - include Google Account scopes
-export const getRequiredScopes = (): string[] => {
-  return [
-    'https://www.googleapis.com/auth/userinfo.email',
-    'https://www.googleapis.com/auth/userinfo.profile',
-    'https://www.googleapis.com/auth/drive', // Essential for file access
-  ];
-};
+export const GOOGLE_SERVICES = {
+  'google-account': {
+    name: 'Google Account',
+    requiredScopes: ['userinfo-email', 'userinfo-profile'],
+    icon: 'google-account'
+  },
+  'google-drive': {
+    name: 'Google Drive',
+    requiredScopes: ['drive'],
+    icon: 'google-drive'
+  },
+  'gmail': {
+    name: 'Gmail',
+    requiredScopes: ['gmail'],
+    icon: 'gmail'
+  },
+  'google-calendar': {
+    name: 'Google Calendar',
+    requiredScopes: ['calendar'],
+    icon: 'google-calendar'
+  },
+  'google-sheets': {
+    name: 'Google Sheets',
+    requiredScopes: ['spreadsheets'],
+    icon: 'google-sheets'
+  },
+  'google-docs': {
+    name: 'Google Docs',
+    requiredScopes: ['documents'],
+    icon: 'google-docs'
+  },
+  'google-contacts': {
+    name: 'Google Contacts',
+    requiredScopes: ['contacts'],
+    icon: 'google-contacts'
+  },
+  'google-photos': {
+    name: 'Google Photos',
+    requiredScopes: ['photoslibrary'],
+    icon: 'google-photos'
+  },
+  'youtube': {
+    name: 'YouTube',
+    requiredScopes: ['youtube'],
+    icon: 'youtube'
+  }
+} as const;
 
-export const getAllScopes = (): string[] => {
-  return GOOGLE_SCOPES.flatMap(scope => scope.scope.split(' '));
-};
+/**
+ * Get all available scopes
+ */
+export function getAllScopes(): string[] {
+  return GOOGLE_SCOPES.map(scope => scope.scope);
+}
 
-export const getScopesByCategory = (category: string): GoogleScope[] => {
-  return GOOGLE_SCOPES.filter(scope => scope.category === category);
-};
+/**
+ * Get required scopes (always needed)
+ */
+export function getRequiredScopes(): string[] {
+  return GOOGLE_SCOPES
+    .filter(scope => scope.required)
+    .map(scope => scope.scope);
+}
+
+/**
+ * Get scopes for specific services
+ */
+export function getScopesForServices(serviceIds: string[]): string[] {
+  const scopes = new Set<string>();
+  
+  // Always include required scopes
+  getRequiredScopes().forEach(scope => scopes.add(scope));
+  
+  // Add service-specific scopes
+  serviceIds.forEach(serviceId => {
+    const service = GOOGLE_SERVICES[serviceId as keyof typeof GOOGLE_SERVICES];
+    if (service) {
+      service.requiredScopes.forEach(scopeId => {
+        const scope = GOOGLE_SCOPES.find(s => s.id === scopeId);
+        if (scope) {
+          scopes.add(scope.scope);
+        }
+      });
+    }
+  });
+  
+  return Array.from(scopes);
+}
+
+/**
+ * Get scope by ID
+ */
+export function getScopeById(id: string): GoogleScope | undefined {
+  return GOOGLE_SCOPES.find(scope => scope.id === id);
+}
+
+/**
+ * Check if a scope is required
+ */
+export function isScopeRequired(scopeId: string): boolean {
+  const scope = getScopeById(scopeId);
+  return scope?.required || false;
+}
